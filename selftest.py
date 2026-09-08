@@ -84,6 +84,7 @@ R2 = [  # folder, baseline, {fact: want}, structural_change want (or None)
  ('CAP-C62-DART',           None,              dict(perimeter_points=7, piece_records=2), None),
  ('CAP-C70-PASTED',         None,              dict(piece_records=1, category='CAP-C00-BASE'), None),
  ('CAP-C12-TWOINTLINES',    None,              dict(perimeter_points=4, cutout_points='2'), None),
+ ('CAP-C13-LONGNAME',       None,              dict(piece_records=1, category='CAP-C13-LONGNAME-1234567890ABC'), None),
 ]
 for name, base, want, sc in R2:
     folder = os.path.join(HERE, name)

@@ -25,7 +25,7 @@ last digit on all eight pieces against DXF `Units: ENGLISH` coordinates
 |---|---|---|
 | 0x00 | 18 | ASCII magic `XGGT IXPORT DB5.1\0` **[V]** |
 | 0x12 | 3 | uninitialised **[?]** |
-| 0x15 | var | exported **piece name**, NUL-terminated **[V]** — written into a fixed-width slot: the 21-character `CAP-C02-SAVEAS-NOEDIT` produced a file of exactly the same length as the 12-character `CAP-C00-BASE`, overwriting residue bytes instead of shifting anything (the trailer copy of the name behaves the same way) **[V]** |
+| 0x15 | var | exported **piece name**, NUL-terminated **[V]** — written into a fixed-width slot: the 21-character `CAP-C02-SAVEAS-NOEDIT` produced a file of exactly the same length as the 12-character `CAP-C00-BASE`, overwriting residue bytes instead of shifting anything (the trailer copy of the name behaves the same way) **[V]**. Confirmed at 30 characters too (round 2, `CAP-C13-LONGNAME-1234567890ABC`): `_find_field_block`'s metadata offset (0x8a) is byte-identical to `CAP-C00-BASE`'s, so the header slot absorbed 18 more name characters with zero shift downstream. The *only* size growth between the two files (1560 vs 1542 bytes, +18) is the piece record's own `len(name)`-prefixed name string (§2) growing by the same 18 bytes - confirming, with a single clean sample rather than by inference, that the header name is fixed-width/slot-based while the piece-record name is genuinely length-prefixed and variable **[V]** |
 | … | … | uninitialised heap/stack residue: 64-bit pointer-shaped values (`…7f 00 00`) that differ between two otherwise byte-identical exports **[V]** |
 
 **Export-to-export noise floor [V]** (round 2, `CAP-C00-BASE` vs `CAP-C01-REEXPORT`):

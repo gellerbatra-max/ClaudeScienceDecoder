@@ -198,23 +198,39 @@ Create→Circles→Center with "Create New Piece" unchecked becomes a third
 internal-list kind (header `0xFFFF/0x0049`), a closed N-point polygon,
 terminator `6` not `3`. See FORMAT_SPEC.md §5.2.
 
-**CAP-C61-MIRROR** mirror/fold line — captured (round 2), export PASSES, but
-**decoding is not done**: `Modify→Fold Keep` (internal line required, not a
-perimeter edge) produces a piece whose metadata header has 3 extra zero
-`u16` fields, which crashes `accumark_pds.py`'s `parse_metadata`/
-`find_point_table`. Follow-up: give `parse_metadata` a variant path for
-Fold-Keep pieces. See CAPTURE_LOG.md's CAP-C61-MIRROR row for the exact byte
-layout and GUI workflow (fold line must be internal; the tool silently
-renames the piece to "Pn", needing a Save-As to restore the intended name).
+**CAP-C61-MIRROR** mirror/fold line — **DONE (round 2, follow-up session)**:
+the original crash diagnosis above (3 extra u16 fields) was wrong; the real
+cause was a single mis-modeled field (`len_annot` read as u32 when it's
+really u16 + a separate, previously-always-zero flag field) plus
+metadata's `n_perimeter` over-counting by one on this piece. Both fixed;
+`CAP-C61-MIRROR` now decodes with dxf residual 0.000000. See FORMAT_SPEC.md
+§2/§4 and CAPTURE_LOG.md's CAP-C61-MIRROR row.
 
-**CAP-C62-DART** dart or pleat · **CAP-C63-MODEL** a two-piece model exported
-together (tests whether one file can hold two *genuine* pieces, as opposed to
-the stale-duplicate case). Not started.
+**CAP-C62-DART** dart or pleat — **DONE (round 2)**: Advanced→Darts→Add cuts
+a dart directly into the perimeter as 3 new points (two dart-leg points plus
+an apex), not an internal line. Exposed and fixed two decoder bugs along the
+way (`f2` is a trailer byte count, not a 0/1 flag; two unbounded-loop hangs
+on false-positive metadata matches). See FORMAT_SPEC.md §4 and
+CAPTURE_LOG.md's CAP-C62-DART row.
 
-**CAP-C70-PASTED** · Copy-Piece/Paste-Piece C00, Save As a new name, export.
-`--expect piece_records=2` and `category=CAP-C00-BASE`. Confirms the
-stale-second-record and category findings rather than leaving them inferred
-from six accidental instances.
+**CAP-C63-MODEL** a two-piece model exported together — **DONE (round 2)**:
+answered directly, no decoder bug involved. A Model-level export (File→
+Export→Export Models) is a completely different, much smaller manifest
+format (621 bytes) that `decode()` correctly finds zero piece blocks in —
+it doesn't embed either piece's geometry, just references them by name. The
+"one file holds two genuine pieces" scenario does not occur via Model
+export; the stale-duplicate-record case remains the only way two piece
+blocks appear in one `.tmp`. See FORMAT_SPEC.md §8.
+
+**CAP-C70-PASTED** · Copy-Piece/Paste-Piece C00, Save As a new name, export —
+**DONE (round 2)**. `category=CAP-C00-BASE` confirmed directly as expected,
+but `piece_records=1`, not the 2 originally guessed here — this sharpens
+rather than contradicts the stale-second-record trigger rule: pasting a
+piece reaches the same "placed, saved under a new name, never edited" state
+as `CAP-C02-SAVEAS-NOEDIT`, and only a subsequent edit produces the second
+record. See FORMAT_SPEC.md §8 and CAPTURE_LOG.md's CAP-C70-PASTED row.
+
+**Phase 6 status: all five items done.**
 
 ---
 

@@ -419,6 +419,45 @@ its first save (`CAP-C50-DRILL1`, `CAP-C30-SEAM-UNEVEN`, `CAP-C31-SEAM-TAPER`)
 has two. Record 1 holds the pre-edit geometry — the likely backing store of
 PDS's *Bookmark → Restore Original*.
 
+**A genuine two-piece "Model" export is a different, much smaller file
+format entirely — not two piece blocks in one `.tmp` [V]** (round 2,
+`CAP-C63-MODEL`): two independently-created rectangles were both checked
+"Add Piece to Model" under the same new model name, then exported via
+File → Export → **Export Models** (as opposed to the normal **Export
+Pieces**) to a ZIP. That ZIP's single `.tmp` member is only **621 bytes**
+(a single ordinary rectangle piece file is 1500+) and starts with the usual
+`XGGT IXPORT DB5.1` magic and the *model's* name, not either piece's name —
+but `decode()` finds **zero** valid piece blocks in it: none of the
+per-piece metadata (annotation, rule table, size, perimeter point count)
+this format's decoder is built on is present. This is a lightweight
+model-level manifest/reference format, structurally unrelated to the
+per-piece export format the rest of this document describes; it does not
+embed full piece geometry for either piece. Each piece's own geometry stays
+in its individual stored record in the storage area (`DATA90`), addressed
+by name — the model file just groups the names. Exporting the same two
+pieces via ordinary **Export Pieces** instead only accepts one piece
+selection at a time in this dialog, so it was not tested further; the
+Model-export path already answers the capture's question. **The "one file
+holds two genuine pieces" scenario does not occur via either export path
+tried** — multi-piece grouping is a manifest-level concept, and the
+already-documented stale-duplicate-record case above remains the only way
+two piece blocks appear inside one piece `.tmp`.
+
+**Copy-Piece/Paste-Piece confirmed directly, not just inferred [V]** (round
+2, `CAP-C70-PASTED`): opened `CAP-C00-BASE` fresh from storage, Create →
+Piece → **Copy** with **Category: Copy Original** selected, clicked to place
+the pasted copy (named `CAP-C70-PASTED` at the piece-name prompt), then
+File → Save As → `CAP-C70-PASTED`, export ASTM + ZIP — no edit at any point
+after the paste. Result: **`category = CAP-C00-BASE`** (the *original*
+piece's name, not the pasted copy's own name — direct confirmation of the
+category field's semantics from §1, this time deliberately rather than
+inferred from six accidental instances) and **`piece_records = 1`**, not 2.
+This sharpens rather than contradicts the trigger rule two sections above:
+Copy-Piece/Paste-Piece by itself is just another way to reach the same
+"opened, placed, saved under a new name, never edited" state as
+`CAP-C02-SAVEAS-NOEDIT` — the stale second record still requires an edit
+*after* that point, and pasting a piece is not itself an edit.
+
 ## 9. `.RUL` companion — fully readable
 
 `.RUL` is **plain ASCII** (ASTM/D13 Proposal 1, D 6673-04): `AUTHOR`,

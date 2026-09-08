@@ -30,7 +30,12 @@ def parse_metadata(d, off=None):
     o = _find_field_block(d) if off is None else off
     f = dict(field_off=o)
     f['len_name']    = u16(d,o)
-    f['len_annot']   = i32(d,o+2)
+    f['len_annot']   = u16(d,o+2)
+    # [V] CAP-C61-MIRROR: this u16 is 0 in every other capture (so reading
+    # len_annot as an i32 happened to work by coincidence), but is 2 here -
+    # the only capture made with the "Fold Keep" tool (internal fold line + Mirror Piece checkbox). Likely a mirror/flip flag
+    # or a count of mirror-related sub-records; meaning unconfirmed.
+    f['unk_u16_annot'] = u16(d,o+4)
     f['len_size']    = i32(d,o+6)
     f['len_ruletab'] = i32(d,o+10)
     f['n_perimeter'] = i32(d,o+14)
@@ -72,6 +77,15 @@ def object_record_size(n_rows):
 def parse_object_records(d, start, n, n_rows=5):
     recs = []
     size = object_record_size(n_rows)
+    # [V] a real file's object-record array always fits before EOF; a
+    # false-positive metadata match during summarize()'s brute-force offset
+    # scan can hand this garbage n/n_rows (u16s, so up to 65535 each) with no
+    # exception anywhere downstream (i32()/u16() silently zero-fill past the
+    # buffer) - unbounded, this built a ~400M-element list and hung for
+    # minutes on a single bogus candidate (CAP-C62-DART, n=14385,
+    # n_rows=13874). Fail fast so the caller's except-and-skip logic works.
+    if start + size*n > len(d):
+        raise ValueError('object record array would run past EOF - not a real piece block')
     for k in range(n):
         o = start + size*k
         payload = [i32(d,o+4+4*j) for j in range(1+2*n_rows)]
@@ -108,19 +122,29 @@ def _is_internal_header(d, o):
 
 # ---------------------------------------------------------- point sequences
 COORD_LO, COORD_HI = -2_000_000, 2_000_000   # plausible coordinate window
-POINT_TURN, POINT_CURVE = 0x09, 0x0A
+POINT_TURN, POINT_CURVE, POINT_DART_APEX = 0x09, 0x0A, 0x12
 
 def parse_point(d, o):
     """id(i16) x(i32) y(i32) f1(u16) f2(u16)
        [+ rule_ref(i32) pad(u16)  when f1 == 0]
-       [+ attr(u8)                when f2 == 1]"""
+       [+ f2 trailer bytes        when f2 >= 1]"""
     r = dict(offset=o, id=i16(d,o), x=i32(d,o+2), y=i32(d,o+6),
              f1=u16(d,o+10), f2=u16(d,o+12), rule_ref=None, attr=None)
     p = o+14
     if r['f1'] == 0:
         r['rule_ref'] = i32(d,p); r['rule_pad'] = u16(d,p+4); p += 6
-    if r['f2'] == 1:
-        r['attr'] = d[p]; p += 1
+    # [V] CAP-C62-DART: f2 is a trailer BYTE COUNT, not a 0/1 flag - a dart
+    # leg point has f2==2 (two trailer bytes, e.g. `09 10`/`09 11` for the
+    # dart's two legs: same first byte 0x09 as an ordinary turn point, second
+    # byte differs between the two legs of one dart - [?] pairing/index,
+    # unconfirmed). Every prior sample only ever had f2 in {0,1}, so this was
+    # indistinguishable from a plain boolean until now; treating it as a
+    # count is backward compatible (f2==1 still reads exactly one byte).
+    # Without this fix parse_point_run silently misaligns by 2 bytes on the
+    # first dart leg and every following perimeter point decodes as garbage.
+    r['attr_bytes'] = None
+    if r['f2'] >= 1:
+        r['attr_bytes'] = d[p:p+r['f2']]; r['attr'] = r['attr_bytes'][0]; p += r['f2']
     r['size'] = p-o
     # A notch is an unnumbered point (id == -1) whose f1 low byte is 1 AND
     # high byte is nonzero; the high byte is the PDS "Notch Type" number
@@ -133,7 +157,13 @@ def parse_point(d, o):
     # byte 0) from being misread as notches.
     r['is_notch'] = r['id'] == -1 and (r['f1'] & 0xFF) == 1 and (r['f1'] >> 8) != 0
     r['notch_type'] = (r['f1'] >> 8) if r['is_notch'] else None
+    # dart_leg: f2==2 identifies the point structurally regardless of its
+    # first attr byte (which reuses 0x09, the ordinary turn-point value) -
+    # check this before the attr-byte-based curve/turn checks below [V]
+    r['is_dart_leg'] = r['id'] == -1 and r['f2'] == 2 and not r['is_notch']
     r['kind'] = ('notch' if r['is_notch'] else
+                 'dart_leg' if r['is_dart_leg'] else
+                 'dart_apex' if r['attr'] == POINT_DART_APEX else
                  'curve' if r['attr'] == POINT_CURVE else
                  'turn'  if r['attr'] == POINT_TURN else 'plain')
     return r
@@ -142,6 +172,14 @@ def parse_point_run(d, start, n):
     pts = []; o = start
     for _ in range(n):
         if o+14 > len(d): break
+        # [V] CAP-C61-MIRROR: metadata's n_perimeter over-counts by one - only
+        # 3 of the declared 4 perimeter points are explicit point records,
+        # even though the DXF confirms a true 4-corner rectangle. The 4th
+        # corner is presumably implied by the mirror axis rather than stored
+        # (unconfirmed - only one Fold Keep sample so far). Stop before
+        # misreading the next internal-line header (grain/drill/cutout) as a
+        # garbage point instead of trusting the declared count blindly.
+        if pts and _is_internal_header(d, o): break
         r = parse_point(d,o); pts.append(r); o = r['size']+o
     return pts, o
 
@@ -174,6 +212,16 @@ def decode_piece_block(d, field_off=None):
         kind = INTERNAL_TAGS[u16(d,o+2)]; cnt = u16(d,o+4); o += 10
         seg = []
         for _ in range(cnt):
+            # [V] a false-positive metadata match during summarize()'s brute-
+            # force offset scan (garbage bytes that happen to look like a
+            # valid field block) can hand decode_piece_block a garbage `cnt`
+            # here. parse_point()/i32()/u16() never raise on a short slice -
+            # Python silently zero-fills - so without this bound a garbage
+            # cnt up to 65535 would spin reading fabricated zero points past
+            # EOF instead of failing fast (seen on CAP-C62-DART: summarize()
+            # hung for minutes on a bogus n_perimeter=768 candidate at a
+            # mid-file offset before ever reaching the real dart geometry).
+            if o+14 > len(d): break
             r = parse_point(d,o); seg.append(r); o += r['size']
         internal.append(seg); internal_kinds.append(kind)
         label, past = _internal_list_label(d, o)
@@ -294,9 +342,16 @@ def summarize(data):
               and all(s['name'].isalnum() for s in m['sizes']) and m['name'].isprintable())
         if ok:
             try:
-                b = decode_piece_block(d,o); blocks.append(b); o = b['block_end']; continue
+                b = decode_piece_block(d,o)
+                # a real block_end is always > o (it consumed at least the
+                # 22-byte field block); guard against a false-positive match
+                # whose decode "succeeds" but doesn't advance, which would
+                # otherwise spin forever re-decoding the same offset [V]
+                if b['block_end'] > o:
+                    blocks.append(b); o = b['block_end']; continue
             except Exception: pass
         o += 1
+        if len(blocks) > 8: break     # matches decode()'s own safety cap
     name_hdr = d[0x15:d.index(b'\x00',0x15)].decode('latin1')
     segs = parse_segments(d)
     b0 = blocks[0]

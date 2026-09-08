@@ -80,6 +80,8 @@ R2 = [  # folder, baseline, {fact: want}, structural_change want (or None)
  ('CAP-C41-NOTCH-WIDTH',   None,               dict(notches=2, notch_types='1;1', perimeter_points=6), None),
  ('CAP-C42-NOTCH-ALLEDGES', None,              dict(notches=4, notch_types='1;1;1;1', segment_points='3;3;3;3'), None),
  ('CAP-C60-CUTOUT',         None,              dict(perimeter_points=4, cutout_points='25'), None),
+ ('CAP-C61-MIRROR',         None,              dict(perimeter_points=3, graded_points=1), None),
+ ('CAP-C62-DART',           None,              dict(perimeter_points=7, piece_records=2), None),
 ]
 for name, base, want, sc in R2:
     folder = os.path.join(HERE, name)

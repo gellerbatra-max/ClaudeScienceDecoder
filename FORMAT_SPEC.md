@@ -49,7 +49,8 @@ the strings themselves:
 | offset | type | field |
 |---|---|---|
 | +0x00 | u16 | `len(name)` |
-| +0x02 | u32 | `len(annotation)` |
+| +0x02 | u16 | `len(annotation)` |
+| +0x04 | u16 | 0 in every non-mirror sample; **2** on `CAP-C61-MIRROR` (round 2) — the only capture made with the "Fold Keep" tool (internal fold line + Mirror Piece checkbox). Previously mis-modeled as the high 16 bits of a u32 `len(annotation)` (harmless while always 0). Likely a mirror/flip flag or a count of mirror-related sub-records; meaning **[?]** unconfirmed pending a second Fold Keep sample |
 | +0x06 | u32 | `len(size)` |
 | +0x0A | u32 | `len(rule_table)` |
 | +0x0E | u32 | `n_perimeter` — perimeter point records **including** the closing record **[V]** |
@@ -139,15 +140,56 @@ u16 f1            0x0000 -> explicit grade-rule reference follows
                   (id==-1, low byte 1, high byte N) -> notch of PDS
                             "Notch Type" N (1..30); high byte is the type
                             number, NOT a bit flag (see below)
-u16 f2            1 -> one attribute byte at the end
+u16 f2            trailer BYTE COUNT, not a 0/1 flag [V] (round 2,
+                            CAP-C62-DART) - every sample before the dart
+                            capture only ever had f2 in {0,1}, making it
+                            indistinguishable from a boolean until a dart
+                            leg point turned up with f2 == 2 (two trailer
+                            bytes). Reading it as a count is backward
+                            compatible: f2 == 1 still reads exactly one byte.
 i32 rule_ref      iff f1 == 0   -> object-record id (§3)
 u16 rule_pad      iff f1 == 0   -> 0 in all samples
-u8  attr          iff f2 == 1   -> 0x09 turn point, 0x0A curve point
+u8[f2] attr_bytes iff f2 >= 1   -> first byte: 0x09 turn point, 0x0A curve
+                            point, 0x12 dart apex point [V] (CAP-C62-DART);
+                            second byte (f2 == 2 only): differs between a
+                            dart's two leg points (`09 10` / `09 11` seen on
+                            one dart) - [?] pairing/index, unconfirmed
 ```
 
 Record length is therefore 14, 15, 20 or 21 bytes. All 82 point records
 across the eight files parse to exactly `n_perimeter` records terminating on
 a valid `f1 == 2` closing record **[V]**.
+
+**Exception — `CAP-C61-MIRROR` (round 2):** metadata's `n_perimeter` reads 4
+for what the DXF confirms is a true 4-corner rectangle, but only **3**
+explicit point records exist before the file transitions straight into the
+internal-line list (§5) — no `f1 == 2` closing record, no 4th corner point of
+any kind. The decoder now stops the point run defensively the moment it sees
+an internal-line header where a point was expected, rather than trusting
+`n_perimeter` blindly (this is safe: a genuine point can never produce a
+false-positive match against an internal-line header, since notches — the
+only other `id ∈ {0, -1}` point kind — use `f1` values that can't collide
+with the grain/drill/cutout tag bytes). With that fix the remaining 3 points
+match the DXF to 0.0 in. Leading theory **[?]**: the 4th corner of a mirrored
+piece is implied by reflection across the internal fold line rather than stored
+explicitly, and `n_perimeter` counts the *logical* corner count rather than
+the *stored* record count — unconfirmed pending a second Fold Keep sample.
+
+**Darts are cut directly into the perimeter, not stored as an internal line
+[V]** (round 2, `CAP-C62-DART`): Advanced tab → Darts → Add on a plain
+rectangle (opening point on the bottom edge, apex point above it, 2 cm
+width) added **3** new perimeter points between the two bottom corners - a
+dart-leg point (`id -1`, `f1 1`, `f2 2`), the apex (`id -1`, `f1 1`, `f2 1`,
+`attr 0x12`), and a second dart-leg point (`f2 2` again) - taking a plain
+4-corner rectangle to 7 perimeter points. This is also what first exposed
+`f2` as a byte count rather than a flag (above): the two dart-leg points'
+`f2 == 2` was silently misread as `f2 == 1` (one trailer byte instead of
+two), which desynced every point read afterward into garbage coordinates -
+`accumark_pds.py`'s `summarize()` additionally hung for minutes on a
+false-positive metadata match this misalignment produced deeper in the file
+(a brute-force offset scan with no bound on the resulting `n_object_records`/
+`n_perimeter`, now guarded in `parse_object_records` and
+`decode_piece_block`'s internal-line reader).
 
 **Notches** are extra perimeter vertices with `id = -1` and `f1` low byte
 `0x01`, inserted in sequence between the two numbered points of the side

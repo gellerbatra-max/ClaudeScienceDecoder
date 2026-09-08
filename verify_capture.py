@@ -29,6 +29,20 @@ exits non-zero if any fails, so it can gate a capture loop.
   segment_points       semicolon list of per-segment point counts
   structural_change    yes|no  - requires --baseline
   dxf_match            yes     - decoded outline matches the DXF
+  line_records         semicolon list, one count per piece record (block),
+                       of Region D (TLV line table) records - see
+                       accumark_pds.py's tail-section docs / FORMAT_SPEC.md
+  line_table_consistent yes|no - every table point in every block coincides
+                       with independently-decoded geometry (accumark_pds.
+                       check_line_table); 'no' on a block whose geometry
+                       isn't fully explained yet (see FORMAT_SPEC.md [?]s)
+  unknown_bytes        byte count accumark_pds.coverage() could not assign
+                       to any known field (excludes zero padding and the
+                       3-byte export-noise floor) - 0 is the sign-off target
+  coverage_pct         100 * (1 - unknown_bytes / file size)
+
+Pass --coverage to also print the unknown-byte run list (offset, length,
+hex) instead of just the summary counts.
 """
 import argparse, glob, os, re, sys, zipfile, difflib
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
@@ -175,6 +189,25 @@ def facts(cap):
     segs = s['segments'][:n_edges]
     seam = [(g['seam_begin'], g['seam_end']) for g in segs if g['seam_flag']]
     uneven = bool(seam) and (len({sv for pair in seam for sv in pair}) > 1 or len(seam) != len(segs))
+    # tail-section facts (Region B/C/D - the pretable header, perimeter
+    # snapshots and TLV line table; see accumark_pds.py's module docs and
+    # FORMAT_SPEC.md). block0's tail only, except line_records/consistent
+    # which report every block so a stale second record's own table is
+    # visible too.
+    tails = [b['tail'] for b in s['blocks']]
+    line_records = ';'.join(str(len(t['line_records'])) if t and 'error' not in t else 'ERR' for t in tails)
+    consistent = all(ap.check_line_table(b) for b in s['blocks'])
+    t0 = tails[0]
+    if t0 and 'error' not in t0:
+        recs0 = t0['line_records']
+        line_points = sum(len(r['points']) for r in recs0)
+        line_kinds = ';'.join(str(r['kind']) for r in recs0)
+        notch_blocks = sum(1 for r in recs0 for p in r['points'] for tag, _ in p['children'] if tag == 0x07)
+        graded_tags = sum(1 for r in recs0 for p in r['points'] for tag, _ in p['children'] if tag == 0x04)
+    else:
+        line_points = notch_blocks = graded_tags = None
+        line_kinds = ''
+    cov = ap.coverage(cap['data'], summary=s)
     f = dict(
         file_bytes=len(cap['data']),
         exported_name=s['header_piece_name'], category=s['category'],
@@ -198,6 +231,10 @@ def facts(cap):
         grade_rules=' | '.join(f"{i}:" + ','.join(f'{dx}/{dy}' for dx, dy in dl)
                                for i, dl in s['grade_rules'].items() if any(dl)) or 'none embedded',
         unix_timestamp=s['timestamps'][0] if s['timestamps'] else None,
+        line_records=line_records, line_points=line_points, line_kinds=line_kinds,
+        notch_blocks=notch_blocks, graded_tags=graded_tags,
+        line_table_consistent='yes' if consistent else 'no',
+        unknown_bytes=cov['counts'].get('unknown', 0), coverage_pct=cov['coverage_pct'],
     )
     if cap['rul']:
         r = ap.parse_rul(open(cap['rul'], errors='replace').read())
@@ -212,6 +249,8 @@ def main(argv=None):
     p.add_argument('folder')
     p.add_argument('--baseline', help='capture folder to diff against')
     p.add_argument('--expect', action='append', default=[], metavar='KEY=VALUE')
+    p.add_argument('--coverage', action='store_true',
+                   help='print the accumark_pds.coverage() unknown-byte run list')
     a = p.parse_args(argv)
 
     cap = load(a.folder)
@@ -221,11 +260,20 @@ def main(argv=None):
               'n_sizes','base_size','piece_records','perimeter_points','notches','notch_types','drill_points',
               'cutout_points','graded_points','rule_ids','segment_points','seam_cm','uneven_seam',
               'cutline_records','object_record_ids','n_break_rows','grade_rules',
-              'rul_table','rul_n_rules','rul_sizes'):
+              'rul_table','rul_n_rules','rul_sizes',
+              'line_records','line_points','line_kinds','notch_blocks','graded_tags',
+              'line_table_consistent','unknown_bytes','coverage_pct'):
         if k in f and f[k] not in (None, ''): print(f'   {k:18} {f[k]}')
     worst, msg = dxf_check(cap)
     print(f'   dxf                {msg}')
     f['dxf_match'] = 'yes' if (worst is not None and worst <= 2e-4) else 'no'
+
+    if a.coverage:
+        cov = ap.coverage(cap['data'], summary=s)
+        print(f"\n-- coverage: {cov['coverage_pct']}% "
+              f"({cov['counts']}, {len(cov['unknown_runs'])} unknown runs)")
+        for lo, hi, hx in cov['unknown_runs']:
+            print(f'   {lo:#07x}-{hi:#07x} ({hi-lo:3d}B): {hx}')
 
     if a.baseline:
         base = load(a.baseline)

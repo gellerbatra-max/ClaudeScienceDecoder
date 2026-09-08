@@ -64,28 +64,35 @@ print(f"   {'ok ' if ok else 'FAIL'} TASK6-CURVE.RUL {len(r['rules'])} rules, "
 if not ok: fails.append('RUL parse')
 
 print('-- round-2 captures (skipped when a folder is absent)')
+# line_records/line_table_consistent (§10, FORMAT_SPEC.md): one count per
+# piece record (block), from accumark_pds's TLV line-table parser, cross-
+# checked point-by-point against the independently decoded geometry. 'no' is
+# the CORRECT expectation on CAP-C30/C31 (uneven/tapered seam - the shared
+# corner's cut-line miter isn't derived yet, §10.1 [?]) and CAP-C61-MIRROR
+# (references an unexplained virtual 4th-corner point, §10.2 [?]) - these are
+# tracked gaps, not regressions; see FORMAT_SPEC.md.
 R2 = [  # folder, baseline, {fact: want}, structural_change want (or None)
- ('CAP-C00-BASE',          None,               dict(piece_records=1, perimeter_points=4), None),
- ('CAP-C01-REEXPORT',      'CAP-C00-BASE',     dict(piece_records=1), 'no'),
- ('CAP-C02-SAVEAS-NOEDIT', 'CAP-C00-BASE',     dict(piece_records=1), 'no'),
- ('CAP-C50-DRILL1',        'CAP-C00-BASE',     dict(drill_points=1, piece_records=2), 'yes'),
- ('CAP-C30-SEAM-UNEVEN',   None,               dict(uneven_seam='yes', cutline_records=3), None),
- ('CAP-C31-SEAM-TAPER',    'CAP-C00-BASE',     dict(uneven_seam='yes', cutline_records=2), 'yes'),
- ('CAP-C20-RULE-DISTINCT', 'CAP-C02-SAVEAS-NOEDIT', dict(graded_points=1, n_break_rows=8, rul_n_rules=1), 'yes'),
- ('CAP-C21-RULE-TWO',      'CAP-C20-RULE-DISTINCT', dict(graded_points=2, n_break_rows=8, rul_n_rules=2), 'yes'),
- ('CAP-C22-RULE-NONE',     'CAP-C20-RULE-DISTINCT', dict(graded_points=0, n_break_rows=8), None),
- ('CAP-C10-PENT',          'CAP-C00-BASE',     dict(perimeter_points=5), None),
- ('CAP-C11-HEX',           'CAP-C00-BASE',     dict(perimeter_points=6), None),
- ('CAP-C40-NOTCH-TYPES',   None,               dict(notches=4, notch_types='2;4;5;1'), None),
- ('CAP-C41-NOTCH-WIDTH',   None,               dict(notches=2, notch_types='1;1', perimeter_points=6), None),
- ('CAP-C42-NOTCH-ALLEDGES', None,              dict(notches=4, notch_types='1;1;1;1', segment_points='3;3;3;3'), None),
- ('CAP-C60-CUTOUT',         None,              dict(perimeter_points=4, cutout_points='25'), None),
- ('CAP-C61-MIRROR',         None,              dict(perimeter_points=3, graded_points=1), None),
- ('CAP-C62-DART',           None,              dict(perimeter_points=7, piece_records=2), None),
- ('CAP-C70-PASTED',         None,              dict(piece_records=1, category='CAP-C00-BASE'), None),
- ('CAP-C12-TWOINTLINES',    None,              dict(perimeter_points=4, cutout_points='2'), None),
- ('CAP-C13-LONGNAME',       None,              dict(piece_records=1, category='CAP-C13-LONGNAME-1234567890ABC'), None),
- ('CAP-C14-ANNOT',          None,              dict(annotation='collar', perimeter_points=5), None),
+ ('CAP-C00-BASE',          None,               dict(piece_records=1, perimeter_points=4, line_records='5', line_table_consistent='yes'), None),
+ ('CAP-C01-REEXPORT',      'CAP-C00-BASE',     dict(piece_records=1, line_records='5', line_table_consistent='yes'), 'no'),
+ ('CAP-C02-SAVEAS-NOEDIT', 'CAP-C00-BASE',     dict(piece_records=1, line_records='5', line_table_consistent='yes'), 'no'),
+ ('CAP-C50-DRILL1',        'CAP-C00-BASE',     dict(drill_points=1, piece_records=2, line_records='6;5', line_table_consistent='yes'), 'yes'),
+ ('CAP-C30-SEAM-UNEVEN',   None,               dict(uneven_seam='yes', cutline_records=3, line_records='8;5', line_table_consistent='no'), None),
+ ('CAP-C31-SEAM-TAPER',    'CAP-C00-BASE',     dict(uneven_seam='yes', cutline_records=2, line_records='7;5', line_table_consistent='no'), 'yes'),
+ ('CAP-C20-RULE-DISTINCT', 'CAP-C02-SAVEAS-NOEDIT', dict(graded_points=1, n_break_rows=8, rul_n_rules=1, line_records='5;5', line_table_consistent='yes'), 'yes'),
+ ('CAP-C21-RULE-TWO',      'CAP-C20-RULE-DISTINCT', dict(graded_points=2, n_break_rows=8, rul_n_rules=2, line_records='5;5', line_table_consistent='yes'), 'yes'),
+ ('CAP-C22-RULE-NONE',     'CAP-C20-RULE-DISTINCT', dict(graded_points=0, n_break_rows=8, line_records='5;5', line_table_consistent='yes'), None),
+ ('CAP-C10-PENT',          'CAP-C00-BASE',     dict(perimeter_points=5, line_records='6;5', line_table_consistent='yes'), None),
+ ('CAP-C11-HEX',           'CAP-C00-BASE',     dict(perimeter_points=6, line_records='7;5', line_table_consistent='yes'), None),
+ ('CAP-C40-NOTCH-TYPES',   None,               dict(notches=4, notch_types='2;4;5;1', line_records='5;5', line_table_consistent='yes'), None),
+ ('CAP-C41-NOTCH-WIDTH',   None,               dict(notches=2, notch_types='1;1', perimeter_points=6, line_records='5;5', line_table_consistent='yes'), None),
+ ('CAP-C42-NOTCH-ALLEDGES', None,              dict(notches=4, notch_types='1;1;1;1', segment_points='3;3;3;3', line_records='5;5', line_table_consistent='yes'), None),
+ ('CAP-C60-CUTOUT',         None,              dict(perimeter_points=4, cutout_points='25', line_records='6;5', line_table_consistent='yes'), None),
+ ('CAP-C61-MIRROR',         None,              dict(perimeter_points=3, graded_points=1, line_records='5', line_table_consistent='no'), None),
+ ('CAP-C62-DART',           None,              dict(perimeter_points=7, piece_records=2, line_records='7;5', line_table_consistent='yes'), None),
+ ('CAP-C70-PASTED',         None,              dict(piece_records=1, category='CAP-C00-BASE', line_records='5', line_table_consistent='yes'), None),
+ ('CAP-C12-TWOINTLINES',    None,              dict(perimeter_points=4, cutout_points='2', line_records='6;5', line_table_consistent='yes'), None),
+ ('CAP-C13-LONGNAME',       None,              dict(piece_records=1, category='CAP-C13-LONGNAME-1234567890ABC', line_records='5', line_table_consistent='yes'), None),
+ ('CAP-C14-ANNOT',          None,              dict(annotation='collar', perimeter_points=5, line_records='5', line_table_consistent='yes'), None),
 ]
 for name, base, want, sc in R2:
     folder = os.path.join(HERE, name)
@@ -104,6 +111,19 @@ for name, base, want, sc in R2:
         if s['grade_rules'].get(1) != want_d: bad.append(f"rule-1 deltas {s['grade_rules'].get(1)}")
     print(f"   {'ok ' if not bad else 'FAIL'} {name:22} {'; '.join(bad) if bad else 'as expected'}")
     if bad: fails.append(f'{name}: ' + '; '.join(bad))
+
+print('-- coverage (informational only - see accumark_pds.coverage();'
+      ' 0 unknown_bytes everywhere is the Phase D sign-off target, not'
+      ' enforced here yet)')
+worst_pct = 100.0
+for name, *_ in R2:
+    folder = os.path.join(HERE, name)
+    if not os.path.isdir(folder) or not glob.glob(os.path.join(folder, '*.[zZ][iI][pP]')):
+        continue
+    f, _ = vc.facts(vc.load(folder))
+    worst_pct = min(worst_pct, f['coverage_pct'])
+    print(f"   {name:22} unknown_bytes={f['unknown_bytes']:4d}  coverage_pct={f['coverage_pct']}")
+print(f'   worst coverage_pct across round-2 captures: {worst_pct}')
 
 print()
 if fails:

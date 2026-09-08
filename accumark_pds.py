@@ -12,6 +12,7 @@ UNITS_PER_INCH = 10000.0          # coordinates are int32 in 1e-4 inch
 def u16(d,o): return int.from_bytes(d[o:o+2],'little')
 def i16(d,o): return int.from_bytes(d[o:o+2],'little',signed=True)
 def i32(d,o): return int.from_bytes(d[o:o+4],'little',signed=True)
+def u32(d,o): return int.from_bytes(d[o:o+4],'little')
 
 # ---------------------------------------------------------------- metadata
 def _find_field_block(d, start=0x60, stop=0x140):
@@ -201,6 +202,146 @@ def find_point_table(d, after, window=64):
             return o
     raise ValueError('point table not found after %#x' % after)
 
+# ------------------------------------------------- pretable + line table (TLV)
+# [V] round-2 tail-section analysis. Layout after the last `Lnn` line-record
+# label (decode_piece_block's `block_end` stops one step short of this, at
+# the label's own u32 terminator, to stay backward compatible - see
+# `_locate_tail` below, which re-finds the label independently):
+#
+#   Region B - PRETABLE_HEADER_SIZE=52 fixed bytes, `parse_pretable_header()`.
+#   Region C - two full re-listings of the perimeter, `parse_point_run`
+#              format (15-byte "turn" points regardless of the point's real
+#              kind), bracketed by two `10 27 00 00` (10000) markers. The
+#              first copy starts at whichever point comes right after point 1
+#              (i.e. point 2), the second starts at point 1 - both are the
+#              same cyclic perimeter order, just rotated. `parse_point_snapshot()`.
+#   Region D - the line table: one `parse_line_table()` record per perimeter
+#              edge and per internal line (grain/drill/cutout), in creation
+#              order. Every field is a self-describing (tag u8, len u8,
+#              payload) TLV *except* tag 0x10, whose length byte is always 0
+#              but which really carries a fixed 16-byte `parse_table_point()`
+#              struct, itself followed by that point's own `e` child TLVs
+#              (0x06 point-name marker, 0x07 notch attribute block, 0x04
+#              graded-rule tag, 0x0f unexplained triple on a graded point).
+#
+# Confirmed by direct byte-offset matching against known perimeter
+# coordinates (CAP-C10-PENT) and by mechanically walking a full line-table
+# record end-to-end onto the next record's `0a 00` header with zero manual
+# offset adjustment (CAP-C42-NOTCH-ALLEDGES) - see FORMAT_SPEC.md for the
+# worked examples. `n_perimeter`-scaling fields confirmed across C00/C10/C11
+# (4/5/6 points); the collar piece CAP-C14-ANNOT's pretable header reads a
+# smaller count than its actual perimeter-point total - unconfirmed why,
+# left as [?] rather than forced to fit.
+PRETABLE_HEADER_SIZE = 52
+SNAPSHOT_MARKER = 10000            # the two `10 27 00 00` bracketing markers
+
+def _locate_tail(d, block_end, search_window=0x600):
+    """Re-find the position right after the block's *last* `Lnn` label
+    (Region B's start) and the line table's first record header, independent
+    of decode_piece_block's own `block_end` (which stops one step short of
+    the label, for backward compatibility with existing callers)."""
+    end = min(block_end+search_window, len(d))
+    tm = re.search(rb'\x0a\x00[\x01-\x40]\x00\x00\x00[\x01\x02]\x00[\x01-\x40]\x00\x03\x00', d[block_end:end])
+    if not tm: raise ValueError('line table not found after block_end %#x' % block_end)
+    table_start = block_end + tm.start()
+    labels = [m.start() for m in re.finditer(rb'L[0-9][0-9]', d[block_end:table_start])]
+    if not labels: raise ValueError('no Lnn label between block_end and line table')
+    pretable_start = block_end + labels[-1] + 3
+    return pretable_start, table_start
+
+def parse_pretable_header(d, o):
+    """Region B: 52 fixed bytes. `n` (the piece's perimeter-point count)
+    appears twice; every other field is a constant in every sample seen so
+    far - kept as raw ints (not asserted) since a future sample may vary
+    one of them."""
+    r = dict(offset=o,
+             magic=u16(d,o), one=u32(d,o+2), n_perimeter_a=u32(d,o+6),
+             c1=u32(d,o+10), z1=u16(d,o+14), c2=u32(d,o+16), z2=u16(d,o+20),
+             c3=u32(d,o+22), c4=u32(d,o+26), n_perimeter_b=u16(d,o+30),
+             c5=u32(d,o+32), n_lines_plus_1=u32(d,o+48))
+    r['size'] = PRETABLE_HEADER_SIZE
+    return r
+
+def parse_point_snapshot(d, o, n):
+    """One of Region C's two full perimeter re-listings: n consecutive
+    15-byte parse_point-format records (always the plain 'turn' shape,
+    f1=1/f2=1/attr=9, regardless of the point's real kind in the perimeter -
+    this is a flattened geometry copy, not the authoritative point list).
+    The first copy starts at the point after point 1 (rotated); the second
+    starts at point 1 - both are the same cyclic order (CAP-C10-PENT [V])."""
+    pts, p = [], o
+    for _ in range(n):
+        pts.append(parse_point(d, p)); p += 15
+    return pts, p
+
+def parse_region_c(d, o, n_perimeter, category_name):
+    """Region C: snapshot1, a SNAPSHOT_MARKER pair around a zero gap,
+    snapshot2, then - immediately before the line table - a **second,
+    undelimited copy of the piece's own category name** (CAP-C10-PENT [V]:
+    the 12-byte string 'CAP-C10-PENT' sits right at the line table's
+    doorstep, with no length prefix or terminator, found by searching for
+    the already-known category string rather than guessing a fixed gap
+    size). The zero-padded bytes between snapshot2 and that name echo are
+    captured raw as `unclassified_gap` rather than force-fit - not yet
+    understood; see FORMAT_SPEC.md."""
+    snap1, p = parse_point_snapshot(d, o, n_perimeter)
+    def _next_nonzero_u32(p):
+        while p+4 <= len(d) and u32(d, p) == 0: p += 4
+        return u32(d, p), p+4
+    marker1, p = _next_nonzero_u32(p)      # zero-padding before marker1 varies (CAP-C00-BASE [V])
+    marker2, p = _next_nonzero_u32(p)
+    snap2, p = parse_point_snapshot(d, p, n_perimeter)
+    name_bytes = category_name.encode('latin1')
+    name_at = d.find(name_bytes, p, p+400)
+    unclassified_gap = d[p:name_at] if name_at != -1 else d[p:p]
+    end = name_at + len(name_bytes) if name_at != -1 else p
+    return dict(snapshot1=snap1, marker1=marker1, snapshot2=snap2, marker2=marker2,
+                unclassified_gap_offset=p, unclassified_gap=unclassified_gap,
+                name_echo_offset=name_at, end=end), end
+
+SEAM_OFFSET_MAX = 20000            # generous bound (2 in) for a cutline miter/offset - see check_line_table
+TABLE_POINT_TAG = 0x10
+
+def parse_table_point(d, o):
+    """The 16-byte point struct used *inside* the line table - distinct from
+    parse_point's perimeter-record format. `a` is the point's id (-1 for an
+    unnumbered/notch point, matching the perimeter's own id convention);
+    `e` is the number of child TLVs that immediately follow."""
+    return dict(offset=o, x=i32(d,o), y=i32(d,o+4),
+                a=u16(d,o+8), b=u16(d,o+10), c=u16(d,o+12), e=u16(d,o+14))
+
+def parse_line_table(d, start, end=None):
+    """Region D. See the module-level comment above for the grammar. Stops
+    (without raising) at the first byte pattern that isn't a record header -
+    on a real file that is always the block's trailer, never mid-record."""
+    end = len(d) if end is None else end
+    records = []
+    o = start
+    while o+12 <= end and d[o] == 0x0a and d[o+1] == 0x00:
+        idx = i32(d,o+2); kind = u16(d,o+6); n_points = u16(d,o+8); const = u16(d,o+10)
+        p = o+12
+        tags, points = [], []
+        while p+2 <= end:
+            if d[p] == 0x0a and d[p+1] == 0x00: break
+            tag = d[p]
+            if tag == TABLE_POINT_TAG and d[p+1] == 0:
+                tp = parse_table_point(d, p+2); p += 18
+                children = []
+                for _ in range(tp['e']):
+                    ctag, cln = d[p], d[p+1]
+                    children.append((ctag, d[p+2:p+2+cln]))
+                    p += 2+cln
+                tp['children'] = children
+                points.append(tp)
+                if len(points) == n_points: break
+                continue
+            ctag, ln = d[p], d[p+1]
+            tags.append((ctag, d[p+2:p+2+ln])); p += 2+ln
+        records.append(dict(offset=o, idx=idx, kind=kind, n_points=n_points,
+                            const=const, tags=tags, points=points, end=p))
+        o = p
+    return records, o
+
 # ---------------------------------------------------------------- top level
 def _classify(p):
     t = bytes.fromhex(p['tail'])
@@ -239,9 +380,26 @@ def decode_piece_block(d, field_off=None):
         if label is not None and _is_internal_header(d, past):
             o = past; continue
         break                      # block_end stays at the last list's u32 3
+    # tail: pretable header + two perimeter snapshots + the line table -
+    # re-anchored independently of `block_end` above (which intentionally
+    # stops one step short, at the last list's own terminator, so existing
+    # callers of block_end are unaffected). Best-effort: a block this code
+    # doesn't otherwise recognise (e.g. a stale pre-edit record predating
+    # some feature) simply gets tail=None rather than raising.
+    tail = None
+    try:
+        pretable_off, table_start = _locate_tail(d, o)
+        pretable = parse_pretable_header(d, pretable_off)
+        region_c, region_c_end = parse_region_c(
+            d, pretable_off+PRETABLE_HEADER_SIZE, len(perim), m['name'])
+        line_records, tail_end = parse_line_table(d, table_start)
+        tail = dict(pretable=pretable, region_c=region_c, table_start=table_start,
+                    line_records=line_records, tail_end=tail_end)
+    except Exception as e:
+        tail = dict(error=str(e))
     return dict(meta=m, objects=objs, points_offset=pstart, perimeter=perim,
                 closing=closing, internal_lines=internal, internal_kinds=internal_kinds,
-                internal_labels=internal_labels, block_end=o)
+                internal_labels=internal_labels, block_end=o, tail=tail)
 
 def decode(data):
     """Decode a full piece file; returns dict with one or more piece blocks."""
@@ -266,6 +424,161 @@ def decode(data):
         if b['block_end'] >= len(data)-8: break
         if len(blocks) > 8: break
     return dict(header=hdr, timestamps=sorted(set(ts)), blocks=blocks)
+
+# -------------------------------------------------------------- coverage
+def _block_ranges(d, m, objs, pstart, block_end, tail):
+    """Byte ranges 'identified' by one piece block, as (start,end) pairs.
+    `block_end` is the pre-tail end (perimeter + internal lines, as computed
+    by decode_piece_block - NOT the tail's own end) so that anything between
+    regions that isn't actually decoded (the pad+'Lnn'-label gap before the
+    pretable header, Region C's `unclassified_gap`, any inter-record padding
+    in the line table) is left 'unknown' rather than swallowed by a single
+    wide range. Keep this narrow - coverage() is only honest if every marked
+    byte is one this module actually assigns a meaning to."""
+    r = [(m['field_off'], m['end'])]                       # metadata + strings + size list
+    if objs: r.append((objs[0]['offset'], objs[-1]['offset']+8+8*len(objs[0]['deltas'])))
+    r.append((pstart, block_end))                          # perimeter + internal lines
+    if tail and 'error' not in tail:
+        pt = tail['pretable']; rc = tail['region_c']
+        r.append((pt['offset']-3, pt['offset']))            # the last 'Lnn' label text itself
+        r.append((pt['offset'], pt['offset']+PRETABLE_HEADER_SIZE))
+        r.append((rc['snapshot1'][0]['offset'], rc['snapshot1'][-1]['offset']+15))
+        r.append((rc['snapshot2'][0]['offset'], rc['snapshot2'][-1]['offset']+15))
+        if rc['name_echo_offset'] != -1:
+            r.append((rc['name_echo_offset'], rc['end']))
+        for rec in tail['line_records']:
+            r.append((rec['offset'], rec['end']))
+    return r
+
+def coverage(data, summary=None):
+    """Classify every byte of a piece file as identified / zero_pad /
+    residue (the documented 3-byte export-noise floor at 0x48) / unknown,
+    using everything decode_piece_block + summarize() already parse. This
+    is the acceptance metric for 'is the format fully decoded' - see
+    FORMAT_SPEC.md and CAPTURE_PLAN.md's Phase 1 status.
+
+    `summary` lets a caller that already ran summarize(data) (verify_capture.
+    py's facts(), notably) pass it in rather than pay for a second brute-
+    force block scan - summarize() alone is the dominant cost here (~3.5s on
+    TASK6-CURVE) since it re-scans the file byte-by-byte for piece-block
+    candidates; coverage()'s own classification work is comparatively cheap."""
+    d = data
+    cls = ['unknown'] * len(d)
+    def mark(a, b, label):
+        for i in range(max(0,a), min(len(d),b)): cls[i] = label
+    mark(0, 0x48, 'identified')            # magic + export name slot (§1)
+    mark(0x48, 0x4b, 'residue')            # [V] the 3-byte noise floor
+    mark(0x4b, 0x60, 'identified')
+    s = summary if summary is not None else summarize(d)
+    def _tail_end(b):
+        return b['tail']['line_records'][-1]['end'] if b['tail'] and 'error' not in b['tail'] else b['block_end']
+    for b in s['blocks']:
+        for a, e in _block_ranges(d, b['meta'], b['objects'], b['points_offset'], b['block_end'], b['tail']):
+            mark(a, e, 'identified')
+    # Region A - the 'Lnn' line-attribute records (parse_segments, FORMAT_SPEC
+    # §6) and, on seam-allowanced pieces, the derived-cut-line records
+    # (parse_line_geometry) that share the same label convention. These sit
+    # between a block's `block_end` and its tail's pretable header and were
+    # the single biggest source of false 'unknown' bytes before this was
+    # added - decode_piece_block never folds Region A into block_end, and
+    # summarize() (matching its own existing usage) scans for them across
+    # the whole file rather than per block, so mark them the same way here.
+    for rec in s['segments']:
+        mark(rec['offset'], rec['end'], 'identified')
+    for rec in s['line_geometry']:
+        mark(rec['offset'], rec['end'], 'identified')
+    # trailer: name slot(s), the two identical timestamps, 'MSI'-style author
+    # name(s) - same fixed-purpose fields as the header, just recognised by
+    # content rather than a fixed offset since trailer length varies (306 -
+    # 440 bytes observed so far, not the ~160 originally guessed in FORMAT_SPEC).
+    last_end = _tail_end(s['blocks'][-1])
+    cat = s['category'].encode('latin1')
+    for m in re.finditer(re.escape(cat), d[last_end:]):
+        mark(last_end+m.start(), last_end+m.end(), 'identified')
+    for m in re.finditer(rb'MSI', d[last_end:]):            # [?] hardcoded author string
+        mark(last_end+m.start(), last_end+m.end(), 'identified')
+    for o in range(last_end, len(d)-4):
+        if 1_500_000_000 < i32(d,o) < 2_200_000_000: mark(o, o+4, 'identified')
+    for i,c in enumerate(cls):
+        if c == 'unknown' and d[i] == 0: cls[i] = 'zero_pad'
+    counts = {}
+    for c in cls: counts[c] = counts.get(c,0)+1
+    runs = []
+    i = 0
+    while i < len(cls):
+        if cls[i] == 'unknown':
+            j = i
+            while j < len(cls) and cls[j] == 'unknown': j += 1
+            runs.append((i, j, d[i:j].hex()))
+            i = j
+        else: i += 1
+    return dict(counts=counts, total=len(d), unknown_runs=runs,
+                coverage_pct=round(100*(1-counts.get('unknown',0)/len(d)), 2))
+
+def check_line_table(b):
+    """Structural consistency check for one decoded block's Region D (line
+    table), independent of coverage(): every table point must coincide with
+    a point this module already decoded elsewhere in the SAME block
+    (perimeter / closing / internal-line). Returns True/False - see
+    verify_capture.py's `line_table_consistent` field.
+
+    [V] Two count-based checks were tried and dropped as invalid rather than
+    kept as false failures: "one kind-1 record per numbered (id != -1)
+    perimeter point" fails on TASK6-CURVE, where a single curved Lnn segment
+    carries several numbered points along its length (10/10/8/10 points on
+    just 4 segments - the count that varies with grading, not edge count);
+    "every kind-1 record has >=2 numbered endpoints" fails on CAP-C10-PENT/
+    CAP-C11-HEX, where one (pentagon) or two (hexagon) plain, non-notch
+    'turn' points carry id=-1 despite being real corners - apparently
+    corners added after a piece's original N-corner base shape don't get a
+    sequential id, the same way a notch doesn't ([?], see FORMAT_SPEC.md).
+    Point-coincidence is the one invariant that holds everywhere it's been
+    checked, INCLUDING catching a real anomaly: CAP-C61-MIRROR's line table
+    references a table point (id 5) matching neither of its 3 real perimeter
+    points nor its grain line - a virtual/mirrored corner not otherwise
+    stored in the piece, still unexplained ([?]).
+
+    [V] Seam-allowanced pieces (CAP-C30/C31, TASK2-SEAM1CM) add one kind-2
+    record per seam-allowanced edge, n_points=4: [mitered corner at this
+    edge's start, plain offset at start, plain offset at end, mitered corner
+    at end]. None of these 4 points are raw stored geometry - they are the
+    cut line, each one a real perimeter corner moved by a uniform amount
+    along x, y, or both (the seam allowance; a mitered corner moves on both
+    axes, a plain offset on one) - so they cannot appear in `real` above.
+    Recognised structurally rather than by re-deriving the exact seam value:
+    a bad point is accepted if some real point is within +-SEAM_OFFSET_MAX
+    on both axes with an integer offset that is 0 on at least one axis, or
+    equal in magnitude on both (the diagonal/mitered case). This is a shape
+    test, not a coincidence, so it still rejects an unrelated stray point.
+    Confirmed this way on TASK2-SEAM1CM's uniform 1 cm seam; still returns
+    False ([?]) on CAP-C30-SEAM-UNEVEN/CAP-C31-SEAM-TAPER, whose *uneven*
+    seam makes a shared corner's miter the intersection of two differently-
+    offset edges (e.g. dx=-3934,dy=-66 - neither axis-aligned nor diagonal),
+    not a simple per-corner offset; that needs the corner's two adjacent
+    seam_begin/seam_end values threaded through to re-derive properly, which
+    is Phase B work, not a parser bug."""
+    tail = b.get('tail')
+    if not tail or 'error' in tail or not tail.get('line_records'): return False
+    real = {(p['x'], p['y']) for p in b['perimeter']}
+    if b.get('closing'): real.add((b['closing']['x'], b['closing']['y']))
+    for seg in b['internal_lines']:
+        for p in seg: real.add((p['x'], p['y']))
+    def _is_seam_offset(pt):
+        x, y = pt
+        for rx, ry in real:
+            dx, dy = x-rx, y-ry
+            if dx == 0 and dy == 0: continue
+            if max(abs(dx), abs(dy)) > SEAM_OFFSET_MAX: continue
+            if dx == 0 or dy == 0 or abs(dx) == abs(dy): return True
+        return False
+    for rec in tail['line_records']:
+        pts = rec['points']
+        if not pts: return False
+        for tp in pts:
+            pt = (tp['x'], tp['y'])
+            if pt not in real and not (rec['kind'] == 2 and _is_seam_offset(pt)):
+                return False
+    return True
 
 def decode_zip(path):
     z = zipfile.ZipFile(path)
@@ -315,11 +628,12 @@ def parse_segments(d, start=0, end=None):
         if flag == 1:
             seam = (i32(d,p), i32(d,p+4)); p += 8+6
         if i32(d,p) != 3: continue
-        recs.append(dict(fields_offset=o+3, n_lines=pre, n_points=n_pts,
+        recs.append(dict(offset=o, fields_offset=o+3, n_lines=pre, n_points=n_pts,
                          seam_flag=flag,
                          seam_begin=seam[0] if seam else None,
                          seam_end=seam[1] if seam else None,
-                         name=d[labels[k+1]:labels[k+1]+3].decode() if k+1 < len(labels) else None))
+                         name=d[labels[k+1]:labels[k+1]+3].decode() if k+1 < len(labels) else None,
+                         end=p+4))                 # past the u32=3 terminator; feeds coverage()
     return recs
 
 def parse_line_geometry(d, start=0, end=None):
@@ -336,7 +650,7 @@ def parse_line_geometry(d, start=0, end=None):
         for _ in range(2):
             r = parse_point(d,p); pts.append(r); p += r['size']
         out.append(dict(offset=o, label=d[o:o+3].decode(), idx=idx,
-                        pts=[(q['x'],q['y']) for q in pts]))
+                        pts=[(q['x'],q['y']) for q in pts], end=p))
     return out
 
 def summarize(data):

@@ -490,3 +490,231 @@ Copy-Piece/Paste-Piece by itself is just another way to reach the same
 `NUMBER OF SIZES`, `SIZE LIST`, `SAMPLE SIZE`, then one
 `RULE: DELTA <n>` block per rule listing **cumulative** (X, Y) deltas per
 size in inches, then `END`. No binary decoding required.
+
+## 10. Line table (TLV)
+
+The block's final section (previously "the large 847/1852/1312-byte
+tag/length/value tail" in earlier notes, and the source of the "~50-byte
+per-graded-point block" open item) is a self-describing **tag/length/value
+line table**: one record per perimeter edge and per internal line (grain,
+drill, cut-out), in Region A's line-creation order, immediately after §11's
+two perimeter snapshots. `accumark_pds.parse_line_table()` **[V]** — walked
+byte-for-byte across every capture in the corpus with zero manual offset
+correction (each record's own fields land exactly on the next record's `0a
+00` header) and cross-checked point-by-point against the independently
+decoded perimeter/internal-line/closing points (`accumark_pds.
+check_line_table()`, wired into `verify_capture.py` as
+`line_table_consistent`).
+
+Record header:
+
+```
+0a 00  i32 idx  u16 kind  u16 n_points  u16 const(=3)
+```
+
+`idx` is 1-based and increases by one per record; `kind` is `1` for a
+perimeter edge, `2` for an internal line (grain/drill/cut-out, and see the
+cut-line case below). `n_points` is the point count that follows, and the
+trailing `const` is `3` in every sample seen so far **[?]**.
+
+Record-level tags, in order, before the points:
+
+```
+0b 04  u32                  = idx again (line_idx)
+0c 04  u32                  = n_points + 1
+0d <len=4*n_points>  u32 × n_points     point ordinals, endpoints first then
+                                        interior (e.g. [1,3,2] for a 3-point
+                                        edge whose notch sits at ordinal 3)
+```
+
+Then `n_points` **table points**. Every field elsewhere in the record is a
+conventional `(tag: u8, len: u8, payload[len])` TLV, but the point tag is a
+special case: its length byte is always `0x00`, yet it actually carries a
+fixed 16-byte struct, itself followed by that point's own child TLVs:
+
+```
+10 00  i32 x  i32 y  u16 a  u16 b  u16 c  u16 e
+```
+
+`a` is the point's id, using the **same unsigned encoding as `parse_point`'s
+signed `id`** — an unnumbered point (notch, grain/drill/cut-out point, or a
+plain corner that never got a sequential id, see below) reads `a = 0xFFFF`
+here, the same bit pattern as `id == -1` there. `e` is the number of child
+TLVs immediately following this point (0 for a plain point). `b`/`c` are
+unidentified so far **[?]** (constant across every sample seen).
+
+Per-point child tags, any combination of:
+
+```
+06 02  09 <'0'|'1'>          point-name marker; present only on a line's
+                             first ('0') or last ('1') point [?] exact role
+07 2d  <45 bytes>            notch attribute block - presence/length only
+                             confirmed; the 45-byte payload's internal
+                             layout is not yet decoded [?]
+04 0a  u32 rule_id  u32 rule_id  u16 0     graded-point rule reference: the
+                             object-record id (§3) repeated twice, i.e. the
+                             ~50-byte "per-graded-point tail block" from §3
+                             is this tag plus the two 0f-tags below, resolving
+                             that open item
+0f 0a  <10 bytes>            appears exactly 3× on a graded point,
+                             immediately after its 04 0a tag; every sample so
+                             far is the placeholder
+                             `ff ff 00 00 ff ff 00 00 00 00` - no capture yet
+                             has a non-placeholder value here to decode
+                             against **[?]**
+```
+
+**Corners that never got a sequential id [V]** (round 2, `CAP-C10-PENT`,
+`CAP-C11-HEX`): a pentagon made by splitting one edge of `CAP-C00-BASE`'s
+rectangle decodes perimeter ids `[1, 2, -1, 3, 4]` — the inserted 5th corner
+is a plain `attr = 0x09` turn point, not a notch, yet carries `id = -1` the
+same way a notch does. A hexagon made the same way (two corners inserted)
+decodes `[1, 2, -1, 3, 4, -1]` — always exactly the *original* rectangle's
+four corners keep ids 1–4; every corner added afterward stays unnumbered.
+This means a kind-1 record's point count is not reliably "2, plus one per
+notch on that edge" — it can also include an unnumbered *real* corner, which
+is why `check_line_table()` does not require a kind-1 record to have two
+numbered endpoints, only that every point coincide with real geometry.
+
+**Curved segments number interior points, not just endpoints [V]**
+(`TASK6-CURVE`): the four curve segments (10/10/8/10 points, §4/§6) produce
+only **4** kind-1 records — one per Lnn segment, each carrying all of that
+segment's points, not one record per numbered point. `TASK6-CURVE` has 10
+*numbered* perimeter points (matching `graded_points = 10`), because a grade
+rule reference needs a point id to attach to — numbering here tracks which
+points carry a rule, not corner/edge count. Point count is one kind-1 record
+per Lnn segment (§6), each holding every point — numbered or not — that
+segment contains, in perimeter order.
+
+### 10.1 Cut-line records (seam allowance)
+
+A seam-allowanced edge (§6.1) adds one **kind-2** record after the ordinary
+perimeter/internal-line records, `n_points = 4`, whose points are not raw
+stored geometry: `[mitered corner at this edge's start, plain offset at
+start, plain offset at end, mitered corner at end]` **[V]** (`TASK2-SEAM1CM`,
+uniform 1 cm seam on all 4 edges → 4 such records; `CAP-C30-SEAM-UNEVEN`,
+3 of 4 edges seamed → 3 records). On a **uniform** seam every one of these
+points is a real perimeter corner offset by the seam allowance along x, y,
+or diagonally (a "plain offset" moves on one axis, a "mitered corner" moves
+on both, by the same magnitude) — confirmed to the exact allowance value
+(3937 = 1.00 cm) on `TASK2-SEAM1CM`. This duplicates, more completely, the
+simpler 2-point-per-edge cut line `parse_line_geometry()` already extracts
+from Region A (§6.1's `Lnn FE FF 53 00 …` records) — the line table's
+version additionally carries the mitered corner needed to join adjacent
+offset segments cleanly.
+
+On an **uneven/tapered** seam (`CAP-C30-SEAM-UNEVEN`, `CAP-C31-SEAM-TAPER`)
+the corner shared by two differently-tapered edges is the intersection of
+two independently offset lines, not a simple per-corner offset — e.g. one
+observed miter point is `(dx, dy) = (-3934, -66)` relative to the real
+corner, neither axis-aligned nor diagonal. `check_line_table()` recognises
+only the uniform case (an offset that is 0 on one axis, or equal in
+magnitude on both, within `SEAM_OFFSET_MAX`); the uneven/tapered miter needs
+the corner's two adjacent `seam_begin`/`seam_end` values threaded through to
+re-derive properly, and is left `line_table_consistent = no` rather than
+force-fit **[?]**.
+
+### 10.2 Still open
+
+- `CAP-C61-MIRROR`'s line table references a table point (`a = 5`, at
+  (461361, 237653)) that matches **none** of the block's 3 real perimeter
+  points, its closing point, or its grain line — a virtual/mirrored 4th
+  corner, consistent with §4's "the 4th corner is implied by reflection"
+  theory but not yet confirmed against the fold line's own geometry **[?]**.
+- The `07 2d` notch-attribute payload's 45 bytes, and the `b`/`c` fields of
+  the table-point struct, have confirmed presence/length only, not decoded
+  semantics **[?]**.
+- No capture yet has a non-placeholder `0f 0a` triple to decode against
+  **[?]**.
+
+## 11. Pre-table header and geometry snapshots
+
+Between the last `Lnn` line record's own label (Region A, §6) and the line
+table (§10) sit two further regions, found positionally (right after the
+label) rather than by content search, since the line table's own header
+pattern can false-match inside an object-record size list (`TASK6-CURVE`).
+`accumark_pds._locate_tail()` re-finds this boundary independently of
+`decode_piece_block()`'s own `block_end`, which stops one step short (at the
+label's own terminator) for backward compatibility with existing callers.
+
+**Region B — pre-table header, 52 fixed bytes** (`parse_pretable_header()`),
+mostly constant across every sample so far:
+
+```
+u16 0x0032 (const)   u32 1 (const)        u32 n            u32 0x10 (const)
+u16 0 (const)        u32 0x10 (const)     u16 0 (const)    u32 0x14 (const)
+u32 0x1a (const)     u16 n (repeated)     u32 0x1c (const) 12 zero bytes
+u32 (n_line_table_records + 1)
+```
+
+`n` is the block's **total** perimeter-point count (`len(perimeter)`,
+including notches and any unnumbered corner from §10 — the same count as
+`meta.n_perimeter` minus the closing record) — confirmed on `CAP-C00-BASE`
+(n=4), `CAP-C10-PENT` (n=5), `CAP-C11-HEX` (n=6), `CAP-C60-CUTOUT` (n=4).
+**`CAP-C14-ANNOT`** (a Collar-tool piece, 5 real perimeter points) reads
+`n = 4` here instead — unexplained, and the only sample where this field
+disagrees with the perimeter it precedes **[?]**. Every other field is a raw
+constant in every sample seen; not asserted, since a future sample may vary
+one of them.
+
+**Region C — two full perimeter re-listings**, each `n` consecutive 15-byte
+`parse_point`-format "turn" records (`f1 = 1, f2 = 1, attr = 9` regardless
+of a point's real kind — notches and curve points are flattened to plain
+turn points here, so Region C is a geometry-only copy, not authoritative for
+point kind). The first copy starts at the point *after* point 1 (rotated by
+one); the second starts at point 1, in the same cyclic order. The two copies
+are separated by a marker region: zero-padded u32s, a nonzero **marker
+value 10000**, more zero padding, a second marker (also 10000) — the padding
+can precede the *first* marker too, not only sit between the two
+(`CAP-C00-BASE`: `marker1 = 0` at the position right after snapshot1, with
+the real 10000 further on). Two snapshots of the same geometry bracketed by
+a repeated 100.00%-shaped constant is consistent with these being PDS's
+*Bookmark → Restore Original / Restore Defined* geometry cache, but that is
+unconfirmed pending `CAP-C80-BOOKMARK` (Phase C of the decode plan) **[?]**.
+
+Immediately after snapshot2, on a piece with more than one piece record
+(`piece_records > 1`, i.e. it has been edited at least once, §8) an
+**undelimited second copy of the piece's own category name string** sits
+right at the line table's doorstep — found by searching for the
+already-known name rather than assuming a fixed gap size. A never-edited
+piece (`piece_records == 1`) has no such echo. The zero-padded bytes between
+snapshot2's end and the name echo (or the line table, if there is no echo)
+are captured as `unclassified_gap` and are not yet understood **[?]**.
+
+## 12. Coverage and remaining gaps
+
+`accumark_pds.coverage()` classifies every byte of a file as `identified`
+(assigned a meaning by this document), `zero_pad`, `residue` (§1's 3-byte
+export-noise floor), or `unknown`, and is the acceptance metric for "is this
+format fully decoded" (`CAPTURE_PLAN.md`'s Phase 1). Across the full
+corpus (every `CAP-*`/`TASK*` capture except `CAP-C63-MODEL`, a distinct
+manifest format with no piece blocks at all, §8): **93–99.5% identified**,
+zero decoder exceptions on any block of any file. The trailer (§7), whose
+size was previously only estimated at "~160 bytes", measures out as a
+consistent **306 bytes** for a 1-block file and **334 bytes** for almost
+every 2-block file; `CAP-C62-DART` is a **440-byte** outlier, unexplained
+**[?]**.
+
+Remaining `unknown` bytes, roughly in order of how much of the file they
+account for:
+
+- A handful of small (1–8 byte) scalar fields scattered around fixed
+  positions — right after the file header and before the metadata field
+  block (e.g. `CAP-C00-BASE` +0x60, +0x70–0x83), at the internal-line list's
+  own terminator boundary, and a handful of small ints at the very start of
+  the trailer (`06 00 00 01 00 00 00 …` immediately after the line table) —
+  none yet tied to a control or value in the UI **[?]**.
+- §10.2's notch-attribute payload, table-point `b`/`c` fields, and `0f 0a`
+  triples.
+- §10.1's uneven/tapered cut-line miter points.
+- §11's `n` mismatch on `CAP-C14-ANNOT` and the `unclassified_gap` bytes.
+- `CAP-C61-MIRROR`'s virtual 4th-corner point reference (§10.2) and its
+  440-byte-trailer counterpart `CAP-C62-DART`.
+
+None of these affect geometry, seam, notch, grade-rule, or grain/drill/
+cut-out decoding, all of which are validated to 0.000000 in DXF residual
+across the corpus; they are catalogued here as the specific, named targets
+for Phase B (arithmetic/byte-diff analysis against the existing corpus) and
+Phase C (the one or two targeted captures — `CAP-C80-BOOKMARK` for §11's
+snapshot hypothesis, `CAP-C81-MEASURE` if anything remains after that) in
+the decode plan.

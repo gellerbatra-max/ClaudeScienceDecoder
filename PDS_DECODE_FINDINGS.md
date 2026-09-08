@@ -12,8 +12,17 @@
 > floor is 3 bytes at 0x48 (`CAP-C01`); the second piece record is created by
 > *editing* (any edit, including assigning a rule table), not by Save-As or
 > pasting (`CAP-C02`); header and trailer piece names are fixed-width slots.
-> Still open: the tail section's byte accounting (Phase 1 captures), notch
-> types/widths (Phase 4), and the ~50-byte per-graded-point tail block.
+> Since then, also resolved: notch encoding — high byte of `f1` is the PDS
+> Notch Type number, not a bit flag (`CAP-C40/C41/C42`); internal cut-outs,
+> a third internal-list kind (`CAP-C60`); a metadata field mis-modeled as
+> part of `len_annot`, and `n_perimeter` over-counting by one on Fold-Keep
+> pieces (`CAP-C61`); `f2` is a trailer byte count, not a 0/1 flag, exposed
+> by dart points (`CAP-C62`); a Model-level export is a distinct manifest
+> format, not an embedding of multiple pieces' geometry (`CAP-C63`); and
+> Copy-Piece/Paste-Piece alone does not trigger the stale-second-record
+> mechanism — only a subsequent edit does (`CAP-C70`). All of Phase 6 is
+> now done. Still open: the tail section's byte accounting (Phase 1
+> captures) and the ~50-byte per-graded-point tail block.
 
 Inputs: `PDS.zip` → `AGENT_KNOWLEDGE_BASE.md` + 8 task folders, each with a
 native AccuMark export ZIP (containing the binary piece record), an ASTM

@@ -95,10 +95,18 @@ def parse_object_records(d, start, n, n_rows=5):
 
 # internal point lists after the perimeter: term(u16) tag(u16) count(u16) flag(u32)
 INTERNAL_TAGS = {0x47: 'grain', 0x44: 'drill', 0x49: 'cutout'}
-# 0x0000/0x47 grain line, 0xFFFF/0x44 drill points, 0xFFFF/0x49 internal
-# cut-out (CAP-C60-CUTOUT: a circle drawn fully inside the piece with "Create
+# 0x0000/0x47 grain line, 0xFFFF/0x44 drill points. 0xFFFF/0x49 was first seen
+# on a closed circle (CAP-C60-CUTOUT, "cut-out") and the name stuck, but
+# CAP-C12-TWOINTLINES [V] shows it's really just "generic user-drawn internal
+# line/curve" - a second, plain 2-point open line (Create -> Line -> 2-Point)
+# gets the *same* 0x49 tag, not a fourth kind. What actually distinguishes
+# the circle from the line is the terminator below (6 vs 3), confirmed by
+# this second sample rather than inferred from one. `cutout` is kept as the
+# dict/field name for continuity with earlier docs and selftest.py, but reads
+# as "kind of drawn internal line," not "is a closed cut-out."
+# CAP-C60-CUTOUT itself: a circle drawn fully inside the piece with "Create
 # New Piece" unchecked, tessellated into a closed N-point polygon - the last
-# point repeats the first exactly). The DXF exporter re-tessellates it again
+# point repeats the first exactly. The DXF exporter re-tessellates it again
 # at roughly double the point count for display (layers 8 and 85 in that
 # capture: 25 and 49 points of the same circle) - the *binary* point count
 # (25) is the one that matches this list's own `count` field, not either
@@ -107,9 +115,11 @@ INTERNAL_TAGS = {0x47: 'grain', 0x44: 'drill', 0x49: 'cutout'}
 def _internal_list_label(d, o):
     """After a list's points: a u32 terminator, zero padding, then the 3-byte
     'Lnn' label that names the list just read.  Returns (label, offset past
-    the label) or (None, o).  Terminator is 3 for the open lists (grain,
-    drill) and 6 for a closed loop (cutout) - [?] only one closed-loop
-    sample seen so far, so the 3-vs-6 open/closed theory is unconfirmed."""
+    the label) or (None, o).  Terminator is 3 for an open list - grain,
+    drill, and (CAP-C12-TWOINTLINES [V]) a plain 2-point internal line, all
+    tag 0x49 or not - and 6 for a closed loop (CAP-C60-CUTOUT's circle,
+    also tag 0x49). Two independent samples now agree the terminator, not
+    the tag, is what signals open vs closed."""
     if o+4 > len(d) or i32(d,o) not in (3, 6): return None, o
     p = o+4
     while p < len(d) and d[p] == 0: p += 1

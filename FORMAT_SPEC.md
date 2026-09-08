@@ -318,6 +318,20 @@ rectangle only, not the circle. `facts()`'s new `cutout_points` field (count
 per internal cut-out list, semicolon-joined if more than one) reads straight
 off `summarize()`'s `cutouts_in`.
 
+**Tag `0x0049` is "generic drawn internal line," not "closed cut-out"
+specifically [V]** (round 2, `CAP-C12-TWOINTLINES`): a plain open 2-point
+internal line (Create→Line→2-Point, drawn free-floating inside the piece,
+touching no perimeter point) gets the *same* `0xFFFF/0x0049` header as the
+circle above — not a fourth tag. Its terminator is `0x00000003` (open),
+confirming with a second, independent sample that **the terminator, not the
+tag byte, is what distinguishes an open line from a closed loop** (the "one
+sample only" hedge above is resolved). Labels were sequential in this
+capture (grain `L04`, the new line `L05`) with no jump — the `L04, L08…L11`
+jump documented elsewhere for `CAP-C10-PENT` correlates with editing
+*perimeter* points after the piece's first save, not merely with having more
+than one internal line; a second internal line added before any perimeter
+edit doesn't reproduce it.
+
 ## 6. Line records — name-*terminated*
 
 The 3-byte ASCII label `L%02d` follows the field group it names, so the label

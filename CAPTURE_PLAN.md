@@ -63,10 +63,14 @@ it that scales with a count identifiable by arithmetic.
 Three point counts (4, 5, 6) turn "which offsets scale with n" into a linear
 fit rather than a guess.
 
-**CAP-C12-TWOINTLINES** · C00 rectangle + a *second* internal line.
-Purpose: the internal-line list count field, and the `L%02d` numbering, which
-currently jumps (`L04`, `L08`…`L11`) for reasons unexplained.
-`--baseline CAP-C00-BASE --expect structural_change=yes`
+**CAP-C12-TWOINTLINES** · C00 rectangle + a *second* internal line —
+**DONE (round 2)**: a plain open 2-point line gets the same `0x0049` tag as
+`CAP-C60-CUTOUT`'s closed circle, distinguished only by its terminator
+(`3` open vs `6` closed) — confirmed with a second independent sample.
+Labels stayed sequential (no jump) in this capture, suggesting the `L04,
+L08…L11` jump seen on `CAP-C10-PENT` correlates with editing perimeter
+points after the piece's first save, not merely with having a second
+internal object. See FORMAT_SPEC.md §5.2 and CAPTURE_LOG.md.
 
 **CAP-C13-LONGNAME** · rectangle identical to C00 but named with 30
 characters. Purpose: separates length-prefixed strings from fixed-width

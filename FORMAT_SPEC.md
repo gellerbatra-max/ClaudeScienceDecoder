@@ -181,10 +181,16 @@ an internal-line header where a point was expected, rather than trusting
 false-positive match against an internal-line header, since notches — the
 only other `id ∈ {0, -1}` point kind — use `f1` values that can't collide
 with the grain/drill/cutout tag bytes). With that fix the remaining 3 points
-match the DXF to 0.0 in. Leading theory **[?]**: the 4th corner of a mirrored
-piece is implied by reflection across the internal fold line rather than stored
-explicitly, and `n_perimeter` counts the *logical* corner count rather than
-the *stored* record count — unconfirmed pending a second Fold Keep sample.
+match the DXF to 0.0 in. `n_perimeter` counts the *logical* corner count
+(4) rather than the *stored* record count (3) — confirmed, not just
+theorised, in round-2 tail-section analysis (§10.2, §11): the missing 4th
+corner's exact coordinates turned up as a "virtual" table point in the
+line table (§10), computable trivially from the 3 stored corners (this
+piece is a right triangle whose two short legs are axis-aligned — see §11
+for the numbers). Whether that reflects genuine mirror-fold geometry or
+just bounding-box corner completion can't be told apart on an axis-aligned
+right triangle; a non-45°, non-axis-aligned Fold Keep sample would settle
+it (`CAP-C80-BOOKMARK`-style Phase C capture, not yet done) **[?]**.
 
 **Darts are cut directly into the perimeter, not stored as an internal line
 [V]** (round 2, `CAP-C62-DART`): Advanced tab → Darts → Add on a plain
@@ -548,9 +554,7 @@ Per-point child tags, any combination of:
 ```
 06 02  09 <'0'|'1'>          point-name marker; present only on a line's
                              first ('0') or last ('1') point [?] exact role
-07 2d  <45 bytes>            notch attribute block - presence/length only
-                             confirmed; the 45-byte payload's internal
-                             layout is not yet decoded [?]
+07 2d  <45 bytes>            notch attribute block - see §10.3
 04 0a  u32 rule_id  u32 rule_id  u16 0     graded-point rule reference: the
                              object-record id (§3) repeated twice, i.e. the
                              ~50-byte "per-graded-point tail block" from §3
@@ -563,6 +567,13 @@ Per-point child tags, any combination of:
                              has a non-placeholder value here to decode
                              against **[?]**
 ```
+
+**`04 0a`'s rule-id pairing confirmed exactly [V]** (`CAP-C21-RULE-TWO`,
+rule 2 on point 1 / rule 1 on point 4): the line table reads
+`rule_ids=(2,2)` on the table-point entries for point 1 and `(1,1)` on
+point 4, each appearing twice (once in each of the two edge records that
+share that corner) — matching `verify_capture.py`'s independently-decoded
+`grade_refs` exactly, with no ambiguity about pairing or order.
 
 **Corners that never got a sequential id [V]** (round 2, `CAP-C10-PENT`,
 `CAP-C11-HEX`): a pentagon made by splitting one edge of `CAP-C00-BASE`'s
@@ -614,18 +625,58 @@ the corner's two adjacent `seam_begin`/`seam_end` values threaded through to
 re-derive properly, and is left `line_table_consistent = no` rather than
 force-fit **[?]**.
 
-### 10.2 Still open
+### 10.2 The mirror piece's virtual 4th corner — located, not fully explained
 
-- `CAP-C61-MIRROR`'s line table references a table point (`a = 5`, at
-  (461361, 237653)) that matches **none** of the block's 3 real perimeter
-  points, its closing point, or its grain line — a virtual/mirrored 4th
-  corner, consistent with §4's "the 4th corner is implied by reflection"
-  theory but not yet confirmed against the fold line's own geometry **[?]**.
-- The `07 2d` notch-attribute payload's 45 bytes, and the `b`/`c` fields of
-  the table-point struct, have confirmed presence/length only, not decoded
-  semantics **[?]**.
-- No capture yet has a non-placeholder `0f 0a` triple to decode against
-  **[?]**.
+`CAP-C61-MIRROR`'s line table references a table point (`a = 5`, at
+(461361, 237653)) that matches **none** of the block's 3 real perimeter
+points ((429009,237653) id 1, (429009,270071) id 2, (461361,270071) id 6),
+its closing point, or its grain line. **[V]**: this point is exactly the
+4th corner of the axis-aligned rectangle the other 3 corners already
+define — `x` taken from id 6 (the corner with a different x than id 1),
+`y` taken from id 1 (the corner with a different y than id 6). Both §4's
+metadata `n_perimeter` and §11's pretable `n_perimeter_a/b` count this
+piece as having 4 corners, one more than are actually stored, so this
+"virtual" table point is where that logical 4th corner's coordinates
+finally surface in the file. Left **[?]**: this stored triangle happens to
+be a right triangle with axis-aligned legs, so "reflect across the fold
+line" and "complete the bounding rectangle" produce the identical answer —
+they can't be told apart on this sample, only on a non-axis-aligned Fold
+Keep capture (Phase C, not yet done).
+
+### 10.3 Still open
+
+- **The `07 2d` notch-attribute payload, byte-diffed across `CAP-C40-NOTCH-
+  TYPES`'s four notches (Types 2, 4, 5, 1 in perimeter order — see §4;
+  intended input was 1/2/3/8, so the log already flags that the UI's own
+  dropdown mis-selected on at least one of these):
+  ```
+  byte  0        varies: 02, 04, 05, 01 (one per notch)
+  bytes 1-5      00 00 00 00 00           (const)
+  byte  6        01                       (const)
+  bytes 7-11     00 00 00 00 00           (const)
+  byte  12       01                       (const)
+  bytes 13-33    00 × 21                  (const)
+  bytes 34-35    ff ff                    (const)
+  bytes 36-43    00 × 8                   (const)
+  byte  44       varies: 02, 04, 08, 01 (one per notch)
+  ```
+  Only bytes 0 and 44 vary across the four notches; every other byte is
+  identical. **Byte 0 exactly matches `f1`'s already-decoded Notch Type
+  (§4)** on all four (2, 4, 5, 1). **Byte 44 matches on three of four but
+  reads `8` where byte 0/`f1` read `5`.** Since the capture log for this exact
+  piece independently records uncertainty about whether the UI's Type
+  dropdown (which re-scrolls its list on reopen) actually applied the
+  intended selection every time, byte 44 disagreeing with `f1` on exactly
+  the one notch is a plausible sign that byte 44 is a *second, independent*
+  copy of the Notch Type — possibly the more reliable one — rather than
+  noise; not confirmed without a controlled re-capture **[?]**. The `b`/`c`
+  fields of the table-point struct remain confirmed presence-only, no
+  decoded semantics **[?]**.
+- **`0f 0a` triples**: every occurrence in the entire corpus (all graded
+  points, all blocks) is the same `ff ff 00 00 ff ff 00 00 00 00`
+  placeholder, including `TASK6-CURVE`'s anomalous `10002…10011` rule
+  references — ruling that file out as a source of a non-placeholder
+  sample. No capture yet has one to decode against **[?]**.
 
 ## 11. Pre-table header and geometry snapshots
 
@@ -637,25 +688,57 @@ pattern can false-match inside an object-record size list (`TASK6-CURVE`).
 `decode_piece_block()`'s own `block_end`, which stops one step short (at the
 label's own terminator) for backward compatibility with existing callers.
 
-**Region B — pre-table header, 52 fixed bytes** (`parse_pretable_header()`),
-mostly constant across every sample so far:
+**Region B — pre-table header, 52 fixed bytes** (`parse_pretable_header()`):
 
 ```
 u16 0x0032 (const)   u32 1 (const)        u32 n            u32 0x10 (const)
-u16 0 (const)        u32 0x10 (const)     u16 0 (const)    u32 0x14 (const)
+u16 e1 (const=0)     u32 0x10 (const)     u16 e2 (const=0) u32 0x14 (const)
 u32 0x1a (const)     u16 n (repeated)     u32 0x1c (const) 12 zero bytes
 u32 (n_line_table_records + 1)
 ```
 
-`n` is the block's **total** perimeter-point count (`len(perimeter)`,
-including notches and any unnumbered corner from §10 — the same count as
-`meta.n_perimeter` minus the closing record) — confirmed on `CAP-C00-BASE`
-(n=4), `CAP-C10-PENT` (n=5), `CAP-C11-HEX` (n=6), `CAP-C60-CUTOUT` (n=4).
-**`CAP-C14-ANNOT`** (a Collar-tool piece, 5 real perimeter points) reads
-`n = 4` here instead — unexplained, and the only sample where this field
-disagrees with the perimeter it precedes **[?]**. Every other field is a raw
-constant in every sample seen; not asserted, since a future sample may vary
-one of them.
+**`n` is NOT `len(perimeter)` [V]** (round 2, whole-corpus fit): it is the
+count of perimeter points that carry an attr byte at all (`f2 >= 1` — §4;
+this alone excludes every notch, which always has `f2 == 0`) **and** whose
+attr is not `POINT_DART_APEX` (0x12). Verified exactly against every block
+in the corpus but one: this single formula resolves three previously
+separate open items at once —
+
+- `CAP-C14-ANNOT` (Collar, 5 real perimeter points): one plain corner has
+  `f2 == 0` (no attr byte at all, unlike an ordinary corner's `f2 == 1`), so
+  `n = 4` — the field was never wrong, the collar tool just leaves one
+  corner without an attr byte.
+- `CAP-C62-DART` (7 real perimeter points, 4 corners + 2 dart legs + 1
+  apex): every point except the apex has an attr byte, and the apex is
+  specifically excluded by the `!= POINT_DART_APEX` clause, so `n = 6`.
+- `CAP-C40/41/42-NOTCH-*`: notches are excluded by the `f2 >= 1` test
+  alone (`n` = numbered-corner count on all three, since none of their
+  notches carry an attr byte).
+- `CAP-C10-PENT`/`CAP-C11-HEX` (corners added by edge-splitting, §10):
+  these *do* carry an ordinary attr byte like any other corner, so they
+  count normally — `n = 5`/`6`, matching `len(perimeter)` exactly, which is
+  why these two looked like "the field just means total count" before the
+  dart/notch/collar samples were fit against the same formula.
+
+**`CAP-C61-MIRROR` is the one exception** (formula predicts 3, file reads
+4) — consistent with, not contradicting, the rule: see the missing-4th-
+corner discussion above and in §10.2. Both `n_perimeter` fields (here and
+in metadata, §2) count the mirror piece's implied corner as if it had an
+attr byte like any other, even though no such record exists.
+
+**`e1`/`e2` (u16 at +14/+20) are seam-edge counts, not always-zero
+constants [V]**: every non-seam sample reads 0/0 as previously logged, but
+on a seam-allowanced piece `e1` is the number of `Lnn` segments with
+`seam_flag == 1` (exactly `cutline_records`, §6.1/§10.1) and `e2` is how
+many of those are *uneven* (`seam_begin != seam_end`) — `TASK2-SEAM1CM`'s
+uniform 1 cm seam on all 4 edges reads `(4, 0)`; `CAP-C30-SEAM-UNEVEN`'s 3
+tapered edges read `(3, 3)`; `CAP-C31-SEAM-TAPER`'s 2 tapered edges read
+`(2, 2)` — exact matches in every case, not an approximation.
+
+Every other field (`magic`, `one`, and the four `0x10`/`0x14`/`0x1a`/`0x1c`
+constants) is a raw invariant in every one of the corpus's ~50 blocks —
+confirmed constant, but its *role* (as opposed to its value) is still
+unknown **[?]**.
 
 **Region C — two full perimeter re-listings**, each `n` consecutive 15-byte
 `parse_point`-format "turn" records (`f1 = 1, f2 = 1, attr = 9` regardless
@@ -704,12 +787,14 @@ account for:
   own terminator boundary, and a handful of small ints at the very start of
   the trailer (`06 00 00 01 00 00 00 …` immediately after the line table) —
   none yet tied to a control or value in the UI **[?]**.
-- §10.2's notch-attribute payload, table-point `b`/`c` fields, and `0f 0a`
+- §10.3's notch-attribute payload, table-point `b`/`c` fields, and `0f 0a`
   triples.
 - §10.1's uneven/tapered cut-line miter points.
-- §11's `n` mismatch on `CAP-C14-ANNOT` and the `unclassified_gap` bytes.
-- `CAP-C61-MIRROR`'s virtual 4th-corner point reference (§10.2) and its
-  440-byte-trailer counterpart `CAP-C62-DART`.
+- §11's `unclassified_gap` bytes (Region C's `n_perimeter` mismatches on
+  `CAP-C14-ANNOT`/`CAP-C62-DART`/notch pieces, and `CAP-C61-MIRROR`'s
+  virtual 4th corner, are now explained — §10.2, §11).
+- `CAP-C62-DART`'s 440-byte trailer, still an unexplained outlier against
+  the otherwise-consistent 306/334 bytes.
 
 None of these affect geometry, seam, notch, grade-rule, or grain/drill/
 cut-out decoding, all of which are validated to 0.000000 in DXF residual

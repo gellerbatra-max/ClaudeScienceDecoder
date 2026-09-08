@@ -250,13 +250,43 @@ def _locate_tail(d, block_end, search_window=0x600):
     return pretable_start, table_start
 
 def parse_pretable_header(d, o):
-    """Region B: 52 fixed bytes. `n` (the piece's perimeter-point count)
-    appears twice; every other field is a constant in every sample seen so
-    far - kept as raw ints (not asserted) since a future sample may vary
-    one of them."""
+    """Region B: 52 fixed bytes.
+
+    [V] `n_perimeter_a`/`n_perimeter_b` (appears twice) is NOT simply
+    len(perimeter): confirmed by formula across the whole corpus (only
+    exception: CAP-C61-MIRROR, explained below) to be the count of
+    perimeter points that carry an attr byte at all (`f2 >= 1` - this
+    alone excludes notches, which always have f2 == 0) and whose attr is
+    not POINT_DART_APEX - i.e. every "real" turn/curve corner, minus a
+    dart's own apex point (its two leg points still count). This resolved
+    three previously-separate open items at once: CAP-C14-ANNOT's collar
+    piece has one plain corner with f2 == 0 (so n reads 4 for its 5 real
+    points), CAP-C62-DART's apex is the one dart point excluded (n=6 of 7),
+    and CAP-C40/41/42's notches were already excluded by the f2==0 test
+    alone. CAP-C61-MIRROR is the sole exception (formula predicts 3, file
+    reads 4) - consistent with, not contradicting, the rule: see
+    check_line_table()'s docstring and FORMAT_SPEC.md §10.2/§11 for the
+    virtual 4th corner this piece's line table (but not its own perimeter
+    list) references, which both this field and metadata's own
+    `n_perimeter` (§2) count as if it were a real point.
+
+    [V] `n_seamed_edges`/`n_uneven_seamed_edges` (u16 at +14/+20, previously
+    logged as "constant 0" - true only because no sample had a seam yet):
+    confirmed exactly against `verify_capture.py`'s own seam decoding on
+    every seam-carrying sample - `n_seamed_edges` is the number of Lnn
+    segments with `seam_flag == 1` (== `cutline_records`), and
+    `n_uneven_seamed_edges` counts just the ones where `seam_begin !=
+    seam_end` (0 on TASK2-SEAM1CM's uniform 1 cm seam; equal to
+    `n_seamed_edges` on CAP-C30/C31, where every seamed edge is
+    tapered/uneven).
+
+    Every other field (`magic`, `one`, `c1..c5`) is a raw constant in every
+    sample in the corpus - confirmed invariant, but not named, since their
+    ROLE (as opposed to their value) is still unknown [?]."""
     r = dict(offset=o,
              magic=u16(d,o), one=u32(d,o+2), n_perimeter_a=u32(d,o+6),
-             c1=u32(d,o+10), z1=u16(d,o+14), c2=u32(d,o+16), z2=u16(d,o+20),
+             c1=u32(d,o+10), n_seamed_edges=u16(d,o+14), c2=u32(d,o+16),
+             n_uneven_seamed_edges=u16(d,o+20),
              c3=u32(d,o+22), c4=u32(d,o+26), n_perimeter_b=u16(d,o+30),
              c5=u32(d,o+32), n_lines_plus_1=u32(d,o+48))
     r['size'] = PRETABLE_HEADER_SIZE

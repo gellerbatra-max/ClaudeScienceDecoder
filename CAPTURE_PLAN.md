@@ -88,10 +88,17 @@ FORMAT_SPEC.md §2.
 
 **Phase 1 status: all five items done** (`CAP-C10-PENT`/`CAP-C11-HEX` were
 already completed earlier in round 2). The large 847/1852/1312-byte
-tag/length/value tail sections themselves remain unparsed byte-for-byte;
-these five captures resolved the *count-scaling* fields (perimeter count,
-internal-line kind/open-closed, header vs piece-record name/annotation
-string handling) rather than the full tail-section grammar.
+tag/length/value tail sections themselves remained unparsed byte-for-byte
+at the time; these five captures resolved the *count-scaling* fields
+(perimeter count, internal-line kind/open-closed, header vs piece-record
+name/annotation string handling) rather than the full tail-section grammar.
+
+**Update (tail-section decode, no new captures):** the tail is now fully
+parsed as a pre-table header + two perimeter snapshots + a TLV-encoded line
+table — see FORMAT_SPEC.md §10/§11 for the grammar and `accumark_pds.
+coverage()`/`check_line_table()` for the validation. 93–99.5% of every
+capture's bytes are now `identified`, up from the tail being entirely
+opaque; remaining `[?]`s are catalogued in FORMAT_SPEC.md §12.
 
 ---
 

@@ -28,13 +28,34 @@
 > name/annotation strings (`CAP-C14`: `annotation` is a literal
 > per-creation-tool string, e.g. `"collar"` lowercase vs `RECTANGLE`
 > uppercase) — plus the internal-line open/closed and point-count findings
-> already logged under Phase 6. **Still open, and now the only two
-> substantial gaps**: the large 847/1852/1312-byte tag/length/value tail
-> sections themselves remain unparsed byte-for-byte (the five Phase 1
-> captures resolved the count-scaling fields around them, not the grammar
-> inside them), and the ~50-byte per-graded-point tail block's purpose.
-> Both are direct byte-level analysis of already-captured data, not new
-> GUI captures.
+> already logged under Phase 6. **Tail section (2026-09-08, no new
+> captures — pure byte-level analysis of the existing corpus, `FORMAT_SPEC.
+> md` §10/§11).** The 847/1852/1312-byte tag/length/value tail is now fully
+> parsed: a 52-byte pre-table header, two full perimeter geometry
+> snapshots, then a self-describing TLV line table (one record per
+> perimeter edge/internal line, with notch/graded-point/seam-cutline child
+> tags) — this also resolves the ~50-byte per-graded-point block (it's the
+> line table's own `04 0a` rule-reference tag plus its two `0f 0a`
+> children). `accumark_pds.coverage()` now classifies 93–99.5% of every
+> capture's bytes as `identified`. Also resolved by fitting the pre-table
+> header's scalars across the whole corpus: its `n_perimeter` field (not
+> `len(perimeter)` — the count of points with an attr byte, excluding a
+> dart's own apex point) and two more fields exposed on seam pieces
+> specifically (count of seamed edges / count of *uneven* seamed edges,
+> exact on every seam sample). This also explains `CAP-C61-MIRROR`'s
+> missing-4th-corner anomaly: its exact coordinates surface as a "virtual"
+> point in the line table, computable from the piece's 3 real corners.
+> **Still open**, catalogued with exact values in FORMAT_SPEC.md §10.3/§12:
+> the notch-attribute payload's byte layout (partially cracked — one byte
+> matches the already-known Notch Type, a second mostly matches but
+> disagrees on one sample), the table-point struct's `b`/`c` fields, the
+> `0f 0a` triple (every sample in the corpus is a placeholder, none yet
+> decodable), uneven/tapered seam cut-line miters, `CAP-C62-DART`'s
+> otherwise-unexplained 440-byte trailer, and whether the mirror piece's
+> virtual corner is genuine fold-line reflection or simple bounding-box
+> completion (indistinguishable on an axis-aligned right triangle). None of
+> these affect geometry, seam, notch, grade-rule, or grain/drill/cut-out
+> decoding, which remain validated to 0.000000 in DXF residual.
 
 Inputs: `PDS.zip` → `AGENT_KNOWLEDGE_BASE.md` + 8 task folders, each with a
 native AccuMark export ZIP (containing the binary piece record), an ASTM

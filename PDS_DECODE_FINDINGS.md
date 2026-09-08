@@ -21,8 +21,20 @@
 > format, not an embedding of multiple pieces' geometry (`CAP-C63`); and
 > Copy-Piece/Paste-Piece alone does not trigger the stale-second-record
 > mechanism — only a subsequent edit does (`CAP-C70`). All of Phase 6 is
-> now done. Still open: the tail section's byte accounting (Phase 1
-> captures) and the ~50-byte per-graded-point tail block.
+> now done. Phase 1's five capture items are also now done: a 30-character
+> piece name grows the file by exactly the length difference while the
+> header's metadata offset stays fixed (`CAP-C13`), confirming the header
+> name is a fixed-width slot vs. the piece-record's own length-prefixed
+> name/annotation strings (`CAP-C14`: `annotation` is a literal
+> per-creation-tool string, e.g. `"collar"` lowercase vs `RECTANGLE`
+> uppercase) — plus the internal-line open/closed and point-count findings
+> already logged under Phase 6. **Still open, and now the only two
+> substantial gaps**: the large 847/1852/1312-byte tag/length/value tail
+> sections themselves remain unparsed byte-for-byte (the five Phase 1
+> captures resolved the count-scaling fields around them, not the grammar
+> inside them), and the ~50-byte per-graded-point tail block's purpose.
+> Both are direct byte-level analysis of already-captured data, not new
+> GUI captures.
 
 Inputs: `PDS.zip` → `AGENT_KNOWLEDGE_BASE.md` + 8 task folders, each with a
 native AccuMark export ZIP (containing the binary piece record), an ASTM

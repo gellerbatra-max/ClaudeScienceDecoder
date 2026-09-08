@@ -61,6 +61,17 @@ then the concatenated, unterminated strings in this order **[V]**:
 `name`, `annotation`, `rule_table`, `size`, `sample_size`
 (e.g. `TASK6-CURVE` `CIRCLE` `TASK6-RULES` `8` `8`).
 
+**`annotation` is a literal, tool-derived piece-type string, not a
+freeform description [V]** (round 2, `CAP-C14-ANNOT`): every capture so far
+used Create→Rectangle and read `RECTANGLE`; a piece made with
+Create→Piece→**Collar** instead reads **`collar`** — lowercase, unlike
+`RECTANGLE`'s uppercase, confirming these are literal per-tool strings
+(not a normalized/cased category enum) and that the field is genuinely
+length-prefixed text rather than a fixed set of flag values. No dedicated
+UI field edits this string directly; it's set by which Piece-group tool
+(Rectangle, Collar, Facing, Sleeve, Skirt, Fusible, Binding, …) created the
+piece.
+
 ### 2.1 Size list
 
 | offset | type | field |

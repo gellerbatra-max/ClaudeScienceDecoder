@@ -73,12 +73,25 @@ points after the piece's first save, not merely with having a second
 internal object. See FORMAT_SPEC.md §5.2 and CAPTURE_LOG.md.
 
 **CAP-C13-LONGNAME** · rectangle identical to C00 but named with 30
-characters. Purpose: separates length-prefixed strings from fixed-width
-fields throughout the file, and confirms whether padding lengths are absolute
-or relative.
+characters — **DONE (round 2)**: file grew by exactly 18 bytes (the name's
+length difference from C00's 12 characters), and `_find_field_block`
+locates the metadata block at the identical header offset in both files —
+confirms the header name (§1) is a fixed-width slot while the piece-record's
+own name string (§2) is genuinely length-prefixed. See FORMAT_SPEC.md §1.
 
 **CAP-C14-ANNOT** · rectangle with a different annotation/description text
-(C00 will read `RECTANGLE`). Same purpose, for the annotation string.
+(C00 will read `RECTANGLE`) — **DONE (round 2)**: a piece made with
+Create→Collar instead of Rectangle reads `annotation = "collar"` (lowercase,
+vs `RECTANGLE`'s uppercase) — confirms `annotation` is a literal
+per-creation-tool string parsed as length-prefixed text. See
+FORMAT_SPEC.md §2.
+
+**Phase 1 status: all five items done** (`CAP-C10-PENT`/`CAP-C11-HEX` were
+already completed earlier in round 2). The large 847/1852/1312-byte
+tag/length/value tail sections themselves remain unparsed byte-for-byte;
+these five captures resolved the *count-scaling* fields (perimeter count,
+internal-line kind/open-closed, header vs piece-record name/annotation
+string handling) rather than the full tail-section grammar.
 
 ---
 

@@ -59,6 +59,12 @@ def parse_metadata(d, off=None):
     f['unk_u16_c'] = u16(d,p+6)
     f['n_obj_rec'] = u16(d,p+8)
     p += 10
+    # a false-positive field-block candidate (summarize()'s offset scan) can
+    # hand this a garbage n_sizes of up to 65535; each such candidate then
+    # built a 65k-entry list - 23,580 candidates on one production piece
+    # made summarize() take 58 s. Real tables have a few dozen sizes at most.
+    if f['n_sizes'] > 64:
+        raise ValueError('implausible n_sizes %d - not a field block' % f['n_sizes'])
     sizes = []
     for _ in range(f['n_sizes']):
         ln, fl = u16(d,p), u16(d,p+2)
@@ -142,7 +148,14 @@ def parse_point(d, o):
     r = dict(offset=o, id=i16(d,o), x=i32(d,o+2), y=i32(d,o+6),
              f1=u16(d,o+10), f2=u16(d,o+12), rule_ref=None, attr=None)
     p = o+14
-    if r['f1'] == 0:
+    # [V] the rule_ref/pad group follows whenever f1's LOW byte is 0, not only
+    # when f1 == 0: a numbered corner that also carries a notch has
+    # f1 = 0x0100 (notch type in the high byte, as for unnumbered notches)
+    # and still carries its rule reference (2303-B1-40E-OUWG-SP24, point 11,
+    # rule 10005). Testing f1 == 0 misaligned the run by 6 bytes there and
+    # turned the rest of the perimeter into garbage on 8 of 162 production
+    # pieces.
+    if (r['f1'] & 0xFF) == 0:
         r['rule_ref'] = i32(d,p); r['rule_pad'] = u16(d,p+4); p += 6
     # [V] CAP-C62-DART: f2 is a trailer BYTE COUNT, not a 0/1 flag - a dart
     # leg point has f2==2 (two trailer bytes, e.g. `09 10`/`09 11` for the
@@ -167,7 +180,11 @@ def parse_point(d, o):
     # excludes plain unnumbered points (grain-line/drill f1 = 0x0001, high
     # byte 0) from being misread as notches.
     r['is_notch'] = r['id'] == -1 and (r['f1'] & 0xFF) == 1 and (r['f1'] >> 8) != 0
-    r['notch_type'] = (r['f1'] >> 8) if r['is_notch'] else None
+    # a numbered corner point can carry a notch too (f1 high byte = type,
+    # low byte 0, rule_ref present) - reported separately so the perimeter
+    # point count and the notch count both stay right [V] 2303 wing pieces
+    r['is_corner_notch'] = r['id'] != -1 and (r['f1'] & 0xFF) == 0 and (r['f1'] >> 8) != 0
+    r['notch_type'] = (r['f1'] >> 8) if (r['is_notch'] or r['is_corner_notch']) else None
     # dart_leg: f2==2 identifies the point structurally regardless of its
     # first attr byte (which reuses 0x09, the ordinary turn-point value) -
     # check this before the attr-byte-based curve/turn checks below [V]
@@ -195,6 +212,15 @@ def parse_point_run(d, start, n):
     return pts, o
 
 def find_point_table(d, after, window=64):
+    # [V] production pieces (2303 style, 2026-09): the perimeter starts at
+    # whatever creation-order id happens to come first (13, 2, 7 ...), never
+    # only 1/-1, and the table begins exactly at the end of the object
+    # records. Scanning for id 1/-1 skipped real corner points silently
+    # (42A-OUWG read 24 of 27) or landed mid-record (17 of 162 pieces garbage).
+    pid = i16(d, after)
+    if (pid == -1 or 1 <= pid <= 4096) and COORD_LO < i32(d,after+2) < COORD_HI \
+       and COORD_LO < i32(d,after+6) < COORD_HI and u16(d,after+10) in (0,1,2,0x101):
+        return after
     for o in range(after, min(after+window, len(d)-14)):
         pid = i16(d,o)
         if pid in (1,-1) and COORD_LO < i32(d,o+2) < COORD_HI and COORD_LO < i32(d,o+6) < COORD_HI \
@@ -435,8 +461,17 @@ def decode(data):
     """Decode a full piece file; returns dict with one or more piece blocks."""
     if not data.startswith(MAGIC):
         raise ValueError('not an AccuMark IXPORT piece file')
+    # [V] every object type carries its type code as u16 at 0x7a in both the
+    # 2026-07 and 2026-09 export vintages (the u32 copy sits at 0x60 in one
+    # and 0x68 in the other); 20 = piece. Markers (9), models (12), orders
+    # (13) and the parameter tables must be refused here rather than
+    # crashing inside decode_piece_block.
+    otype = u16(data, 0x7a) if len(data) > 0x80 else None
+    if otype != 20:
+        raise ValueError('not a piece object (type %r); see accumark_marker.read_object' % otype)
     hdr = dict(magic=data[:18].decode('latin1').rstrip('\x00'),
-               db_version=data[16:19].decode('latin1').rstrip('\x00'))
+               db_version=data[16:19].decode('latin1').rstrip('\x00'),
+               object_type=otype)
     # trailing piece-name + two identical unix timestamps
     tail = data[-160:]
     ts = []
@@ -445,7 +480,10 @@ def decode(data):
         if 1_500_000_000 < v < 2_200_000_000: ts.append(v)
     blocks = []; off = None
     while True:
-        try: off = _find_field_block(data, (blocks[-1]['block_end'] if blocks else 0x60),
+        # [V] start at the payload (0x80), not 0x60: the 2026-07 vintage's
+        # header residue at 0x60-0x7f looks enough like a field block to
+        # hijack the search on every one of its 122 pieces.
+        try: off = _find_field_block(data, (blocks[-1]['block_end'] if blocks else 0x80),
                                      (blocks[-1]['block_end']+0x120 if blocks else 0x140))
         except ValueError: break
         try: b = decode_piece_block(data, off)
@@ -683,13 +721,71 @@ def parse_line_geometry(d, start=0, end=None):
                         pts=[(q['x'],q['y']) for q in pts], end=p))
     return out
 
+# ------------------------------------------------------------ fold axis
+def mirror_lines(data):
+    """Fold ("Mirror Piece") axes declared in the tail: `L<nn> fe|ff ff 'M' 00`
+    then u16 count(=2), u16 1, u16 0xffff (not part of the walk), then two
+    ordinary point records (id -1, rule 10001, terminator 09) and a u32 3
+    [V 2026-09-09: all four OUCF fold halves of style 2303; dxfparser
+    ledger section 13 - 1465 M blocks in a 955-zip corpus all read exactly].
+    Returns a list of unique ((x1,y1),(x2,y2)) in 1e-4 inch units (the block
+    is repeated in the stale second piece record, hence the dedupe)."""
+    out = []
+    for m in re.finditer(rb'L[0-9][0-9][\xfe\xff]\xffM\x00', data):
+        p = m.end()
+        cnt = u16(data, p); p += 6
+        pts = []
+        for _ in range(cnt):
+            r = parse_point(data, p); pts.append((r['x'], r['y'])); p += r['size']
+        if len(pts) == 2 and tuple(pts) not in out: out.append(tuple(pts))
+    return out
+
+def unfold(pts, axis):
+    """Reflect an outline across a fold axis and return the whole piece:
+    the stored half plus its mirror image, walked as one closed ring.
+    Points lying on the axis are shared, not duplicated. `pts` and `axis`
+    in the same units."""
+    (x1, y1), (x2, y2) = axis
+    dx, dy = x2-x1, y2-y1
+    L2 = dx*dx + dy*dy or 1.0
+    def refl(p):
+        t = ((p[0]-x1)*dx + (p[1]-y1)*dy) / L2
+        fx, fy = x1 + t*dx, y1 + t*dy
+        return (2*fx - p[0], 2*fy - p[1])
+    axis_len = L2**0.5
+    def on_axis(p):
+        # tolerance scales with the axis so the test works in 1e-4 inch
+        # integers and in inches alike (an absolute 0.5 was half an inch when
+        # called on inch coordinates and swallowed most of a 1.2 in piece)
+        return abs((p[0]-x1)*dy - (p[1]-y1)*dx) / axis_len <= 1e-5 * axis_len
+    n = len(pts)
+    # rotate so the ring starts just after an on-axis point, if any
+    idx = [i for i in range(n) if on_axis(pts[i])]
+    if len(idx) >= 2:
+        # find the on-axis point after which the off-axis run begins
+        start = None
+        for i in idx:
+            if not on_axis(pts[(i+1) % n]): start = i; break
+        if start is None: start = idx[0]
+        ring = [pts[(start+k) % n] for k in range(n)]
+        # ring[0] is on the axis; the run continues to the next on-axis point
+        end = next((k for k in range(1, n) if on_axis(ring[k])), n-1)
+        half = ring[:end+1]
+        return half + [refl(p) for p in reversed(half[1:-1])]
+    return list(pts) + [refl(p) for p in reversed(pts)]
+
 def summarize(data):
     """High-level, validated summary of a piece file."""
     dec = decode(data)
     d = data
     blocks = []
-    o = 0x60
+    o = 0x80                          # payload start; header residue above is never a block
     while o < len(d)-40:
+        # cheap pre-filter (the same test _find_field_block applies) before
+        # the full parse - this loop visits every byte offset of the file
+        n = u16(d,o)
+        if not (3 <= n <= 64 and all(32 <= c < 127 for c in d[o+22:o+22+n+3])):
+            o += 1; continue
         try: m = parse_metadata(d,o)
         except Exception: m = None
         ok = (m and 1 <= m['n_sizes'] <= 40 and 3 <= m['n_perimeter'] <= 5000
@@ -739,6 +835,8 @@ def summarize(data):
         line_geometry = parse_line_geometry(d),
         seam_allow_in = sorted({(s['seam_begin']/UNITS_PER_INCH, s['seam_end']/UNITS_PER_INCH)
                                 for s in segs if s['seam_flag'] == 1}),
+        mirror_lines_in = [tuple((x/UNITS_PER_INCH, y/UNITS_PER_INCH) for x, y in ax)
+                           for ax in mirror_lines(d)],
         object_records = [(o_['id'], o_['payload']) for o_ in b0['objects']],
     )
 

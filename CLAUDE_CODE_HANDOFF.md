@@ -15,6 +15,10 @@ Unzip `pds_decoder_handoff.zip` into a working folder on the Windows laptop
 | `CAPTURE_PLAN.md` | the ordered list of captures to build, and why each one |
 | `AGENT_KNOWLEDGE_BASE.md` | your own PDS GUI-automation notes, carried forward |
 | `captures/TASK1…TASK6/` | the eight first-round captures — baselines + regression fixtures |
+| `accumark_marker.py` | (2026-09-09) reader for marker / order / model objects, slot→piece binding, placement transform, grading + fold unfolding |
+| `verify_marker.py` | (2026-09-09) the marker validator: report, `--expect`, `--dxf` against a drawn-marker DXF, `--baseline` section diff |
+| `markers/` | (2026-09-09) six production markers of style 2303 + four drawn DXFs — regression fixtures run by `selftest.py` |
+| `MARKER_DECODE_PLAN.md` | marker format facts, status table, and what to ask for next |
 | `pds_decoded.json`, `pds_decode_validation.csv` | reference decode of those eight |
 
 Python 3.9+ with no third-party packages. First command on the laptop:

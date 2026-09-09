@@ -171,7 +171,24 @@ Record length is therefore 14, 15, 20 or 21 bytes. All 82 point records
 across the eight files parse to exactly `n_perimeter` records terminating on
 a valid `f1 == 2` closing record **[V]**.
 
-**Exception — `CAP-C61-MIRROR` (round 2):** metadata's `n_perimeter` reads 4
+**Correction (2026-09-09, production pieces):** two rules above were
+artefacts of the eight captures, not the format. (a) The perimeter's first
+record can carry **any** creation-order id (13, 2, 7 … on the 2303 wing
+pieces; **5** on `CAP-C61-MIRROR`) — `find_point_table` used to scan for
+id 1/−1 and so skipped real leading points. (b) The `rule_ref/rule_pad`
+group follows whenever `f1`'s **low byte** is 0, not only when `f1 == 0`:
+a numbered corner that also carries a notch has `f1 = 0x0N00` (type N in
+the high byte, as for unnumbered notches) plus its rule reference. With
+both fixes all 162 production pieces of style 2303 (cups, per-size wings,
+fold halves; two export vintages) read `n_perimeter − 1` explicit records
+plus the closing record, and every piece with a declared area in a marker
+matches it to ≤0.06 % (fold halves: exactly 0.500). **The C61 exception
+below is therefore withdrawn**: its 4th corner (id 5) was the *first*
+record of the table, skipped by the old locator; all four now match the DXF
+to 0.000000 in, and the "virtual 4th corner" of §10.2/§11 is simply that
+stored point.
+
+**Exception — `CAP-C61-MIRROR` (round 2, superseded above):** metadata's `n_perimeter` reads 4
 for what the DXF confirms is a true 4-corner rectangle, but only **3**
 explicit point records exist before the file transitions straight into the
 internal-line list (§5) — no `f1 == 2` closing record, no 4th corner point of
@@ -615,15 +632,29 @@ version additionally carries the mitered corner needed to join adjacent
 offset segments cleanly.
 
 On an **uneven/tapered** seam (`CAP-C30-SEAM-UNEVEN`, `CAP-C31-SEAM-TAPER`)
-the corner shared by two differently-tapered edges is the intersection of
-two independently offset lines, not a simple per-corner offset — e.g. one
-observed miter point is `(dx, dy) = (-3934, -66)` relative to the real
-corner, neither axis-aligned nor diagonal. `check_line_table()` recognises
-only the uniform case (an offset that is 0 on one axis, or equal in
-magnitude on both, within `SEAM_OFFSET_MAX`); the uneven/tapered miter needs
-the corner's two adjacent `seam_begin`/`seam_end` values threaded through to
-re-derive properly, and is left `line_table_consistent = no` rather than
-force-fit **[?]**.
+most corners turn out to be plain single-edge offsets once matched to the
+*correct* adjacent edge, not genuine two-edge miters **[V]** (2026-09-09
+re-analysis, no new capture): the PDS rule that "a value entered at a corner
+sets the `end` of the segment ending there and leaves the next segment's
+`begin` at 0" (§6.1) means a shared corner almost always has exactly one
+nonzero contributing edge. `CAP-C30-SEAM-UNEVEN`'s corner at real point 4
+(`121977,1`) is a clean example: its incoming edge's `seam_end = 984`
+(0.25 cm) reproduces the recorded cut-line point `(122961,1)` exactly
+(`+984,+0`), zero residual. The corner at point 3 matches its incoming
+edge's `seam_end = 1969` to within 25/1 units (rounding, not a modelling
+gap). **One corner remains genuinely unexplained**: the corner at real
+point 2 (`3938,78815`), whose incoming edge (`L00`, vertical, `seam_end =
+3937`) predicts a plain offset to `(1,78815)`, but the recorded cut-line
+point is `(4,78749)` — residual `(dx, dy) = (-3934, -66)` relative to a
+*plain-offset* prediction that already accounts for `seam_end`, not merely
+relative to the unmoved corner. This is the same numeric example this
+document already flagged; re-deriving it did not explain it, only pin down
+that it resists both the "plain single-edge offset" model (which works
+everywhere else) and a naive two-line intersection (which would give
+`(0,78685)`, also not a match). `check_line_table()` recognises only the
+uniform case (an offset that is 0 on one axis, or equal in magnitude on
+both, within `SEAM_OFFSET_MAX`) and still returns `line_table_consistent =
+no` on this file rather than force-fit **[?]**.
 
 ### 10.2 The mirror piece's virtual 4th corner — located, not fully explained
 
@@ -775,8 +806,22 @@ manifest format with no piece blocks at all, §8): **93–99.5% identified**,
 zero decoder exceptions on any block of any file. The trailer (§7), whose
 size was previously only estimated at "~160 bytes", measures out as a
 consistent **306 bytes** for a 1-block file and **334 bytes** for almost
-every 2-block file; `CAP-C62-DART` is a **440-byte** outlier, unexplained
-**[?]**.
+every 2-block file; `CAP-C62-DART`'s **440-byte** trailer is the one
+outlier, now explained rather than anomalous **[V]** (2026-09-09): the extra
+106 bytes sit as a single block inserted at the very start of the trailer,
+*before* the ordinary per-block `0d 00 00 00 10 00 00 00 …` markers (§11) —
+those markers, and everything after them (name/timestamp/`MSI` fields), are
+byte-for-byte the normal 334-byte layout just shifted later by exactly 106.
+Inside that inserted block sit **three** consecutive 8-byte pointer-shaped
+values (`50 2c 54 82 4c 02 00 00`, `00 2c 54 82 4c 02 00 00`,
+`60 2c 54 82 4c 02 00 00` — differing only in their low 16 bits, the
+established heap/pointer-residue shape from §1) that appear nowhere in any
+non-dart capture's trailer — matching, one-for-one, the piece's three
+points that don't exist on any other capture (two dart-leg points and the
+apex). The values themselves are unrecovered heap residue like their
+counterparts elsewhere in the file; what's now pinned down is that the
+extra trailer size scales with "how many perimeter points aren't part of
+the base corner set," not that it's specific to darts.
 
 Remaining `unknown` bytes, roughly in order of how much of the file they
 account for:
@@ -789,12 +834,13 @@ account for:
   none yet tied to a control or value in the UI **[?]**.
 - §10.3's notch-attribute payload, table-point `b`/`c` fields, and `0f 0a`
   triples.
-- §10.1's uneven/tapered cut-line miter points.
+- §10.1's uneven/tapered cut-line miter point at `CAP-C30-SEAM-UNEVEN`
+  corner 2 (two of the seam's three corners are now explained as plain
+  single-edge offsets; this one resists both that model and a naive
+  two-line intersection).
 - §11's `unclassified_gap` bytes (Region C's `n_perimeter` mismatches on
   `CAP-C14-ANNOT`/`CAP-C62-DART`/notch pieces, and `CAP-C61-MIRROR`'s
   virtual 4th corner, are now explained — §10.2, §11).
-- `CAP-C62-DART`'s 440-byte trailer, still an unexplained outlier against
-  the otherwise-consistent 306/334 bytes.
 
 None of these affect geometry, seam, notch, grade-rule, or grain/drill/
 cut-out decoding, all of which are validated to 0.000000 in DXF residual

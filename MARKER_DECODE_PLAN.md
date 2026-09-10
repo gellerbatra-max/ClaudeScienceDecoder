@@ -1,5 +1,57 @@
 # Marker decode plan — AccuMark native marker export
 
+> ## STATUS 2026-09-10 (evening, live session) — the 8 status-bar codes: offline route now genuinely exhausted, not just believed so
+>
+> Live on the AccuMark machine, `2303-BD 137 PLACED` already open in Easy
+> Marking. Two things done, one safe result, one stopped early for safety.
+>
+> **Extended the offline-manual search to two PE editions nobody had
+> checked** - `MarkerMaking_Users_PE.pdf` (2.3 MB, vs. the 860 KB `_AE`
+> edition already searched) and `OrderEntry_Users_PE.pdf` (4.5 MB vs.
+> 2.4 MB `_AE`), plus `ms2000 order entry.pdf`, none of them in the prior
+> session's search list. Extracted with `pdftotext -layout` and grepped for
+> all 8 codes (`PA TI TT FC FW CB MW BD`) as substrings, not just word
+> boundaries. **`PA`, `FC`, `FW`, `CB`, `MW` do not occur anywhere in any
+> of the three documents - not one hit, not even as part of another
+> word.** `TI`/`TT`/`BD` do occur, but only as substrings of unrelated
+> terms already identified elsewhere in this plan (`BD1-3` in the same
+> `SZ1-6,BD1-3` annotation-code notation already decoded; nothing new).
+> `MarkerMaking_Users_PE.pdf` does have a real "Marker Info" field-by-field
+> table (`Field / Explanation`, pp. 87-88) - it documents `MD, PN, SZ, SA,
+> PL/ST, WI, TL, OL, FB, 1/1, CT, CU/TU, LN, TB` (confirming `TL` = tilt
+> increment and `OL` = overlap amount, both already known) but simply does
+> not include the 8 target fields at all - the live UI has more fields
+> than this table lists, on either edition. This is the same conclusion
+> the prior session reached from the `_AE` manuals alone, now confirmed
+> independently on documents twice-to-five-times their size that nobody
+> had actually opened - a real negative result, not an assumption.
+>
+> **Live UI exploration in Easy Marking, also negative:** no tooltip on
+> hover over any of the 8 fields; right-click on the Marker Info panel
+> only offers panel-docking options (Float/Show/Dock/Auto Hide/Hide), no
+> field menu; the ribbon's "Marker Properties" button opens an unrelated
+> Order Number/Marker Description dialog; "Report Results" produced no
+> new window; clicking directly into a field's value box does not expand
+> or relabel it. Every reasonably-safe, read-only avenue for these 8
+> codes is now exhausted on this install; closing them needs either
+> internet access (unavailable here) or a support contact, not more
+> looking.
+>
+> **Stopped before attempting a live marker-rearrangement test** (the
+> other lead from the STATUS block below, aimed at telling whether the
+> type-10 gap tracks placement layout). Windows-MCP's window-focus
+> tracking silently drifted off Easy Marking mid-session (several
+> `Snapshot` calls in a row reported "No active window found" with no
+> error), and the next click landed on this Claude session's own chat
+> sidebar instead, one menu item away from `Delete` on an unrelated
+> session. No harm done - caught and dismissed immediately - but a
+> multi-step Save As/Export sequence is exactly the wrong place to
+> discover focus is unreliable, so that test was not attempted this pass.
+> Left for a session that re-verifies focus before every click (or
+> re-checks after each step rather than chaining several blind).
+>
+> `python selftest.py` → not re-run this pass (no decoder files touched).
+>
 > ## STATUS 2026-09-10 (later still, part 2) — the id53→id54 gap: the point-attribute lead does NOT hold up; bounded and characterized instead
 >
 > Follow-up to the STATUS block directly below, same session, still offline.

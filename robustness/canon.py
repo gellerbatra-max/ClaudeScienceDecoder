@@ -109,20 +109,22 @@ def canon_decode(dec):
 
 def canon_piece_full(data):
     """Wider than canon_decode(): also runs verify_capture.facts(), which
-    exercises accumark_pds's OWN cross-checks (notably line_table_consistent,
-    which compares the line table against the perimeter independently of
-    block['perimeter'] itself). A coordinate is stored 5-7 times per point
-    (point table, two Region-C snapshots, the line table) - corrupting a
-    redundant copy that isn't the point-table copy leaves block['perimeter']
-    unchanged, so canon_decode() alone would call it inert. facts() is what
-    actually proves whether that redundant copy is cross-validated by
-    anything the decoder does, or is truly unvalidated decorative data -
-    see robustness/run.py's Oracle C and ROBUSTNESS_REPORT.md."""
+    exercises accumark_pds's OWN cross-checks - line_table_consistent
+    (the line table against the perimeter) and region_c_consistent (Region
+    C's two perimeter snapshots against the perimeter, added alongside the
+    v2 parse_region_c fix this check validates - see CHANGELOG.md) -
+    independently of block['perimeter'] itself. A coordinate is stored 5-7
+    times per point (point table, two Region-C snapshots, the line table);
+    corrupting a redundant copy that isn't the point-table copy leaves
+    block['perimeter'] unchanged, so canon_decode() alone would call it
+    inert. facts() is what actually proves whether that redundant copy is
+    cross-validated by anything the decoder does."""
     import verify_capture as vc
     dec_canon = canon_decode(__import__('accumark_pds').decode(data))
     try:
         f, _ = vc.facts(dict(folder='.', zip='mem', data=data, dxf=None, rul=None))
         facts_part = dict(line_table_consistent=f.get('line_table_consistent'),
+                           region_c_consistent=f.get('region_c_consistent'),
                            notches=f.get('notches'), perimeter_points=f.get('perimeter_points'),
                            graded_points=f.get('graded_points'),
                            unknown_bytes=f.get('unknown_bytes'))

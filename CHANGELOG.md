@@ -1,5 +1,75 @@
 # Changelog
 
+## v2.0 (2026-09-11, continued) - Region-C snapshot parser fix
+
+`ROBUSTNESS_REPORT.md`'s Recommendations section originally flagged Region
+C's two perimeter snapshots (`parse_region_c`/`parse_point_snapshot`) as
+"parsed but not cross-validated" - Oracle C could corrupt a byte inside
+what was labelled snapshot2 without the decode changing. Investigating
+found the actual cause: **a real parser bug, not an unvalidated-but-correct
+redundant copy.**
+
+- `parse_point_snapshot` advanced by a hardcoded 15 bytes per point. Correct
+  whenever every point re-encodes to exactly one f2 trailer byte (the usual
+  case), but wrong on any piece where one point's real size differs -
+  confirmed on `CAP-C62-DART`, where the parse silently misaligned partway
+  through snapshot1 itself. Now advances by each point's own computed
+  `size`, the same self-describing-record technique `parse_point_run`
+  already used for the primary point table.
+- `parse_region_c` read snapshot2 starting immediately after `marker2`.
+  Byte-searching for `CAP-C00-BASE`'s and `CAP-C10-PENT`'s own known-real
+  coordinates located snapshot2's true start precisely: there is one more
+  2-byte tag (`marker3`, value 1 on every sample checked, role otherwise
+  unknown) between `marker2` and snapshot2's first point that the old code
+  was reading half of as if it were that point's own id/x field, offsetting
+  every point after it by a few bytes for the rest of the snapshot. Fixed,
+  with a defensive fallback to the old (pre-fix) reading if the corrected
+  2-byte read doesn't land on plausible coordinates.
+- The snapshot point count was `len(perim)` (the full stored perimeter,
+  notches and dart-apex included). Region C's snapshots only re-list
+  `n_perimeter_a` points - the same "corners minus notches/dart-apex" count
+  `parse_pretable_header`'s own docstring already established for a
+  different field - so a notched, darted, annotated or curved piece's
+  snapshot reader ran past the snapshots' real end and started reading
+  `marker1`'s own bytes as a bogus extra point.
+
+**New:** `accumark_pds.check_region_c(b)` - the same point-coincidence
+invariant `check_line_table` already applies to the line table, applied to
+both Region-C snapshots. Surfaced as `region_c_consistent` in
+`verify_capture.facts()`, and wired into `robustness/canon.canon_piece_full`
+so Oracle C actually exercises it.
+
+**Verified clean** (`region_c_consistent=yes`, snapshot geometry matches the
+real perimeter exactly) on every corpus fixture except the same three
+seam-allowanced pieces `check_line_table` already documents as a known,
+separate gap (`CAP-C30-SEAM-UNEVEN`, `CAP-C31-SEAM-TAPER`,
+`TASK2-SEAM1CM`) - not a new mystery, the same open one (uneven/tapered
+seam corners aren't plain per-corner offsets) showing up in a second place.
+`robustness/run.py`'s Oracle C: 249/303 -> 294/303. The remaining 9 failures
+are a distinct, narrower, newly-surfaced finding - not Region C - documented
+in `ROBUSTNESS_REPORT.md`'s Recommendations.
+
+**On "no change to any v1 decode result" below**: still true for every fact
+`selftest.py` asserts (perimeter, notches, area, grading, placements - the
+v2.0 gate) - nothing there moved. What DID change, correctly: Region C's
+previously-wrong snapshot2 content (and, on a few fixtures, part of
+snapshot1) is now the real data, and `accumark_pds.coverage()`'s
+`unknown_bytes`/`coverage_pct` improved on several fixtures accordingly
+(e.g. `CAP-C30-SEAM-UNEVEN`: 169 unknown bytes / 95.09% -> 19 / 99.45%) -
+bytes that used to be misclassified because the snapshot boundaries
+themselves were wrong are now correctly attributed. `dataset/build.py`
+regenerated: the drafted geometry (`dataset/MANIFEST.json`) is unchanged,
+but `dataset/templates.coord_offsets` now correctly locates snapshot2's
+bytes too (it previously missed them, the same bug this whole fix
+addresses), so `dataset/write.retarget` patches ~20 more bytes per
+generated piece than before - snapshot2 in every one of the 31 generated
+pieces was, until this fix, silently left holding stale TEMPLATE
+coordinates instead of the drafted panel's own. Caught by re-running
+`dataset_test.py` (still 36/36 - the fix improves internal consistency,
+it does not change any checked fact) rather than by inspection; worth
+noting as a concrete example of why Oracle C's redundant-copy checking
+matters even for output this project already treated as fully verified.
+
 ## v2.0 (2026-09-11)
 
 `accumark_pds.__version__` / `accumark_marker.__version__` == `'2.0'`, asserted

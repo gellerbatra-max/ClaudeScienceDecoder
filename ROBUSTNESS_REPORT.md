@@ -1,7 +1,7 @@
 # Robustness report (v2)
 decoder_version: accumark_pds=2.0 accumark_marker=2.0
 
-303 cases, 249 passed, 54 failed, 6.1s
+303 cases, 294 passed, 9 failed, 6.0s
 
 ## Supported
 
@@ -156,19 +156,19 @@ decoder_version: accumark_pds=2.0 accumark_marker=2.0
 | truncated_object_123B_list_zip | CAP-C00-BASE | ok | ok (no exception, as required) |
 | truncated_object_200B_list_zip | 2303-BD137-PLACED | ok | ok (no exception, as required) |
 
-## Oracle C (111/165 ok)
+## Oracle C (156/165 ok)
 
 | case | seed | verdict | detail |
 |---|---|---|---|
 | CAP-C00-BASE/off=0x3de/flip_bit | CAP-C00-BASE | ok | ok (decode changed, as required) |
 | CAP-C00-BASE/off=0x3de/zero | CAP-C00-BASE | ok | ok (decode changed, as required) |
 | CAP-C00-BASE/off=0x3de/ff | CAP-C00-BASE | ok | ok (decode changed, as required) |
-| CAP-C00-BASE/off=0x288/flip_bit | CAP-C00-BASE | FAIL | SILENT: corrupted input decoded identically |
-| CAP-C00-BASE/off=0x288/zero | CAP-C00-BASE | FAIL | SILENT: corrupted input decoded identically |
-| CAP-C00-BASE/off=0x288/ff | CAP-C00-BASE | FAIL | SILENT: corrupted input decoded identically |
-| CAP-C00-BASE/off=0x297/flip_bit | CAP-C00-BASE | FAIL | SILENT: corrupted input decoded identically |
-| CAP-C00-BASE/off=0x297/zero | CAP-C00-BASE | FAIL | SILENT: corrupted input decoded identically |
-| CAP-C00-BASE/off=0x297/ff | CAP-C00-BASE | FAIL | SILENT: corrupted input decoded identically |
+| CAP-C00-BASE/off=0x288/flip_bit | CAP-C00-BASE | ok | ok (decode changed, as required) |
+| CAP-C00-BASE/off=0x288/zero | CAP-C00-BASE | ok | ok (decode changed, as required) |
+| CAP-C00-BASE/off=0x288/ff | CAP-C00-BASE | ok | ok (decode changed, as required) |
+| CAP-C00-BASE/off=0x297/flip_bit | CAP-C00-BASE | ok | ok (decode changed, as required) |
+| CAP-C00-BASE/off=0x297/zero | CAP-C00-BASE | ok | ok (decode changed, as required) |
+| CAP-C00-BASE/off=0x297/ff | CAP-C00-BASE | ok | ok (decode changed, as required) |
 | CAP-C00-BASE/off=0x464/flip_bit | CAP-C00-BASE | ok | ok (decode changed, as required) |
 | CAP-C00-BASE/off=0x464/zero | CAP-C00-BASE | ok | ok (decode changed, as required) |
 | CAP-C00-BASE/off=0x464/ff | CAP-C00-BASE | ok | ok (decode changed, as required) |
@@ -178,15 +178,15 @@ decoder_version: accumark_pds=2.0 accumark_marker=2.0
 | CAP-C00-BASE/off=0x4c8/flip_bit | CAP-C00-BASE | FAIL | SILENT: corrupted input decoded identically |
 | CAP-C00-BASE/off=0x4c8/zero | CAP-C00-BASE | FAIL | SILENT: corrupted input decoded identically |
 | CAP-C00-BASE/off=0x4c8/ff | CAP-C00-BASE | FAIL | SILENT: corrupted input decoded identically |
-| CAP-C00-BASE/off=0x2ba/flip_bit | CAP-C00-BASE | FAIL | SILENT: corrupted input decoded identically |
-| CAP-C00-BASE/off=0x2ba/zero | CAP-C00-BASE | FAIL | SILENT: corrupted input decoded identically |
-| CAP-C00-BASE/off=0x2ba/ff | CAP-C00-BASE | FAIL | SILENT: corrupted input decoded identically |
+| CAP-C00-BASE/off=0x2bc/flip_bit | CAP-C00-BASE | ok | ok (decode changed, as required) |
+| CAP-C00-BASE/off=0x2bc/zero | CAP-C00-BASE | ok | ok (decode changed, as required) |
+| CAP-C00-BASE/off=0x2bc/ff | CAP-C00-BASE | ok | ok (decode changed, as required) |
 | CAP-C00-BASE/off=0x3cc/flip_bit | CAP-C00-BASE | ok | ok (decode changed, as required) |
 | CAP-C00-BASE/off=0x3cc/zero | CAP-C00-BASE | ok | ok (decode changed, as required) |
 | CAP-C00-BASE/off=0x3cc/ff | CAP-C00-BASE | ok | ok (decode changed, as required) |
-| CAP-C00-BASE/off=0x2e7/flip_bit | CAP-C00-BASE | FAIL | SILENT: corrupted input decoded identically |
-| CAP-C00-BASE/off=0x2e7/zero | CAP-C00-BASE | FAIL | SILENT: corrupted input decoded identically |
-| CAP-C00-BASE/off=0x2e7/ff | CAP-C00-BASE | FAIL | SILENT: corrupted input decoded identically |
+| CAP-C00-BASE/off=0x2e9/flip_bit | CAP-C00-BASE | ok | ok (decode changed, as required) |
+| CAP-C00-BASE/off=0x2e9/zero | CAP-C00-BASE | ok | ok (decode changed, as required) |
+| CAP-C00-BASE/off=0x2e9/ff | CAP-C00-BASE | ok | ok (decode changed, as required) |
 | CAP-C00-BASE/off=0x4b6/flip_bit | CAP-C00-BASE | FAIL | SILENT: corrupted input decoded identically |
 | CAP-C00-BASE/off=0x4b6/zero | CAP-C00-BASE | FAIL | SILENT: corrupted input decoded identically |
 | CAP-C00-BASE/off=0x4b6/ff | CAP-C00-BASE | FAIL | SILENT: corrupted input decoded identically |
@@ -196,60 +196,60 @@ decoder_version: accumark_pds=2.0 accumark_marker=2.0
 | CAP-C00-BASE/off=0x4b2/flip_bit | CAP-C00-BASE | FAIL | SILENT: corrupted input decoded identically |
 | CAP-C00-BASE/off=0x4b2/zero | CAP-C00-BASE | FAIL | SILENT: corrupted input decoded identically |
 | CAP-C00-BASE/off=0x4b2/ff | CAP-C00-BASE | FAIL | SILENT: corrupted input decoded identically |
-| CAP-C00-BASE/off=0x2eb/flip_bit | CAP-C00-BASE | FAIL | SILENT: corrupted input decoded identically |
-| CAP-C00-BASE/off=0x2eb/zero | CAP-C00-BASE | FAIL | SILENT: corrupted input decoded identically |
-| CAP-C00-BASE/off=0x2eb/ff | CAP-C00-BASE | FAIL | SILENT: corrupted input decoded identically |
+| CAP-C00-BASE/off=0x2ed/flip_bit | CAP-C00-BASE | ok | ok (decode changed, as required) |
+| CAP-C00-BASE/off=0x2ed/zero | CAP-C00-BASE | ok | ok (decode changed, as required) |
+| CAP-C00-BASE/off=0x2ed/ff | CAP-C00-BASE | ok | ok (decode changed, as required) |
 | CAP-C00-BASE/off=0x142/flip_bit | CAP-C00-BASE | ok | ok (decode changed, as required) |
 | CAP-C00-BASE/off=0x142/zero | CAP-C00-BASE | ok | ok (decode changed, as required) |
 | CAP-C00-BASE/off=0x142/ff | CAP-C00-BASE | ok | ok (decode changed, as required) |
-| CAP-C00-BASE/off=0x266/flip_bit | CAP-C00-BASE | FAIL | SILENT: corrupted input decoded identically |
-| CAP-C00-BASE/off=0x266/zero | CAP-C00-BASE | FAIL | SILENT: corrupted input decoded identically |
-| CAP-C00-BASE/off=0x266/ff | CAP-C00-BASE | FAIL | SILENT: corrupted input decoded identically |
-| CAP-C62-DART/off=0x584/flip_bit | CAP-C62-DART | ok | ok (decode changed, as required) |
-| CAP-C62-DART/off=0x584/zero | CAP-C62-DART | ok | ok (decode changed, as required) |
-| CAP-C62-DART/off=0x584/ff | CAP-C62-DART | ok | ok (decode changed, as required) |
-| CAP-C62-DART/off=0x443/flip_bit | CAP-C62-DART | ok | ok (decode changed, as required) |
-| CAP-C62-DART/off=0x443/zero | CAP-C62-DART | ok | ok (decode changed, as required) |
-| CAP-C62-DART/off=0x443/ff | CAP-C62-DART | ok | ok (decode changed, as required) |
+| CAP-C00-BASE/off=0x266/flip_bit | CAP-C00-BASE | ok | ok (decode changed, as required) |
+| CAP-C00-BASE/off=0x266/zero | CAP-C00-BASE | ok | ok (decode changed, as required) |
+| CAP-C00-BASE/off=0x266/ff | CAP-C00-BASE | ok | ok (decode changed, as required) |
+| CAP-C62-DART/off=0x5d2/flip_bit | CAP-C62-DART | ok | ok (decode changed, as required) |
+| CAP-C62-DART/off=0x5d2/zero | CAP-C62-DART | ok | ok (decode changed, as required) |
+| CAP-C62-DART/off=0x5d2/ff | CAP-C62-DART | ok | ok (decode changed, as required) |
+| CAP-C62-DART/off=0x491/flip_bit | CAP-C62-DART | ok | ok (decode changed, as required) |
+| CAP-C62-DART/off=0x491/zero | CAP-C62-DART | ok | ok (decode changed, as required) |
+| CAP-C62-DART/off=0x491/ff | CAP-C62-DART | ok | ok (decode changed, as required) |
 | CAP-C62-DART/off=0x160/flip_bit | CAP-C62-DART | ok | ok (decode changed, as required) |
 | CAP-C62-DART/off=0x160/zero | CAP-C62-DART | ok | ok (decode changed, as required) |
 | CAP-C62-DART/off=0x160/ff | CAP-C62-DART | ok | ok (decode changed, as required) |
-| CAP-C62-DART/off=0x30b/flip_bit | CAP-C62-DART | FAIL | SILENT: corrupted input decoded identically |
-| CAP-C62-DART/off=0x30b/zero | CAP-C62-DART | FAIL | SILENT: corrupted input decoded identically |
-| CAP-C62-DART/off=0x30b/ff | CAP-C62-DART | FAIL | SILENT: corrupted input decoded identically |
+| CAP-C62-DART/off=0x30b/flip_bit | CAP-C62-DART | ok | ok (decode changed, as required) |
+| CAP-C62-DART/off=0x30b/zero | CAP-C62-DART | ok | ok (decode changed, as required) |
+| CAP-C62-DART/off=0x30b/ff | CAP-C62-DART | ok | ok (decode changed, as required) |
 | CAP-C62-DART/off=0x17f/flip_bit | CAP-C62-DART | ok | ok (decode changed, as required) |
 | CAP-C62-DART/off=0x17f/zero | CAP-C62-DART | ok | ok (decode changed, as required) |
 | CAP-C62-DART/off=0x17f/ff | CAP-C62-DART | ok | ok (decode changed, as required) |
-| CAP-C62-DART/off=0x393/flip_bit | CAP-C62-DART | FAIL | SILENT: corrupted input decoded identically |
-| CAP-C62-DART/off=0x393/zero | CAP-C62-DART | FAIL | SILENT: corrupted input decoded identically |
-| CAP-C62-DART/off=0x393/ff | CAP-C62-DART | FAIL | SILENT: corrupted input decoded identically |
-| CAP-C62-DART/off=0x31e/flip_bit | CAP-C62-DART | FAIL | SILENT: corrupted input decoded identically |
-| CAP-C62-DART/off=0x31e/zero | CAP-C62-DART | FAIL | SILENT: corrupted input decoded identically |
-| CAP-C62-DART/off=0x31e/ff | CAP-C62-DART | FAIL | SILENT: corrupted input decoded identically |
-| CAP-C62-DART/off=0x2d3/flip_bit | CAP-C62-DART | FAIL | SILENT: corrupted input decoded identically |
-| CAP-C62-DART/off=0x2d3/zero | CAP-C62-DART | FAIL | SILENT: corrupted input decoded identically |
-| CAP-C62-DART/off=0x2d3/ff | CAP-C62-DART | FAIL | SILENT: corrupted input decoded identically |
+| CAP-C62-DART/off=0x431/flip_bit | CAP-C62-DART | ok | ok (decode changed, as required) |
+| CAP-C62-DART/off=0x431/zero | CAP-C62-DART | ok | ok (decode changed, as required) |
+| CAP-C62-DART/off=0x431/ff | CAP-C62-DART | ok | ok (decode changed, as required) |
+| CAP-C62-DART/off=0x31f/flip_bit | CAP-C62-DART | ok | ok (decode changed, as required) |
+| CAP-C62-DART/off=0x31f/zero | CAP-C62-DART | ok | ok (decode changed, as required) |
+| CAP-C62-DART/off=0x31f/ff | CAP-C62-DART | ok | ok (decode changed, as required) |
+| CAP-C62-DART/off=0x2d3/flip_bit | CAP-C62-DART | ok | ok (decode changed, as required) |
+| CAP-C62-DART/off=0x2d3/zero | CAP-C62-DART | ok | ok (decode changed, as required) |
+| CAP-C62-DART/off=0x2d3/ff | CAP-C62-DART | ok | ok (decode changed, as required) |
 | CAP-C62-DART/off=0x173/flip_bit | CAP-C62-DART | ok | ok (decode changed, as required) |
 | CAP-C62-DART/off=0x173/zero | CAP-C62-DART | ok | ok (decode changed, as required) |
 | CAP-C62-DART/off=0x173/ff | CAP-C62-DART | ok | ok (decode changed, as required) |
-| CAP-C62-DART/off=0x357/flip_bit | CAP-C62-DART | FAIL | SILENT: corrupted input decoded identically |
-| CAP-C62-DART/off=0x357/zero | CAP-C62-DART | FAIL | SILENT: corrupted input decoded identically |
-| CAP-C62-DART/off=0x357/ff | CAP-C62-DART | FAIL | SILENT: corrupted input decoded identically |
-| CAP-C62-DART/off=0x329/flip_bit | CAP-C62-DART | FAIL | SILENT: corrupted input decoded identically |
-| CAP-C62-DART/off=0x329/zero | CAP-C62-DART | FAIL | SILENT: corrupted input decoded identically |
-| CAP-C62-DART/off=0x329/ff | CAP-C62-DART | FAIL | SILENT: corrupted input decoded identically |
-| CAP-C62-DART/off=0x4df/flip_bit | CAP-C62-DART | ok | ok (decode changed, as required) |
-| CAP-C62-DART/off=0x4df/zero | CAP-C62-DART | ok | ok (decode changed, as required) |
-| CAP-C62-DART/off=0x4df/ff | CAP-C62-DART | ok | ok (decode changed, as required) |
-| CAP-C62-DART/off=0x371/flip_bit | CAP-C62-DART | FAIL | SILENT: corrupted input decoded identically |
-| CAP-C62-DART/off=0x371/zero | CAP-C62-DART | FAIL | SILENT: corrupted input decoded identically |
-| CAP-C62-DART/off=0x371/ff | CAP-C62-DART | FAIL | SILENT: corrupted input decoded identically |
-| CAP-C62-DART/off=0x1b6/flip_bit | CAP-C62-DART | FAIL | SILENT: corrupted input decoded identically |
-| CAP-C62-DART/off=0x1b6/zero | CAP-C62-DART | FAIL | SILENT: corrupted input decoded identically |
-| CAP-C62-DART/off=0x1b6/ff | CAP-C62-DART | FAIL | SILENT: corrupted input decoded identically |
-| CAP-C62-DART/off=0x2f1/flip_bit | CAP-C62-DART | FAIL | SILENT: corrupted input decoded identically |
-| CAP-C62-DART/off=0x2f1/zero | CAP-C62-DART | FAIL | SILENT: corrupted input decoded identically |
-| CAP-C62-DART/off=0x2f1/ff | CAP-C62-DART | FAIL | SILENT: corrupted input decoded identically |
+| CAP-C62-DART/off=0x366/flip_bit | CAP-C62-DART | ok | ok (decode changed, as required) |
+| CAP-C62-DART/off=0x366/zero | CAP-C62-DART | ok | ok (decode changed, as required) |
+| CAP-C62-DART/off=0x366/ff | CAP-C62-DART | ok | ok (decode changed, as required) |
+| CAP-C62-DART/off=0x344/flip_bit | CAP-C62-DART | ok | ok (decode changed, as required) |
+| CAP-C62-DART/off=0x344/zero | CAP-C62-DART | ok | ok (decode changed, as required) |
+| CAP-C62-DART/off=0x344/ff | CAP-C62-DART | ok | ok (decode changed, as required) |
+| CAP-C62-DART/off=0x30f/flip_bit | CAP-C62-DART | ok | ok (decode changed, as required) |
+| CAP-C62-DART/off=0x30f/zero | CAP-C62-DART | ok | ok (decode changed, as required) |
+| CAP-C62-DART/off=0x30f/ff | CAP-C62-DART | ok | ok (decode changed, as required) |
+| CAP-C62-DART/off=0x353/flip_bit | CAP-C62-DART | ok | ok (decode changed, as required) |
+| CAP-C62-DART/off=0x353/zero | CAP-C62-DART | ok | ok (decode changed, as required) |
+| CAP-C62-DART/off=0x353/ff | CAP-C62-DART | ok | ok (decode changed, as required) |
+| CAP-C62-DART/off=0x2cf/flip_bit | CAP-C62-DART | ok | ok (decode changed, as required) |
+| CAP-C62-DART/off=0x2cf/zero | CAP-C62-DART | ok | ok (decode changed, as required) |
+| CAP-C62-DART/off=0x2cf/ff | CAP-C62-DART | ok | ok (decode changed, as required) |
+| CAP-C62-DART/off=0x16f/flip_bit | CAP-C62-DART | ok | ok (decode changed, as required) |
+| CAP-C62-DART/off=0x16f/zero | CAP-C62-DART | ok | ok (decode changed, as required) |
+| CAP-C62-DART/off=0x16f/ff | CAP-C62-DART | ok | ok (decode changed, as required) |
 | CLAUDE-GRADE-MARKER/off=0x72d/flip_bit | CLAUDE-GRADE-MARKER | ok | ok (decode changed, as required) |
 | CLAUDE-GRADE-MARKER/off=0x72d/zero | CLAUDE-GRADE-MARKER | ok | ok (decode changed, as required) |
 | CLAUDE-GRADE-MARKER/off=0x72d/ff | CLAUDE-GRADE-MARKER | ok | ok (decode changed, as required) |
@@ -326,63 +326,20 @@ decoder_version: accumark_pds=2.0 accumark_marker=2.0
 | 2303-BD137-PLACED/off=0x19141/zero | 2303-BD137-PLACED | ok | ok (decode changed, as required) |
 | 2303-BD137-PLACED/off=0x19141/ff | 2303-BD137-PLACED | ok | ok (decode changed, as required) |
 
-## Unsupported (54)
+## Unsupported (9)
 
-- **CAP-C00-BASE/off=0x288/flip_bit** (Oracle C, seed CAP-C00-BASE): SILENT: corrupted input decoded identically
-- **CAP-C00-BASE/off=0x288/zero** (Oracle C, seed CAP-C00-BASE): SILENT: corrupted input decoded identically
-- **CAP-C00-BASE/off=0x288/ff** (Oracle C, seed CAP-C00-BASE): SILENT: corrupted input decoded identically
-- **CAP-C00-BASE/off=0x297/flip_bit** (Oracle C, seed CAP-C00-BASE): SILENT: corrupted input decoded identically
-- **CAP-C00-BASE/off=0x297/zero** (Oracle C, seed CAP-C00-BASE): SILENT: corrupted input decoded identically
-- **CAP-C00-BASE/off=0x297/ff** (Oracle C, seed CAP-C00-BASE): SILENT: corrupted input decoded identically
 - **CAP-C00-BASE/off=0x4c8/flip_bit** (Oracle C, seed CAP-C00-BASE): SILENT: corrupted input decoded identically
 - **CAP-C00-BASE/off=0x4c8/zero** (Oracle C, seed CAP-C00-BASE): SILENT: corrupted input decoded identically
 - **CAP-C00-BASE/off=0x4c8/ff** (Oracle C, seed CAP-C00-BASE): SILENT: corrupted input decoded identically
-- **CAP-C00-BASE/off=0x2ba/flip_bit** (Oracle C, seed CAP-C00-BASE): SILENT: corrupted input decoded identically
-- **CAP-C00-BASE/off=0x2ba/zero** (Oracle C, seed CAP-C00-BASE): SILENT: corrupted input decoded identically
-- **CAP-C00-BASE/off=0x2ba/ff** (Oracle C, seed CAP-C00-BASE): SILENT: corrupted input decoded identically
-- **CAP-C00-BASE/off=0x2e7/flip_bit** (Oracle C, seed CAP-C00-BASE): SILENT: corrupted input decoded identically
-- **CAP-C00-BASE/off=0x2e7/zero** (Oracle C, seed CAP-C00-BASE): SILENT: corrupted input decoded identically
-- **CAP-C00-BASE/off=0x2e7/ff** (Oracle C, seed CAP-C00-BASE): SILENT: corrupted input decoded identically
 - **CAP-C00-BASE/off=0x4b6/flip_bit** (Oracle C, seed CAP-C00-BASE): SILENT: corrupted input decoded identically
 - **CAP-C00-BASE/off=0x4b6/zero** (Oracle C, seed CAP-C00-BASE): SILENT: corrupted input decoded identically
 - **CAP-C00-BASE/off=0x4b6/ff** (Oracle C, seed CAP-C00-BASE): SILENT: corrupted input decoded identically
 - **CAP-C00-BASE/off=0x4b2/flip_bit** (Oracle C, seed CAP-C00-BASE): SILENT: corrupted input decoded identically
 - **CAP-C00-BASE/off=0x4b2/zero** (Oracle C, seed CAP-C00-BASE): SILENT: corrupted input decoded identically
 - **CAP-C00-BASE/off=0x4b2/ff** (Oracle C, seed CAP-C00-BASE): SILENT: corrupted input decoded identically
-- **CAP-C00-BASE/off=0x2eb/flip_bit** (Oracle C, seed CAP-C00-BASE): SILENT: corrupted input decoded identically
-- **CAP-C00-BASE/off=0x2eb/zero** (Oracle C, seed CAP-C00-BASE): SILENT: corrupted input decoded identically
-- **CAP-C00-BASE/off=0x2eb/ff** (Oracle C, seed CAP-C00-BASE): SILENT: corrupted input decoded identically
-- **CAP-C00-BASE/off=0x266/flip_bit** (Oracle C, seed CAP-C00-BASE): SILENT: corrupted input decoded identically
-- **CAP-C00-BASE/off=0x266/zero** (Oracle C, seed CAP-C00-BASE): SILENT: corrupted input decoded identically
-- **CAP-C00-BASE/off=0x266/ff** (Oracle C, seed CAP-C00-BASE): SILENT: corrupted input decoded identically
-- **CAP-C62-DART/off=0x30b/flip_bit** (Oracle C, seed CAP-C62-DART): SILENT: corrupted input decoded identically
-- **CAP-C62-DART/off=0x30b/zero** (Oracle C, seed CAP-C62-DART): SILENT: corrupted input decoded identically
-- **CAP-C62-DART/off=0x30b/ff** (Oracle C, seed CAP-C62-DART): SILENT: corrupted input decoded identically
-- **CAP-C62-DART/off=0x393/flip_bit** (Oracle C, seed CAP-C62-DART): SILENT: corrupted input decoded identically
-- **CAP-C62-DART/off=0x393/zero** (Oracle C, seed CAP-C62-DART): SILENT: corrupted input decoded identically
-- **CAP-C62-DART/off=0x393/ff** (Oracle C, seed CAP-C62-DART): SILENT: corrupted input decoded identically
-- **CAP-C62-DART/off=0x31e/flip_bit** (Oracle C, seed CAP-C62-DART): SILENT: corrupted input decoded identically
-- **CAP-C62-DART/off=0x31e/zero** (Oracle C, seed CAP-C62-DART): SILENT: corrupted input decoded identically
-- **CAP-C62-DART/off=0x31e/ff** (Oracle C, seed CAP-C62-DART): SILENT: corrupted input decoded identically
-- **CAP-C62-DART/off=0x2d3/flip_bit** (Oracle C, seed CAP-C62-DART): SILENT: corrupted input decoded identically
-- **CAP-C62-DART/off=0x2d3/zero** (Oracle C, seed CAP-C62-DART): SILENT: corrupted input decoded identically
-- **CAP-C62-DART/off=0x2d3/ff** (Oracle C, seed CAP-C62-DART): SILENT: corrupted input decoded identically
-- **CAP-C62-DART/off=0x357/flip_bit** (Oracle C, seed CAP-C62-DART): SILENT: corrupted input decoded identically
-- **CAP-C62-DART/off=0x357/zero** (Oracle C, seed CAP-C62-DART): SILENT: corrupted input decoded identically
-- **CAP-C62-DART/off=0x357/ff** (Oracle C, seed CAP-C62-DART): SILENT: corrupted input decoded identically
-- **CAP-C62-DART/off=0x329/flip_bit** (Oracle C, seed CAP-C62-DART): SILENT: corrupted input decoded identically
-- **CAP-C62-DART/off=0x329/zero** (Oracle C, seed CAP-C62-DART): SILENT: corrupted input decoded identically
-- **CAP-C62-DART/off=0x329/ff** (Oracle C, seed CAP-C62-DART): SILENT: corrupted input decoded identically
-- **CAP-C62-DART/off=0x371/flip_bit** (Oracle C, seed CAP-C62-DART): SILENT: corrupted input decoded identically
-- **CAP-C62-DART/off=0x371/zero** (Oracle C, seed CAP-C62-DART): SILENT: corrupted input decoded identically
-- **CAP-C62-DART/off=0x371/ff** (Oracle C, seed CAP-C62-DART): SILENT: corrupted input decoded identically
-- **CAP-C62-DART/off=0x1b6/flip_bit** (Oracle C, seed CAP-C62-DART): SILENT: corrupted input decoded identically
-- **CAP-C62-DART/off=0x1b6/zero** (Oracle C, seed CAP-C62-DART): SILENT: corrupted input decoded identically
-- **CAP-C62-DART/off=0x1b6/ff** (Oracle C, seed CAP-C62-DART): SILENT: corrupted input decoded identically
-- **CAP-C62-DART/off=0x2f1/flip_bit** (Oracle C, seed CAP-C62-DART): SILENT: corrupted input decoded identically
-- **CAP-C62-DART/off=0x2f1/zero** (Oracle C, seed CAP-C62-DART): SILENT: corrupted input decoded identically
-- **CAP-C62-DART/off=0x2f1/ff** (Oracle C, seed CAP-C62-DART): SILENT: corrupted input decoded identically
 
 ## Recommendations
 
-- **Region-C snapshot / line-table shadow copies are parsed but not cross-validated.** 54 Oracle-C cases across CAP-C00-BASE, CAP-C62-DART corrupt a byte accumark_pds.decode_piece_block itself identifies as a coordinate (via dataset/templates.coord_offsets - never a guessed offset), yet neither `block['perimeter']` nor verify_capture's own `line_table_consistent` check changes. Each perimeter point is stored 5-7 times (the point table, two Region-C snapshots, and the line table); this finding is specifically about the snapshot/shadow copies, not the authoritative point-table copy (which Oracle C DOES catch - see the `ok` rows above). Representative offsets: 0x1b6, 0x266, 0x288, 0x297, 0x2ba, 0x2d3. Two honest paths forward: (a) extend accumark_pds.check_line_table (or a new check) to cross-validate Region-C's snapshots against the perimeter the same way the line table already is, so corruption there becomes detectable; or (b) if Region-C's snapshots are confirmed genuinely decorative/redundant (AccuMark writes them but never reads them back), document that explicitly in FORMAT_SPEC.md so a future reader does not spend time trying to cross-validate inert data. Not chased further in this session - it is a real, specific, reproducible finding, not a decoder defect introduced by v2, and resolving which of (a)/(b) is true needs a live AccuMark capture, not more offline analysis.
+- **RESOLVED: Region-C snapshot cross-validation.** The earlier version of this report flagged snapshot1/snapshot2 (Region C's two perimeter re-listings) as parsed-but-not-cross-validated. Root cause turned out to be a real parser bug, not an unvalidated-but-correct redundant copy: `accumark_pds.parse_region_c` read snapshot2 (and, on notched/darted/annotated/curved pieces, part of snapshot1 too) from the wrong byte offset, so what was being reported as "snapshot data" was partly garbage from adjacent structures. Found by byte-searching for known-real coordinates around the reported offsets (not by guessing), fixed in `parse_region_c`/`parse_point_snapshot` (variable-width point records instead of a fixed 15-byte stride; a corrected offset for snapshot2's true start; the snapshot count is now `n_perimeter_a`, the same corners-minus-notches count `parse_pretable_header` already used for that other field). A new `accumark_pds.check_region_c` / `region_c_consistent` fact cross-validates both snapshots against the perimeter, wired into Oracle C's canon. Verified clean (`region_c_consistent=yes`, geometry matches) on every corpus fixture except the same three seam-allowanced pieces `check_line_table` already documents as a known, separate gap (CAP-C30-SEAM-UNEVEN, CAP-C31-SEAM-TAPER, TASK2-SEAM1CM - their uneven/tapered seam corners aren't plain per-corner offsets on either check).
+
+- **New, narrower finding: some line-table "kind 2" points tolerate corruption within check_line_table's own leniency band.** 9 Oracle-C cases (not Region C - these are line-table points, via `dataset/templates.coord_offsets`) across CAP-C00-BASE: representative offsets 0x4b2, 0x4b6, 0x4c8. These are `kind=2` table-point records with `a=65535` (unnumbered) that `check_line_table` already accepts through its documented seam/miter-offset tolerance (`_is_seam_offset`, +-`SEAM_OFFSET_MAX`=2in) rather than exact coincidence with a real corner. That tolerance is deliberately generous (a real mitered seam corner can legitimately sit up to 2in from the nearest stored corner), so a small byte-level corruption inside it does not necessarily push the point outside the accepted band, and the consistency check correctly keeps passing. Not a parser bug like the Region-C one above, and not chased further this session - narrowing the tolerance would need real seam-offset samples to calibrate against, not a guess.

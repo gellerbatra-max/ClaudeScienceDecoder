@@ -771,20 +771,45 @@ constants) is a raw invariant in every one of the corpus's ~50 blocks —
 confirmed constant, but its *role* (as opposed to its value) is still
 unknown **[?]**.
 
-**Region C — two full perimeter re-listings**, each `n` consecutive 15-byte
-`parse_point`-format "turn" records (`f1 = 1, f2 = 1, attr = 9` regardless
-of a point's real kind — notches and curve points are flattened to plain
-turn points here, so Region C is a geometry-only copy, not authoritative for
-point kind). The first copy starts at the point *after* point 1 (rotated by
-one); the second starts at point 1, in the same cyclic order. The two copies
-are separated by a marker region: zero-padded u32s, a nonzero **marker
-value 10000**, more zero padding, a second marker (also 10000) — the padding
-can precede the *first* marker too, not only sit between the two
-(`CAP-C00-BASE`: `marker1 = 0` at the position right after snapshot1, with
-the real 10000 further on). Two snapshots of the same geometry bracketed by
-a repeated 100.00%-shaped constant is consistent with these being PDS's
-*Bookmark → Restore Original / Restore Defined* geometry cache, but that is
-unconfirmed pending `CAP-C80-BOOKMARK` (Phase C of the decode plan) **[?]**.
+**Region C — two full perimeter re-listings**, each **the same `n` as
+Region B above** (i.e. `n_perimeter_a` — corners minus notches/dart-apex,
+*not* `len(perimeter)`) consecutive `parse_point`-format "turn" records
+(`f1 = 1, f2 = 1, attr = 9` regardless of a point's real kind — notches and
+curve points are flattened to plain turn points here, so Region C is a
+geometry-only copy, not authoritative for point kind). **[V, corrected
+2026-09-11]** these records are **variable width**, not a fixed 15 bytes —
+whenever a point's own re-encoded size differs from the common
+14-base+1-trailer-byte case, a fixed stride silently misaligns the rest of
+the snapshot (`CAP-C62-DART`); read each point's own computed size and
+advance by that, the same technique `parse_point_run` already uses for the
+primary point table. Using `len(perimeter)` for `n` instead of
+`n_perimeter_a` has the same failure mode on any notched/darted/annotated/
+curved piece: the reader runs past the snapshot's real end and starts
+reading the next region's own bytes as a bogus extra point.
+
+The first copy starts at the point *after* point 1 (rotated by one); the
+second starts at point 1, in the same cyclic order. The two copies are
+separated by: zero-padded u32s, a nonzero **marker value 10000**, more zero
+padding, a second marker (also 10000) — the padding can precede the *first*
+marker too, not only sit between the two (`CAP-C00-BASE`: `marker1 = 0` at
+the position right after snapshot1, with the real 10000 further on) — **and
+then a third, narrower tag** (`marker3`: a single **u16**, not a u32 like
+the other two; value **1** on every sample checked so far) immediately
+before snapshot2's first point **[V, corrected 2026-09-11]**. This third
+tag was the actual root cause of the original snapshot2-is-garbage finding:
+it is only 2 bytes, so a reader that (like this module, before the fix)
+treats the gap after `marker2` as one more 4-byte value consumes half of
+snapshot2's own first point's id/x field along with it, misaligning every
+point in the snapshot by those same few bytes. `accumark_pds.
+check_region_c()` cross-validates both snapshots against the real perimeter
+(the `region_c_consistent` fact in `verify_capture.py`) and passes on every
+corpus fixture except the same three seam-allowanced pieces §11's own
+`check_line_table` discussion below already flags as a known gap. Two
+snapshots of the same geometry bracketed by a repeated 100.00%-shaped
+constant is consistent with these being PDS's *Bookmark → Restore Original
+/ Restore Defined* geometry cache, but that is unconfirmed pending
+`CAP-C80-BOOKMARK` (Phase C of the decode plan); `marker3`'s role is
+similarly unconfirmed **[?]**.
 
 Immediately after snapshot2, on a piece with more than one piece record
 (`piece_records > 1`, i.e. it has been edited at least once, §8) an

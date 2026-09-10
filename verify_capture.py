@@ -36,6 +36,11 @@ exits non-zero if any fails, so it can gate a capture loop.
                        with independently-decoded geometry (accumark_pds.
                        check_line_table); 'no' on a block whose geometry
                        isn't fully explained yet (see FORMAT_SPEC.md [?]s)
+  region_c_consistent  yes|no - every point in Region C's two perimeter
+                       snapshots coincides with independently-decoded
+                       geometry (accumark_pds.check_region_c); 'no' on the
+                       same seam-allowanced blocks line_table_consistent
+                       already flags, not a separate gap
   unknown_bytes        byte count accumark_pds.coverage() could not assign
                        to any known field (excludes zero padding and the
                        3-byte export-noise floor) - 0 is the sign-off target
@@ -208,6 +213,7 @@ def facts(cap):
     tails = [b['tail'] for b in s['blocks']]
     line_records = ';'.join(str(len(t['line_records'])) if t and 'error' not in t else 'ERR' for t in tails)
     consistent = all(ap.check_line_table(b) for b in s['blocks'])
+    region_c_consistent = all(ap.check_region_c(b) for b in s['blocks'])
     t0 = tails[0]
     if t0 and 'error' not in t0:
         recs0 = t0['line_records']
@@ -246,6 +252,7 @@ def facts(cap):
         line_records=line_records, line_points=line_points, line_kinds=line_kinds,
         notch_blocks=notch_blocks, graded_tags=graded_tags,
         line_table_consistent='yes' if consistent else 'no',
+        region_c_consistent='yes' if region_c_consistent else 'no',
         unknown_bytes=cov['counts'].get('unknown', 0), coverage_pct=cov['coverage_pct'],
     )
     if cap['rul']:
@@ -274,7 +281,7 @@ def main(argv=None):
               'cutline_records','object_record_ids','n_break_rows','grade_rules',
               'rul_table','rul_n_rules','rul_sizes',
               'line_records','line_points','line_kinds','notch_blocks','graded_tags',
-              'line_table_consistent','unknown_bytes','coverage_pct'):
+              'line_table_consistent','region_c_consistent','unknown_bytes','coverage_pct'):
         if k in f and f[k] not in (None, ''): print(f'   {k:18} {f[k]}')
     worst, msg = dxf_check(cap)
     print(f'   dxf                {msg}')

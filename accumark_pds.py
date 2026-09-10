@@ -330,38 +330,70 @@ def parse_pretable_header(d, o):
 
 def parse_point_snapshot(d, o, n):
     """One of Region C's two full perimeter re-listings: n consecutive
-    15-byte parse_point-format records (always the plain 'turn' shape,
-    f1=1/f2=1/attr=9, regardless of the point's real kind in the perimeter -
-    this is a flattened geometry copy, not the authoritative point list).
-    The first copy starts at the point after point 1 (rotated); the second
-    starts at point 1 - both are the same cyclic order (CAP-C10-PENT [V])."""
+    parse_point-format records (a flattened geometry copy, not the
+    authoritative point list). [V, corrected] earlier read these with a
+    fixed 15-byte stride, which happens to be right whenever every point in
+    the snapshot carries exactly one f2 trailer byte (the common case), but
+    silently misaligned the whole rest of the snapshot on any piece where
+    one point's re-encoded size differs (confirmed on CAP-C62-DART: byte-
+    search for the piece's own known-real coordinates showed 2 of 7
+    snapshot1 points mismatching downstream of the first size-21 record).
+    Advances by each point's own computed `size`, the same self-describing-
+    record technique parse_point_run already uses for the primary point
+    table - not a fixed stride."""
     pts, p = [], o
     for _ in range(n):
-        pts.append(parse_point(d, p)); p += 15
+        r = parse_point(d, p); pts.append(r); p = r['offset'] + r['size']
     return pts, p
 
 def parse_region_c(d, o, n_perimeter, category_name):
-    """Region C: snapshot1, a SNAPSHOT_MARKER pair around a zero gap,
-    snapshot2, then - immediately before the line table - a **second,
-    undelimited copy of the piece's own category name** (CAP-C10-PENT [V]:
-    the 12-byte string 'CAP-C10-PENT' sits right at the line table's
-    doorstep, with no length prefix or terminator, found by searching for
-    the already-known category string rather than guessing a fixed gap
-    size). The zero-padded bytes between snapshot2 and that name echo are
-    captured raw as `unclassified_gap` rather than force-fit - not yet
-    understood; see FORMAT_SPEC.md."""
+    """Region C: snapshot1, a SNAPSHOT_MARKER pair around a zero gap, a
+    third tag - **a single u16, value 1 on every sample checked so far
+    (CAP-C00-BASE, CAP-C10-PENT [V]; not the same width as marker1/marker2,
+    role unknown - kept and reported as `marker3` rather than silently
+    skipped)** - then snapshot2, then - immediately before the line table -
+    a **second, undelimited copy of the piece's own category name**
+    (CAP-C10-PENT [V]: the 12-byte string 'CAP-C10-PENT' sits right at the
+    line table's doorstep, with no length prefix or terminator, found by
+    searching for the already-known category string rather than guessing a
+    fixed gap size). The zero-padded bytes between snapshot2 and that name
+    echo are captured raw as `unclassified_gap` rather than force-fit - not
+    yet understood; see FORMAT_SPEC.md.
+
+    [V, corrected] snapshot2 was previously read starting immediately after
+    marker2, which produced a snapshot2 whose points did not match ANY real
+    geometry on every corpus fixture (found via robustness/run.py's Oracle
+    C: corrupting a byte inside what was labelled 'snapshot2' never changed
+    the decode, because it was garbage that no downstream code depended on
+    in the first place - not, as first assumed, an unvalidated-but-correct
+    redundant copy). Byte-searching for CAP-C00-BASE's and CAP-C10-PENT's
+    own known-real coordinates located the two snapshots precisely: what
+    first looked like one more nonzero u32 (0x00010001) between marker2 and
+    snapshot2 is actually a 2-byte tag (u16, value 1) immediately followed
+    by snapshot2's first point - the old code's 4-byte read consumed half of
+    that first point's own id/x field along with the tag, misaligning every
+    point after it. A defensive fallback is kept for a fixture where this
+    2-byte read does NOT land on a plausible point (coordinates outside
+    COORD_LO/COORD_HI): fall back to the old marker2-style nonzero-u32 scan
+    rather than emit a snapshot2 the caller can't tell is wrong."""
     snap1, p = parse_point_snapshot(d, o, n_perimeter)
     def _next_nonzero_u32(p):
         while p+4 <= len(d) and u32(d, p) == 0: p += 4
         return u32(d, p), p+4
     marker1, p = _next_nonzero_u32(p)      # zero-padding before marker1 varies (CAP-C00-BASE [V])
     marker2, p = _next_nonzero_u32(p)
+    marker3, p2 = u16(d, p), p+2           # [V] u16, value 1 on every sample checked; role unknown
+    if p2+6 <= len(d) and COORD_LO < i32(d, p2+2) < COORD_HI and COORD_LO < i32(d, p2+6) < COORD_HI:
+        p = p2
+    else:
+        marker3, p = _next_nonzero_u32(p)  # fallback: the old (pre-fix) reading
     snap2, p = parse_point_snapshot(d, p, n_perimeter)
     name_bytes = category_name.encode('latin1')
     name_at = d.find(name_bytes, p, p+400)
     unclassified_gap = d[p:name_at] if name_at != -1 else d[p:p]
     end = name_at + len(name_bytes) if name_at != -1 else p
     return dict(snapshot1=snap1, marker1=marker1, snapshot2=snap2, marker2=marker2,
+                marker3=marker3,
                 unclassified_gap_offset=p, unclassified_gap=unclassified_gap,
                 name_echo_offset=name_at, end=end), end
 
@@ -456,8 +488,21 @@ def decode_piece_block(d, field_off=None):
     try:
         pretable_off, table_start = _locate_tail(d, o)
         pretable = parse_pretable_header(d, pretable_off)
+        # [V, corrected] Region C's two snapshots hold n_perimeter_a points,
+        # not len(perim) - the same "corners minus notches/dart-apex" count
+        # parse_pretable_header's own docstring already established for a
+        # different field. Using len(perim) (the full stored perimeter,
+        # notches included) made the snapshot reader walk past its real end
+        # on every notched/darted/annotated/curved fixture and start reading
+        # marker1's own bytes as if they were one more point - found by
+        # cross-validating snapshot1/2 against the real perimeter (robustness/
+        # run.py's Oracle C). Clamped defensively: an implausible field
+        # (0, or larger than the full perimeter) falls back to len(perim)
+        # rather than trust a corrupt/unusual value blindly.
+        n_snap = pretable['n_perimeter_a']
+        if not (0 < n_snap <= len(perim)): n_snap = len(perim)
         region_c, region_c_end = parse_region_c(
-            d, pretable_off+PRETABLE_HEADER_SIZE, len(perim), m['name'])
+            d, pretable_off+PRETABLE_HEADER_SIZE, n_snap, m['name'])
         line_records, tail_end = parse_line_table(d, table_start)
         tail = dict(pretable=pretable, region_c=region_c, table_start=table_start,
                     line_records=line_records, tail_end=tail_end)
@@ -534,8 +579,13 @@ def _block_ranges(d, m, objs, pstart, block_end, tail):
         pt = tail['pretable']; rc = tail['region_c']
         r.append((pt['offset']-3, pt['offset']))            # the last 'Lnn' label text itself
         r.append((pt['offset'], pt['offset']+PRETABLE_HEADER_SIZE))
-        r.append((rc['snapshot1'][0]['offset'], rc['snapshot1'][-1]['offset']+15))
-        r.append((rc['snapshot2'][0]['offset'], rc['snapshot2'][-1]['offset']+15))
+        # [V, corrected] snapshot points are variable width (parse_point_snapshot
+        # now advances by each point's own .size, not a fixed 15 - a hardcoded
+        # +15 here under-covers coverage() by however many bytes the last point's
+        # real size exceeds 15, whenever that point isn't a single-trailer-byte
+        # 'plain turn' record).
+        r.append((rc['snapshot1'][0]['offset'], rc['snapshot1'][-1]['offset']+rc['snapshot1'][-1]['size']))
+        r.append((rc['snapshot2'][0]['offset'], rc['snapshot2'][-1]['offset']+rc['snapshot2'][-1]['size']))
         if rc['name_echo_offset'] != -1:
             r.append((rc['name_echo_offset'], rc['end']))
         for rec in tail['line_records']:
@@ -670,6 +720,37 @@ def check_line_table(b):
             pt = (tp['x'], tp['y'])
             if pt not in real and not (rec['kind'] == 2 and _is_seam_offset(pt)):
                 return False
+    return True
+
+def check_region_c(b):
+    """Structural consistency check for Region C's two perimeter snapshots -
+    the same point-coincidence invariant check_line_table already applies to
+    the line table, applied here to snapshot1/snapshot2. Added v2 (see
+    CHANGELOG.md) alongside the parse_region_c fix it validates: before that
+    fix, this check would have failed on every corpus fixture, because
+    snapshot2 (and, on notched/darted/annotated/curved pieces, part of
+    snapshot1 too) was being read from the wrong offset - not because the
+    underlying data was actually unvalidated. Returns True/False; False on a
+    fixture with no region_c at all (rather than "not applicable"), the same
+    convention check_line_table uses for a missing line table.
+
+    [?] Still returns False on the same three seam-allowanced fixtures
+    check_line_table's own docstring already documents as a known gap
+    (CAP-C30-SEAM-UNEVEN, CAP-C31-SEAM-TAPER, TASK2-SEAM1CM) - their uneven/
+    tapered seam corners aren't plain per-corner offsets on either check, so
+    this isn't a new, separate mystery, just the same open one showing up
+    in a second place."""
+    tail = b.get('tail')
+    if not tail or 'error' in tail or not tail.get('region_c'): return False
+    rc = tail['region_c']
+    real = {(p['x'], p['y']) for p in b['perimeter']}
+    if b.get('closing'): real.add((b['closing']['x'], b['closing']['y']))
+    for seg in b['internal_lines']:
+        for p in seg: real.add((p['x'], p['y']))
+    for snap in (rc['snapshot1'], rc['snapshot2']):
+        if not snap: return False
+        for p in snap:
+            if (p['x'], p['y']) not in real: return False
     return True
 
 def _select_piece_member(path, member=None):

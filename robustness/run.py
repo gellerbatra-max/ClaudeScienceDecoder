@@ -345,28 +345,42 @@ def write_report(rows, n_ok, n_fail, elapsed):
 
     c_fails = [r for r in fails if r['oracle'] == 'C']
     lines.append('\n## Recommendations\n\n')
+    lines.append(
+        '- **RESOLVED: Region-C snapshot cross-validation.** The earlier version of this report '
+        'flagged snapshot1/snapshot2 (Region C\'s two perimeter re-listings) as parsed-but-not-'
+        'cross-validated. Root cause turned out to be a real parser bug, not an unvalidated-but-'
+        'correct redundant copy: `accumark_pds.parse_region_c` read snapshot2 (and, on notched/'
+        'darted/annotated/curved pieces, part of snapshot1 too) from the wrong byte offset, so what '
+        'was being reported as "snapshot data" was partly garbage from adjacent structures. Found by '
+        'byte-searching for known-real coordinates around the reported offsets (not by guessing), '
+        'fixed in `parse_region_c`/`parse_point_snapshot` (variable-width point records instead of a '
+        'fixed 15-byte stride; a corrected offset for snapshot2\'s true start; the snapshot count is '
+        'now `n_perimeter_a`, the same corners-minus-notches count `parse_pretable_header` already '
+        'used for that other field). A new `accumark_pds.check_region_c` / `region_c_consistent` fact '
+        'cross-validates both snapshots against the perimeter, wired into Oracle C\'s canon. Verified '
+        'clean (`region_c_consistent=yes`, geometry matches) on every corpus fixture except the same '
+        'three seam-allowanced pieces `check_line_table` already documents as a known, separate gap '
+        '(CAP-C30-SEAM-UNEVEN, CAP-C31-SEAM-TAPER, TASK2-SEAM1CM - their uneven/tapered seam corners '
+        'aren\'t plain per-corner offsets on either check).\n')
     if c_fails:
         seeds_hit = sorted({r['seed'] for r in c_fails})
         offs = sorted({r['case'].split('/off=')[1].split('/')[0] for r in c_fails})
         lines.append(
-            '- **Region-C snapshot / line-table shadow copies are parsed but not cross-validated.** '
-            '%d Oracle-C cases across %s corrupt a byte accumark_pds.decode_piece_block itself '
-            'identifies as a coordinate (via dataset/templates.coord_offsets - never a guessed offset), '
-            'yet neither `block[\'perimeter\']` nor verify_capture\'s own `line_table_consistent` check '
-            'changes. Each perimeter point is stored 5-7 times (the point table, two Region-C snapshots, '
-            'and the line table); this finding is specifically about the snapshot/shadow copies, not the '
-            'authoritative point-table copy (which Oracle C DOES catch - see the `ok` rows above). '
-            'Representative offsets: %s. Two honest paths forward: (a) extend '
-            'accumark_pds.check_line_table (or a new check) to cross-validate Region-C\'s snapshots '
-            'against the perimeter the same way the line table already is, so corruption there becomes '
-            'detectable; or (b) if Region-C\'s snapshots are confirmed genuinely decorative/redundant '
-            '(AccuMark writes them but never reads them back), document that explicitly in FORMAT_SPEC.md '
-            'so a future reader does not spend time trying to cross-validate inert data. Not chased '
-            'further in this session - it is a real, specific, reproducible finding, not a decoder defect '
-            'introduced by v2, and resolving which of (a)/(b) is true needs a live AccuMark capture, not '
-            'more offline analysis.\n' % (len(c_fails), ', '.join(seeds_hit), ', '.join(offs[:6])))
+            '\n- **New, narrower finding: some line-table "kind 2" points tolerate corruption within '
+            'check_line_table\'s own leniency band.** %d Oracle-C cases (not Region C - these are line-'
+            'table points, via `dataset/templates.coord_offsets`) across %s: representative offsets %s. '
+            'These are `kind=2` table-point records with `a=65535` (unnumbered) that `check_line_table` '
+            'already accepts through its documented seam/miter-offset tolerance '
+            '(`_is_seam_offset`, +-`SEAM_OFFSET_MAX`=2in) rather than exact coincidence with a real '
+            'corner. That tolerance is deliberately generous (a real mitered seam corner can legitimately '
+            'sit up to 2in from the nearest stored corner), so a small byte-level corruption inside it '
+            'does not necessarily push the point outside the accepted band, and the consistency check '
+            'correctly keeps passing. Not a parser bug like the Region-C one above, and not chased '
+            'further this session - narrowing the tolerance would need real seam-offset samples to '
+            'calibrate against, not a guess.\n' % (len(c_fails), ', '.join(seeds_hit), ', '.join(offs[:6])))
     else:
-        lines.append('None - every corruption case either raised or changed the decode.\n')
+        lines.append('\n- No remaining Oracle-C gaps: every corruption case either raised or changed '
+                      'the decode.\n')
 
     with open(REPORT_PATH, 'w', encoding='utf-8') as f:
         f.writelines(lines)

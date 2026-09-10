@@ -1,5 +1,37 @@
 # Marker decode plan — AccuMark native marker export
 
+> ## STATUS 2026-09-10 (offline, next day) — id 2's record count in slot 39: reproducible and structural, but its actual referent still isn't pinned down
+>
+> Follow-up scan, entirely offline (`markers/`'s existing corpus, no live AccuMark
+> needed). `type10_tagged_fields()`'s id-2 records had never been looked at closely -
+> they repeat (0 to 6 times per marker) where every other id appears at most once.
+> Tried to identify what the repeat count tracks.
+>
+> **Ruled out, each checked directly against the full corpus:** total placements
+> (`AD1234 TEST 134` has 13 placements of 1 piece, id2 count 1 - not 13); declared/
+> placed piece names via the marker's own record table (`2303-BD 137`'s 12 vs `2303-
+> CP 150 CPL`'s 11, both id2 count 6 - equal despite unequal inputs); embedded piece
+> objects actually bundled in the export zip (18 vs 22 for that same pair, both still
+> 6; `LADIES-BLOUSE TEST-2` bundles 5 real piece objects - BK/COL/CUFF/FR/SL - against
+> id2 count 3); embedded model (type 12) object count (11 for both 2303 markers vs
+> id2's 6; `AD1234`'s 1 model matches its id2 count of 1, but `LADIES-BLOUSE`'s 1
+> model does not match its id2 count of 3); the model-list section's entry count
+> (8 vs 9 for the 2303 pair, neither is 6). No single already-decoded quantity
+> explains every case.
+>
+> **What does hold, and is worth keeping:** id2's count is exactly reproducible
+> across independent re-exports of the same cut (`2303-BD 137` unlaid vs `PLACED`,
+> and all 4 `2303-CP 150 CPL` orientation variants, are byte-identical in this
+> region) and identical between two different cuts of the *same* style/order
+> (`2303-BD 137`'s 6 vs `2303-CP 150 CPL`'s 6, despite differing piece/placement/
+> model counts) - consistent with the slot 39 = nesting-scratch-buffer hypothesis
+> from the layout test above: whatever id2 counts, it looks like a property fixed
+> once for the style/order rather than recomputed per export. This is now
+> genuinely still open rather than just unexamined - a real question with several
+> candidate answers eliminated, not a blind spot.
+>
+> `python selftest.py` → **SELFTEST PASS** (analysis only, no decoder code changed).
+>
 > ## STATUS 2026-09-10 (still later night, completed) — the FC/FW hypothesis for slot 39's remaining tagged fields: `Shortcut` succeeds where `Type` fails, but the result is another clean negative
 >
 > Follow-up to the layout test above, same session. With `TI`/`PA`/`FC`/
@@ -1239,9 +1271,16 @@ independent of fabric cost/weight**: a second controlled A/B test
 to `0.42` and `FW` to `0.73` via Easy Marking's Marker Info panel, `CB`/`MW`
 auto-deriving to `0.16`/`0.78`) found `type10_tagged_fields()` byte-for-byte
 identical between the two — none of ids 2/4/8/44-48/51/52 move when those
-four status-bar values change by a large, distinctive amount. The object's
-trailer is the same format as every other AccuMark object, plus one tiny
-extra field: a laid-state flag (`0x0000`/`0x0002`).
+four status-bar values change by a large, distinctive amount. **id 2's own
+record count (it repeats 0-6 times per marker where every other id appears
+at most once) is reproducible and structural** — identical across re-exports
+of the same cut and across different cuts of the same style/order — **but
+still doesn't match any already-decoded quantity**: not total placements,
+not declared/placed piece names, not embedded piece-object count, not
+embedded model-object count, not the model-list length (all checked
+directly against the corpus and ruled out). The object's trailer is the
+same format as every other AccuMark object, plus one tiny extra field: a
+laid-state flag (`0x0000`/`0x0002`).
 
 **Solved — the model's `0x41`/`0x44` byte.** It's the same field
 `parse_pieces_section` already decodes from section 10 as `flag` (`[V]`

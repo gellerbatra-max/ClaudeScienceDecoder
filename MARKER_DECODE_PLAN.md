@@ -1,5 +1,90 @@
 # Marker decode plan — AccuMark native marker export
 
+> ## STATUS 2026-09-10 (final, part 2) — M-MARKER's label codes closed: official PDF manuals shipped with the install decode the whole table
+>
+> New technique this pass, not used before in this project: the AccuMark V17
+> install directory (`C:\Program Files\Gerber Technology\AccuMark V17\AccuMark`)
+> ships its own offline PDF manuals (`MarkerMaking_Users_AE.pdf`,
+> `OrderEntry_Users_AE.pdf`, `MS2000 Marking.pdf`, `WhatsNew_ae.pdf`, and
+> others) - the online "Learn & Support" help inside AccuMark Explorer needs
+> internet access this machine doesn't have, but these local copies don't.
+> `OrderEntry_Users_AE.pdf`'s Annotation Form section (§"Annotation Type/Code/
+> Explanation") turned out to be the exact legend for the `M-MARKER`/`A`
+> object's numeric codes this plan has been chasing since the "M-MARKER/3MM/
+> lay-limit/notch table payloads" pass.
+>
+> **The `MARKER` sub-block is a flat list of marker-level annotation type
+> codes, confirmed byte-for-byte.** The manual documents the MicroMark-import
+> default for this exact sub-block as literally `MARKER MSQ,/,AP,/,WI,L,U,PS`
+> - and `2303-BD 137`'s own `M-MARKER` object stores precisely that 8-token
+> sequence as 8 one-byte codes, matching in order and value:
+>
+> | token | byte | decimal |
+> |---|---|---|
+> | MSQ (Model/Size/Quantity) | `0x14` | 20 |
+> | / (new line) | `0x0b` | 11 |
+> | AP (Add PC/Bundle) | `0x18` | 24 |
+> | / (new line) | `0x0b` | 11 |
+> | WI (Marker Width) | `0x17` | 23 |
+> | L (Length) | `0x15` | 21 |
+> | U (Utilization) | `0x16` | 22 |
+> | PS (Plaid/Stripe) | `0x1c` | 28 |
+>
+> The repeated `/` token reproducing the identical byte (`0x0b`) both times
+> it appears is the strongest internal check - a coincidence would need to
+> reproduce that agreement by chance. Bonus: L, U, WI, AP land on four
+> **consecutive** integers (21-24) in exactly the textual order the manual
+> lists them (Length, Utilization, Marker Width, Add PC/Bundle) - not
+> coincidental either.
+>
+> **The `DEFAULT`/`LABELD` sub-block's 3-byte triples are `[type code,
+> range start, range end]` - the manual's own `SZ1-6`/`BD1-3` notation,
+> literally.** `LADIES-BLOUSE TEST-2`'s annotation object is named
+> `SIZE-AND-BUNDLE` and its two `DEFAULT` triples are `(07,01,06)` and
+> `(09,01,03)`. The manual documents the MicroMark-import default annotation
+> as `DEFAULT SZ1-6,BD1-3` - Size truncated to 6 characters, Bundle to 3.
+> `(07,01,06)` decodes as **SZ (Size), range 1-6** and `(09,01,03)` decodes
+> as **BD (Bundle), range 1-3** - both the type code AND the two range bytes
+> match the doc's own notation exactly, digit for digit. This retires the
+> earlier "tentative: code 07 = SIZE" note - it's now confirmed, not
+> guessed, and a second code (09 = Bundle) is confirmed alongside it.
+>
+> Not confirmed to the same standard: the generic `2303-BD 137`-side `A`
+> object's first triple `(06,01,14)` - plausibly **PN (Piece Name)
+> truncated to 14 characters** (Name-then-Size is the obvious pairing for a
+> generic per-piece label, and its second triple is the confirmed
+> `(07,01,06)` = SZ), but no doc default exists at exactly `PN1-14` to check
+> against, so this stays a plausible reading rather than a proven one.
+>
+> **Bonus, same manuals: `COSTINGS`'s ply-count byte matches the documented
+> Fabric Spread enum order.** `OrderEntry_Users_AE.pdf`'s Lay Limits Form
+> section lists the Fabric Spread options in the fixed order "Single Ply,
+> Tubular, Bookfold, Face-To-Face". The one byte already identified in this
+> plan (`1` on the `SINGLE-PLY`-named lay-limits object, `2` on generic
+> ones) is consistent with a 1-indexed enum over that exact list -
+> Single Ply first. Still only one value confirmed by name; 2/3/4 for
+> Tubular/Bookfold/Face-To-Face are inferred from list order, not observed
+> directly on a sample named for them.
+>
+> **Checked and NOT found in any shipped manual:** the Easy Marking status
+> bar's `TI`, `PA`, `TT`, `FC`, `FW`, `CB`, `MW`, `PR` fields from the
+> "length allowance" live-check pass. Searched `MarkerMaking_Users_AE.pdf`,
+> `OrderEntry_Users_AE.pdf`, `MS2000 Marking.pdf`, and `WhatsNew_ae.pdf` -
+> none define these tokens. The `Marker Info` dialog box *is* documented in
+> `MarkerMaking_Users_AE.pdf` (confirms `MD`/`PN`/`SZ`/`SA`/`WI`/`TL`/`OL`/
+> `FB`/`CT`/`CU`/`TU`/`LN`/`TB`, including a full-sentence match for `OL` -
+> "Displays the amount of overlap allowed when placing pieces" - and `TL` -
+> "Tilt amount increments" - neither previously identified), but that table
+> is legacy-vintage and the 8 still-unknown codes aren't in it. They most
+> likely belong to a newer Easy Marking status-bar row this older manual set
+> predates, and closing them needs either a working internet connection (for
+> AccuMark's own online help) or targeted live UI probing (right-click /
+> customize menus on the status bar, if any exist), not more offline-doc
+> searching - the offline route has been exhausted for these 8 codes.
+>
+> `python selftest.py` → **SELFTEST PASS** (analysis only; no decoder code
+> changed this pass).
+>
 > ## STATUS 2026-09-10 (last, part 2) — section 14's X coordinate found: closes the ruled point's full position
 >
 > Re-verified the diff between `CLAUDE-GRADE-TEST`'s two size records
@@ -770,24 +855,39 @@ structure only, no confirmed numeric meaning yet. Bonus: identified a
 fifth object kind (type 23 = rule table) while surveying the corpus,
 confirmed by content match against `CAP-RULES-A`'s known deltas.
 
-**Narrowed with cross-sample evidence:** `M-MARKER`'s label-code framing
-(`[tag][20-byte name][00 00][count][codes]` per named sub-block, up to 3
-slots) is confirmed, the `MARKER` sub-block's 8 codes are a reproducible
-constant across all 3 samples, and code `07` is tentatively `SIZE` (the
-value recurring between the generic default preset and the
-descriptively-named `SIZE-AND-BUNDLE` object). `COSTINGS`'s ply-count byte
-is tentatively identified (`1` on the object literally named
-`SINGLE-PLY`, `2` elsewhere); one further flag byte differs on `COSTINGS`
-specifically but isn't identified.
+**Solved — `M-MARKER`'s label codes.** The shipped offline PDF manuals
+(`OrderEntry_Users_AE.pdf`'s Annotation Form section) supply the exact
+legend. The `MARKER` sub-block's 8-code constant is confirmed, byte for
+byte, as the manual's own documented default `MSQ,/,AP,/,WI,L,U,PS`
+(codes 20, 11, 24, 11, 23, 21, 22, 28 - the repeated `/` reproducing the
+same byte both times is the tell). The `DEFAULT`/`LABELD` triples are
+`[type code, range start, range end]`; `SIZE-AND-BUNDLE`'s two triples
+decode as `SZ` (code `07`, range 1-6) and `BD`/Bundle (code `09`, range
+1-3), matching the manual's `SZ1-6,BD1-3` default exactly - both the codes
+and the numeric ranges check out, not just the codes. This retires the old
+"code 07 tentatively SIZE" note (now confirmed) and adds Bundle (`09`)
+alongside it. One triple stays a plausible-not-proven reading: the generic
+`A` object's `(06,01,14)`, likely `PN` (Piece Name) truncated to 14
+characters, since no `PN1-14` default exists in the docs to check against.
+`COSTINGS`'s ply-count byte (`1`=`SINGLE-PLY`) is now supported by the same
+manuals' documented Fabric Spread enum order (Single Ply, Tubular,
+Bookfold, Face-To-Face) rather than resting on name-matching alone, though
+2/3/4 remain inferred from list order, not observed on named samples.
 
 **Solved — section 14's X coordinate.** Packed with Y as `(X mod 65536,
 Y)` at header offset 3-6; see the dedicated STATUS block above. Only
 overflows the `u16` on unusually wide pieces (this test piece is 48 in);
 an ordinary piece's X would just read directly, no wraparound.
 
-**Untouched:** the status-bar fields above; the rest of `M-MARKER`'s and
-`COSTINGS`'s codes; generalizing section 14's record framing to a piece
-with more than one genuinely graded point.
+**Untouched, and the offline-doc route is exhausted for it:** the 8
+newer Easy Marking status-bar fields (`TI`, `PA`, `TT`, `FC`, `FW`, `CB`,
+`MW`, `PR`) - checked against every shipped manual, not present in any of
+them; likely belong to a UI generation newer than these manuals, so closing
+them needs either live internet access (for AccuMark's own online help,
+confirmed unreachable from this machine) or further live UI probing, not
+more offline-doc searching. Also still open: generalizing section 14's
+record framing to a piece with more than one genuinely graded point (no
+suitable sample exists in the corpus).
 
 ## 6. Superseded
 

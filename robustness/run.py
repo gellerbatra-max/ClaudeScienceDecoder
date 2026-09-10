@@ -87,7 +87,6 @@ def oracle_b_cases():
     piece_seed = os.path.join(REPO, 'CAP-C00-BASE/CAP-C00-BASE.zip')
     marker_seed = os.path.join(REPO, 'markers/2303-BD137-PLACED/2303-BD 137 PLACED.zip')
     order_seed = os.path.join(REPO, 'markers/COSTORDER.zip')
-    wrapper_seed = os.path.join(REPO, '../../2303-20260908T180223Z-1-001.zip')
     piece_items = zf.members(piece_seed)
     marker_items = zf.members(marker_seed)
     marker_piece = [d for n, d in marker_items
@@ -106,7 +105,14 @@ def oracle_b_cases():
                ap.decode_zip, (err.NoSuchObject,)),
         _bcase('duplicate_members', 'CAP-C00-BASE', lambda: zf.b_duplicate_members(piece_items),
                lambda p: am.list_zip(p), (type(None),)),  # special-cased below: must NOT raise
-        _bcase('nested_wrapper_zip', 'Drive-wrapper', lambda: open(wrapper_seed, 'rb'),
+        # a synthetic Drive-wrapper-shaped zip (folder prefix + a junk
+        # sidecar + a nested zip holding the real piece), built in memory
+        # rather than depending on an external file whose path is only
+        # valid relative to one specific checkout on disk - this repo also
+        # ships as a read-only clone at a different relative depth, and the
+        # suite must be portable to it (found by running it there).
+        _bcase('nested_wrapper_zip', 'synthetic-Drive-wrapper',
+               lambda: zf.b_nested_zip(piece_items, wrapper_name='inner_export.zip'),
                ap.decode_zip, (err.NestedArchive,)),
         # a 123-byte candidate is too short even to read its type byte, so
         # _select_piece_member (which pre-filters on length+type before

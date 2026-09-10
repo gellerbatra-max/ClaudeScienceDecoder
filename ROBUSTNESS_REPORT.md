@@ -151,7 +151,7 @@ decoder_version: accumark_pds=2.0 accumark_marker=2.0
 | marker_zip_to_decode_zip | 2303-BD137-PLACED | ok | ok (AmbiguousObject) |
 | order_only_to_decode_zip | COSTORDER | ok | ok (NoSuchObject) |
 | duplicate_members | CAP-C00-BASE | ok | ok (no exception, as required) |
-| nested_wrapper_zip | Drive-wrapper | ok | ok (NestedArchive) |
+| nested_wrapper_zip | synthetic-Drive-wrapper | ok | ok (NestedArchive) |
 | truncated_object_123B_decode_zip | CAP-C00-BASE | ok | ok (NoSuchObject) |
 | truncated_object_123B_list_zip | CAP-C00-BASE | ok | ok (no exception, as required) |
 | truncated_object_200B_list_zip | 2303-BD137-PLACED | ok | ok (no exception, as required) |

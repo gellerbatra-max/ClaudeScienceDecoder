@@ -234,6 +234,10 @@ def parse_marker(d, size_vocab=None):
     for r in mk['records']:
         name, _, _ = split_record(r['text'], mk['piece_names'])
         r['piece'] = name
+        # a record whose text matches no declared piece name never enters
+        # by_piece below, so it never gets 'cut'/'size' set there - default
+        # them here so a slot binding to this record (by area) doesn't KeyError
+        r['cut'] = None; r['size'] = None
         if name: by_piece.setdefault(name, []).append(r)
     for name, recs in by_piece.items():
         vocab = (size_vocab or {}).get(name) or []

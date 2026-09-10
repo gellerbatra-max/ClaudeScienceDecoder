@@ -1,5 +1,52 @@
 # Marker decode plan — AccuMark native marker export
 
+> ## STATUS 2026-09-10 (later) — `@454` closed on independent data; section 14 narrowed further
+>
+> **`@454` — now confirmed, not just "understood in the simple case."** The
+> gap left by the previous pass was that both controlled tests happened to
+> place the *same* piece repeatedly, so `Σ(quantity × perimeter)` couldn't be
+> told apart from `n_placements × (one piece's perimeter)`. Found two
+> pre-existing markers already sitting in `DATA90` (`AD1234 TEST 134`,
+> `LADIES-BLOUSE TEST-2`) and exported both. `AD1234 TEST 134` is a genuine
+> third, independent data point - not something built for this investigation -
+> with 13 placements of `ID1005 - RUFFLE` (a 142-point gathered/curved
+> piece, nothing like the rectangles used before): predicted `13 ×
+> perimeter(RUFFLE) = 764.06`, actual `@454 = 764.32` - 0.03% off, on the
+> same order as the curve-tessellation residuals already accepted elsewhere
+> in this project. `LADIES-BLOUSE TEST-2` hit the known "Include Components
+> silently drops pieces" limitation (0 of 5 needed pieces came through) and
+> also exposed a real bug fixed along the way: `accumark_marker.parse_marker`
+> raised `KeyError: 'size'` when a slot's best-area-match record's own text
+> didn't match any declared piece name (that record never got a `'size'` key
+> set at all) - now defaulted to `None` up front so binding never crashes on
+> an unmatched record. `selftest.py` still passes after the fix.
+>
+> **Section 14's per-point stream — two more hypotheses tested, one ruled
+> out, one narrowed:**
+> - **Not a literal copy of the piece's own raw bytes.** Searched the piece's
+>   full raw `.tmp` data for the stream's own bytes at 200/100/50/20/10-byte
+>   granularity: zero matches at every size, on `2303-B1-OUMO-5-SP24`'s
+>   2634-byte stream. Whatever derives this stream from the piece, it isn't
+>   a direct embed.
+> - **Total length tracks piece complexity, clustered by piece *family*, not
+>   a single global ratio.** `stream_len / raw_piece_size` clusters tightly
+>   within a style: OUCF fold pieces (4 samples) land at 0.0414-0.0436;
+>   OUMO/INMO cup pieces (6 of 8 samples) land at 0.0853-0.0892 - a
+>   different, family-specific proportionality, not one constant across the
+>   whole format. (Two OUMO outliers, `-2`/`-4`, sit at ~0.10 - unexplained.)
+> - **The stream opens with a short run of small values, then goes opaque.**
+>   The first 22 bytes of `OUMO-5`'s stream are 11 `u16` pairs, every value
+>   ≤ 73 (well inside its 117-point perimeter's index range - plausibly
+>   point ordinals or a small record count) before the remaining ~2600 bytes
+>   stop looking like anything structured at the `u16` level. Byte-level
+>   layout past that header is still open.
+>
+> `python selftest.py` → **SELFTEST PASS** (one real fix landed this pass -
+> the `KeyError` above - plus two new marker fixtures added to `markers/
+> misc-test-markers/` as read-only reference data, not yet wired into
+> `selftest.py`'s fixture list since `LADIES-BLOUSE TEST-2` can't fully
+> decode without its missing piece components).
+>
 > ## STATUS 2026-09-10 — a pass at §5's "still open" list: two solved, one reframed, one narrowed
 >
 > Worked the long-tail unexplained-byte list (piece-side §10.3/§12 and
@@ -369,27 +416,30 @@ c. Later, one marker each with: a tilted piece (non-90° rotation — is it
 
 ## 5. Still open, none blocking
 
-**Solved since this list was last written (2026-09-10, see STATUS block):**
+**Solved since this list was last written (2026-09-10, see STATUS blocks):**
 section 13 (`record_index`, already implemented in `accumark_marker.py`,
 just never promoted out of this list); Order quantity fields (the u16
-immediately before each per-model-size row's zero-padding+size-string).
+immediately before each per-model-size row's zero-padding+size-string);
+**`@454`** — confirmed `Σ(placement's own perimeter, inches)` on a third,
+independent, pre-existing marker (`AD1234 TEST 134`, 13 placements of a
+142-point piece, 0.03% off) in addition to the two controlled tests, so this
+is no longer "the simple case only." Only loose end: it still doesn't
+resolve against the production `PLACED` marker, whose export doesn't bundle
+every piece its order references — a bundling gap, not a formula doubt.
 
-**Downgraded from "constant, unnamed" to "understood in the simple case,
-open in general":** `@454` — proven *not* constant (varies from 19.5 to
-134.5 across five different markers); matches `Σ(quantity × placed piece's
-own perimeter, inches)` exactly in two independent controlled tests, but
-the production `PLACED` marker's value doesn't resolve against any piece
-bundled in that particular export — needs a marker whose *entire* order
-(every model/size row) ships in one zip to test the general case.
-
-**Investigated, ruled out a specific hypothesis, structure still open:**
+**Investigated further, one hypothesis ruled out, narrowed but not cracked:**
 the per-point attribute stream in section 14 — confirmed *not* the piece
-line table's TLV vocabulary (zero `0a 00` record headers anywhere in it,
-in either a 65-byte or a 2634-byte sample) and confirmed piece-level, not
-per-placement (two records of the same piece at very different sizes are
-byte-identical in this stream apart from one heap-pointer-shaped value and
-a 1-byte counter). Scales with point count (117-point production piece →
-2634-byte stream) but its internal layout isn't cracked.
+line table's TLV vocabulary (zero `0a 00` record headers anywhere in it)
+and confirmed piece-level, not per-placement (identical across sizes of the
+same piece apart from a heap pointer and a 1-byte counter). Also now
+confirmed *not* a literal copy of any part of the piece's own raw bytes
+(zero substring matches from 10 to 200 bytes). Total length tracks piece
+complexity in a family-specific way (`stream_len / raw_piece_size` clusters
+tightly per style — OUCF fold pieces ≈0.042, OUMO/INMO cup pieces
+≈0.085-0.089 — not one constant ratio), and the stream opens with ~11 `u16`
+pairs of small values (all within the piece's own perimeter-index range)
+before turning opaque. Internal layout past that short header is still
+open.
 
 **Untouched:** the type-10 object; `M-MARKER`/`3MM`/lay-limit/notch table
 payloads; the model's `0x41/0x44` byte; the panel's length allowance

@@ -1,5 +1,35 @@
 # Marker decode plan — AccuMark native marker export
 
+> ## STATUS 2026-09-10 (last, part 2) — section 14's X coordinate found: closes the ruled point's full position
+>
+> Re-verified the diff between `CLAUDE-GRADE-TEST`'s two size records
+> byte-for-byte across the *entire* 65-byte stream (not just the header)
+> and confirmed only 6 bytes ever differ: offsets 3-7 and the already-known
+> trailing counter at 63. Offset 5-6 was already identified as the ruled
+> point's `Y` (§ above). That leaves exactly 2 unaccounted bytes - offsets
+> 3-4 - immediately before it.
+>
+> **They're `X`, truncated to its low 16 bits.** `u16` at offset 3 reads
+> `56227` on size "2" and `4860` on size "18" - and `318371 mod 65536 =
+> 56227`, `332540 mod 65536 = 4860` **exactly**, where 318371/332540 are
+> the same independently-computed graded X coordinates (1e-4 in) used to
+> confirm Y. Zero error, on both samples. So the header's bytes 3-6 are a
+> packed `(X mod 65536, Y)` pair for the ruled point - Y fits a plain
+> `u16` in every sample seen so far, X only needed truncating because this
+> test piece is unusually wide (48 in); on an ordinary piece under 6.5536
+> in this field would just read as the true X with no wraparound, so the
+> rule "`u16` = coordinate mod 65536" is the general statement, not a
+> special case for this piece.
+>
+> **This closes section 14's ruled-point coordinate storage completely**
+> (both X and Y now confirmed, not just Y). What's left of section 14 is
+> unchanged: this exact 8-byte-header framing hasn't been confirmed to
+> generalize to a piece with more than one genuinely graded point, since
+> the only production piece available (5 graded points) has all-
+> placeholder deltas and produces zero byte variation to test against.
+>
+> `python selftest.py` → **SELFTEST PASS** (analysis only).
+>
 > ## STATUS 2026-09-10 (last) — M-MARKER's label codes and COSTINGS's ply byte, both narrowed with real evidence
 >
 > Compared annotation and lay-limit objects **across every captured
@@ -659,27 +689,29 @@ is no longer "the simple case only." Only loose end: it still doesn't
 resolve against the production `PLACED` marker, whose export doesn't bundle
 every piece its order references — a bundling gap, not a formula doubt.
 
-**First semantic field found — section 14's per-point attribute stream.**
-On the one genuinely-graded piece available (`CLAUDE-GRADE-TEST`), the
-`u16` at header offset 5 is exactly the ruled perimeter point's own graded
-Y coordinate (1e-4 in) for that size — confirmed exactly on two different
-sizes (58369 and 51287, both matching `graded_outline()`'s own computed
-value with zero error). The matching X coordinate is not yet located. The
-8-byte-per-point record framing that surfaced this (one `u16`-id-prefixed
-record per numbered perimeter point) does not generalize as tested to a
-production piece with several graded points — record length there likely
-scales with per-point attribute complexity rather than being fixed at 8
-bytes, the same variable-length pattern the piece's own point records use
-elsewhere in this format. Confirmed *not* the piece line table's TLV
-vocabulary (zero `0a 00` record headers), confirmed piece-level not
-per-placement (unruled points' records are byte-identical across sizes;
-a placeholder-graded production piece's stream is byte-identical across
-all 10 of its real size records, checked pairwise), and confirmed *not* a
-literal copy of any part of the piece's own raw bytes. Total length tracks
-piece complexity in a family-specific way (`stream_len / raw_piece_size`
-clusters per style: OUCF ≈0.042, OUMO/INMO ≈0.085-0.089). Full internal
-layout — including where X coordinates and non-ruled ordinary points'
-own attributes live — is still open.
+**Ruled point's coordinates fully found — section 14's per-point attribute
+stream.** On the one genuinely-graded piece available (`CLAUDE-GRADE-
+TEST`), the header holds a packed `(X mod 65536, Y)` pair for the ruled
+perimeter point at that placement's size — `u16`s at offset 3 (X, low 16
+bits) and offset 5 (Y, exact — this piece never overflows it), both
+matching `graded_outline()`'s independently-computed values exactly on
+two different sizes, zero error. The 8-byte-per-point record framing that
+surfaced this (one `u16`-id-prefixed record per numbered perimeter point)
+does not generalize as tested to a production piece with several graded
+points — record length there likely scales with per-point attribute
+complexity rather than being fixed at 8 bytes, the same variable-length
+pattern the piece's own point records use elsewhere in this format.
+Confirmed *not* the piece line table's TLV vocabulary (zero `0a 00`
+record headers), confirmed piece-level not per-placement (unruled points'
+records are byte-identical across sizes; a placeholder-graded production
+piece's stream is byte-identical across all 10 of its real size records,
+checked pairwise), and confirmed *not* a literal copy of any part of the
+piece's own raw bytes. Total length tracks piece complexity in a family-
+specific way (`stream_len / raw_piece_size` clusters per style: OUCF
+≈0.042, OUMO/INMO ≈0.085-0.089). Full internal layout for anything beyond
+the ruled point's own coordinates — including non-ruled ordinary points'
+own attributes — is still open, and this framing hasn't been proven on a
+piece with more than one genuinely graded point.
 
 **Structurally mapped, one bulk section still unexplained:** the type-10
 object — has its own object envelope and 42-slot directory (same convention
@@ -748,9 +780,14 @@ is tentatively identified (`1` on the object literally named
 `SINGLE-PLY`, `2` elsewhere); one further flag byte differs on `COSTINGS`
 specifically but isn't identified.
 
+**Solved — section 14's X coordinate.** Packed with Y as `(X mod 65536,
+Y)` at header offset 3-6; see the dedicated STATUS block above. Only
+overflows the `u16` on unusually wide pieces (this test piece is 48 in);
+an ordinary piece's X would just read directly, no wraparound.
+
 **Untouched:** the status-bar fields above; the rest of `M-MARKER`'s and
-`COSTINGS`'s codes; section 14's X coordinate and its generalization to
-multi-graded-point pieces.
+`COSTINGS`'s codes; generalizing section 14's record framing to a piece
+with more than one genuinely graded point.
 
 ## 6. Superseded
 

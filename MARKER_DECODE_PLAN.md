@@ -1,5 +1,30 @@
 # Marker decode plan — AccuMark native marker export
 
+> ## STATUS 2026-09-10 (night, live check) — the length allowance: no discrepancy on this marker
+>
+> Opened `2303-BD 137 PLACED` directly in Easy Marking (live, on the
+> AccuMark machine) and read its own "Marker Info" status bar rather than
+> guessing from stored bytes. **`LN` (Length) reads `3m 77.68cm` — an exact
+> match to the decoded `length_cm` value, zero allowance added.** The
+> `dxfparser`-reported +4.00/+5.96 cm discrepancy on other styles does not
+> reproduce here; whatever produces it (a fabric-specific trim/roll-end
+> setting, most likely) is evidently not configured on this marker, or is
+> zero for it. Checked `Fabric → Fabric/Trim` too, in case a configured
+> fabric background carries its own allowance value - the dialog was empty
+> for this marker (no fabric background set), a dead end here but the right
+> place to look on a marker that does show a length discrepancy.
+>
+> **Bonus, not previously logged:** the same status bar exposes several
+> other abbreviated fields with no accessible tooltip found yet - `OL`
+> (0.32), `TI` (0.13cm), `PA` (13.49), `TT` (0.00), `BD` (0.06), `FC`/`FW`/
+> `CB`/`MW` (all 0.00 here), `PR` (243.14). None identified; flagging for
+> whoever tackles them next, since `BD` in particular is suggestively
+> small and might be the same "block buffer" concept `CAP-C60-CUTOUT`'s
+> era already named elsewhere in this format.
+>
+> `python selftest.py` → **SELFTEST PASS** (no decoder code changed; this
+> was a live AccuMark check, not a file-format decode).
+>
 > ## STATUS 2026-09-10 (later night) — the model's fabric-type byte closed out
 >
 > Cross-referenced `parse_model`'s already-extracted 14-byte per-piece
@@ -609,10 +634,18 @@ enum rather than a per-fabric hash. What exactly governs which piece
 gets which letter (beyond "self fabric tends to be A") isn't nailed down,
 but the byte itself is no longer unexplained.
 
-**Untouched:** `M-MARKER`/`3MM`/lay-limit/notch table
-payloads; the panel's length allowance
-(dxfparser saw +4.00/+5.96 cm on other styles — check the Marker Properties
-panel of `PLACED` against 377.68 cm once).
+**Checked live, no discrepancy found here:** the panel's length allowance —
+opened `PLACED` in Easy Marking and read its own status bar directly:
+`LN` reads `3m 77.68cm`, an exact match to the decoded value, zero
+allowance. The `dxfparser`-reported +4.00/+5.96 cm gap on other styles
+doesn't reproduce on this marker; needs a marker that *does* show the gap
+to find where it's configured (a fabric/trim setting is the leading
+guess — `Fabric/Trim` was empty here since no fabric background is set).
+Turned up several other unlabeled status-bar fields (`OL`, `TI`, `PA`,
+`TT`, `BD`, `FC`, `FW`, `CB`, `MW`, `PR`) with no identified meaning yet —
+new leads, not previously logged.
+
+**Untouched:** `M-MARKER`/`3MM`/lay-limit/notch table payloads.
 
 ## 6. Superseded
 

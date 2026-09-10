@@ -1,5 +1,51 @@
 # Marker decode plan — AccuMark native marker export
 
+> ## STATUS 2026-09-10 (final) — M-MARKER/3MM/lay-limit/notch table payloads: mostly closed, one real prior mystery resolved
+>
+> These four object kinds (types 2/3/6/17) turned out to already be sitting
+> in the corpus - `2303-CP150-JULY/2303-CP 150 CPL.zip` has all four, no new
+> capture needed (the other zips only ever carry the piece-annotation
+> variant `A`/`DEFAULT`, never `M-MARKER`/`3MM`/`COSTINGS`).
+>
+> - **`3MM` (block buffer, type 3) - decoded cleanly.** Payload is a
+>   creator name + date string (`DILUK`, `20/07/05`), then a count, then
+>   the buffer distance itself as `i32` (1e-4 in), repeated 4 times (one
+>   per marker edge): `1181`... no - **`591`**, which is exactly **1.5 mm**
+>   (0.0591 in x 25.4 = 1.50 mm). Confirms, with the actual stored number
+>   rather than just the object's own name, the "1.5 mm block buffer" this
+>   plan already referenced from the piece side.
+> - **`P-NOTCH` and `V-NOTCH-ALL CUSTOMERS` (notch table, type 17) - this
+>   is the "system-wide notch-shape table" FORMAT_SPEC.md §4 predicted but
+>   never located.** `P-NOTCH` stores one depth value, `i32` 1574 (1e-4 in)
+>   = **exactly 0.40 cm** - matching, digit for digit, the "Type 1 default
+>   Depth 0.40" the UI showed during `CAP-C41-NOTCH-WIDTH` (FORMAT_SPEC.md
+>   §4: "Depth is therefore fixed per Type, looked up from a system-wide
+>   notch-shape table, not settable per placement" - this is that table).
+>   `V-NOTCH-ALL CUSTOMERS` stores the same `[depth, 0, width]` triple
+>   (1181, 0, -787 -> 0.30 cm / 0.20 cm) 25 times - a header count (`25`)
+>   followed by 5 untagged records then 20 more each prefixed with a small
+>   type tag - all 25 slots share one value, consistent with a factory-
+>   default table where every notch type still uses the same shape until
+>   customized.
+> - **`M-MARKER` (annotation, type 2) - structure mapped, label codes not
+>   decoded.** Creator name + date (`THUSHARA`, `02/02/06`), then two
+>   named sub-blocks (`DEFAULT`→`LABELD`, and a second tagged `MARKER`)
+>   each holding a short run of small integers - plausibly which text
+>   fields print in a piece's on-marker label (size, cut number, ...), not
+>   decoded further.
+> - **`COSTINGS` (lay limits, type 6) - structure only.** Mostly zero
+>   padding, a `DEFAULT` name, and a trailing 2-byte value with no
+>   confirmed meaning yet.
+> - **Bonus, unplanned:** found and identified a fifth object kind while
+>   surveying the corpus - **type 23 = rule table** (`CAP-RULES-A`, `ID
+>   XS-XL`, `A1-LADIES` all carry it). Confirmed by content, not just name:
+>   its payload contains the exact same cumulative deltas already known
+>   from `CAP-RULES-A`'s embedded piece-side copy (393,-196 / 787,-393 /
+>   1181...). Added to `accumark_marker.OBJECT_TYPES`.
+>
+> `python selftest.py` → **SELFTEST PASS** (one small, safe code change -
+> the type-23 mapping - plus analysis, no other decoder logic touched).
+>
 > ## STATUS 2026-09-10 (night, live check) — the length allowance: no discrepancy on this marker
 >
 > Opened `2303-BD 137 PLACED` directly in Easy Marking (live, on the
@@ -645,7 +691,22 @@ Turned up several other unlabeled status-bar fields (`OL`, `TI`, `PA`,
 `TT`, `BD`, `FC`, `FW`, `CB`, `MW`, `PR`) with no identified meaning yet —
 new leads, not previously logged.
 
-**Untouched:** `M-MARKER`/`3MM`/lay-limit/notch table payloads.
+**Mostly closed — `M-MARKER`/`3MM`/lay-limit/notch table payloads.**
+`3MM` (block buffer): decoded, stores the buffer distance directly as
+`591` (1e-4 in) = exactly 1.5 mm, x4 (one per edge). Notch table
+(`P-NOTCH`/`V-NOTCH-ALL CUSTOMERS`): this is the system-wide notch-shape
+table FORMAT_SPEC.md §4 predicted but never located — `P-NOTCH`'s stored
+depth (1574 = 0.40 cm) matches the UI-observed "Type 1 default Depth
+0.40" from `CAP-C41-NOTCH-WIDTH` exactly. `M-MARKER` (annotation):
+structure mapped (creator/date + two named label-config sub-blocks) but
+the label field codes themselves aren't decoded. `COSTINGS` (lay limits):
+structure only, no confirmed numeric meaning yet. Bonus: identified a
+fifth object kind (type 23 = rule table) while surveying the corpus,
+confirmed by content match against `CAP-RULES-A`'s known deltas.
+
+**Untouched:** the status-bar fields above; `M-MARKER`'s label codes;
+`COSTINGS`'s numeric fields; section 14's X coordinate and its
+generalization to multi-graded-point pieces.
 
 ## 6. Superseded
 

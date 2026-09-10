@@ -22,7 +22,7 @@ MAGIC = b'XGGT IXPORT DB5.'
 TRAILER = 396
 OBJECT_TYPES = {20: 'piece', 12: 'model', 13: 'order', 9: 'marker',
                 10: 'marker_geometry', 2: 'annotation', 3: 'block_buffer',
-                6: 'lay_limits', 17: 'notch_table'}
+                6: 'lay_limits', 17: 'notch_table', 23: 'rule_table'}
 
 # ------------------------------------------------------------ envelope
 def read_object(d):

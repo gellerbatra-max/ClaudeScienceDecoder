@@ -1,5 +1,59 @@
 # Marker decode plan — AccuMark native marker export
 
+> ## STATUS 2026-09-11 — section 14 generalization attempted live, blocked by a genuine PDS automation limitation (not a decoder gap)
+>
+> Direct attempt at the one remaining item from §5: generalize section 14's
+> 8-byte-per-point record framing to a piece with **two** genuinely-ruled
+> points (today it's proven only for `CLAUDE-GRADE-TEST`'s single ruled
+> point). Plan was straightforward - `CLAUDE-GRADE-TEST` already has
+> `CAP-RULES-A` assigned; apply that same rule 1 to a second corner via
+> PDS's Grade tab → Rule Number ("Tracking Information" dialog, §10c of
+> `AGENT_KNOWLEDGE_BASE.md`), re-export, decode.
+>
+> **Safety first, as always:** worked on a Save-As copy (`CLAUDE-GRADE-
+> TEST2`) the whole time, never touched the original `CLAUDE-GRADE-TEST`.
+> Selecting the target point worked fine (`Track` toggle → canvas click →
+> `Point Id` updates correctly, confirmed via `Snapshot` reading the real
+> `Point Id:` edit control's value, e.g. `4` for the bottom-right corner).
+>
+> **Could not get a rule number into the `D1` field - a new failure mode,
+> different from the Marker Info dead end this project already solved.**
+> Five separate techniques were tried, all against the same, individually-
+> confirmed-empty-and-focused `D1` edit box (`Snapshot` reported
+> `has_focused: true`, value `(empty)` immediately before each attempt):
+> `Shortcut` (single real keystroke), `Type` by screen coordinate, `Type`
+> by the control's own accessibility-tree id, `Tab` to move focus onto it,
+> and clicking an on-screen "Calculator" helper (a red herring - that
+> panel belongs to a different tool, the X/Y/coordinate input group, not
+> grade-rule entry). **Every one of the first four sent the digit through
+> as a navigation command instead of text** - `Point Id` visibly
+> decremented (4 → 3, 4 → 2, 4 → 2, 4 → 3 across repeats) while `D1`
+> stayed empty, even though the accessibility tree insisted `D1` held
+> keyboard focus the whole time. This looks like the dialog's point-
+> stepper and its grade-rule textbox share one keyboard-accelerator table
+> at the window level, intercepting bare digit keys before they reach the
+> focused control - a real, reproducible behavior of this specific MFC
+> dialog, not a one-off misclick (each technique was verified with its own
+> fresh `Point Id` reset-and-reselect cycle first).
+>
+> **No harm done, cleaned up fully:** never got far enough to Apply a
+> value, so no piece was ever actually re-graded; `CLAUDE-GRADE-TEST2`
+> stayed byte-identical to `CLAUDE-GRADE-TEST` throughout (verified by
+> file size, 2684 bytes both) and was deleted afterward via AccuMark
+> Explorer (Recycle Bin, not a permanent delete) to keep `DATA90` tidy.
+> `CLAUDE-GRADE-TEST` itself was never opened for writing this session.
+>
+> **This is now a documented tooling blocker, not an unexplored gap.**
+> Worth trying next time: the standalone `RuleTable.exe` route from §10a
+> (a genuinely different Win32 app, already noted as far more automation-
+> friendly than PDS's own custom-drawn dialogs) might expose grade-rule
+> assignment some other way; or a completely different piece-creation path
+> that sets a point's rule number at creation time rather than through
+> this specific retrofit dialog.
+>
+> `python selftest.py` → not run (no decoder code touched; live-AccuMark
+> attempt only, ended in a clean no-op).
+>
 > ## STATUS 2026-09-10 (offline, next day) — id 2's record count in slot 39: reproducible and structural, but its actual referent still isn't pinned down
 >
 > Follow-up scan, entirely offline (`markers/`'s existing corpus, no live AccuMark

@@ -1,5 +1,88 @@
 # Marker decode plan — AccuMark native marker export
 
+> ## STATUS 2026-09-11 (section 14, finally generalized) — the tooling blocker was sidestepped, not solved, and the answer reframes the whole hypothesis
+>
+> Found an existing corpus piece that sidesteps the PDS automation blocker
+> entirely: `CAP-C21-RULE-TWO` (built in an earlier, unrelated session to
+> test the *piece*-side decoder) already has **two points with genuinely
+> different rule numbers** - point 1 → rule 2 (pure X delta, Y always 0
+> across every size-break) and point 4 → rule 1 (real X+Y delta) - so no
+> live grading edit was needed at all, only placing this already-graded
+> piece into a marker.
+>
+> **Getting it into a marker took a real build, not just a drag:**
+> `Model.exe`'s `ModelEditor` (a genuinely different, modern WPF app, not
+> PDS's legacy grid) built a new model (`CAP-C21-MODEL`) around the piece -
+> typing the piece name directly into the grid resolved the name but left
+> the row missing metadata a working model row has (no thumbnail, no
+> `CATEGORY`/`DESCRIPTION`, `FLIPS "--"` `0` instead of `1`, confirmed by
+> diffing against `CLAUDE-GRADE-MODEL`'s own row); using the row's own
+> `...` browse button to re-link the piece populated all of it correctly,
+> and copying the `1` into `FLIPS "--"` closed the gap completely. The
+> **Marker Wizard** then processed this model's order successfully -
+> **only after that fix**; before it, "Process" produced a generic "Error
+> Processing" with no usable diagnostic (worth remembering: a model row
+> built by typing a piece name into an empty grid row, rather than
+> resolving it through the piece browser, is missing data the Wizard's
+> order-processing step silently depends on).
+>
+> **Placing the two (still-unplaced) pieces onto the resulting marker
+> needed a different drag origin than the layout test used.** Hovering the
+> piece-list row text itself (`Move{loc}` then `Move{loc,drag:true}`, the
+> technique that worked for *moving an already-placed piece* in the
+> layout-independence test) never placed anything, even after ~10 variations
+> (different coordinates, selecting the row first, shorter drag distances).
+> What actually worked: **select the row with a plain click, then hover and drag
+> from the small preview-thumbnail box in the top-left corner of the piece
+> panel** (not the row text) - both pieces placed validly and immediately
+> on the first attempt with this origin, confirmed by the marker length
+> field changing from `0m 0.00cm` to a real value and the canvas showing
+> two correctly-shaped, differently-graded blue outlines.
+>
+> **The decode result itself is a clean, positive generalization - and it
+> overturns the original framing of the question.** Both sizes' section-14
+> streams for `CAP-C21-RULE-TWO` decode as: 2 constant bytes (`02 00`), 1
+> piece-level constant byte (`0xd8` here, `0xf8` for `CLAUDE-GRADE-TEST` -
+> same across both sizes of a piece, differs between pieces), packed
+> `(X mod 65536, Y)` at fixed byte offsets **3-4 and 5-6** - then
+> immediately, at byte offset **7**, the four id-prefixed 8-byte per-point
+> records (`id 1..4`), then the same 25-byte residual tail seen before.
+> **The packed coordinate at offset 3-6 is point 1's own graded (X, Y),
+> confirmed by direct match to `graded_outline()`'s independently-computed
+> values on both sizes (`-11810/1` at size 2, `19686/1` at size 18, exact)
+> - and it is point 1's, specifically, not "the ruled point"'s.** Point 4
+> is also genuinely ruled (rule 1, a real X+Y delta) and its own graded
+> coordinates do **not** appear anywhere in the stream - not in the header,
+> not in any of the four per-point records (checked exhaustively, every
+> 2-byte window of every record, against both possible values). The
+> earlier "closes the ruled point's coordinate storage" conclusion from
+> the single-ruled-point sample was real but too narrow: **this header
+> field caches point 1's position specifically (by piece-numbering ID),
+> not whichever point(s) happen to carry a rule assignment** - the two
+> coincided in every sample seen before this one. The four per-point
+> records remain confirmed *not* to hold coordinates for any point,
+> consistent with the "per-piece attribute table" reading already in
+> `piece_records()`'s docstring.
+>
+> One more real, generalizable finding along the way: **the gap between
+> the Y field (ending at offset 7) and the point-record grid is not fixed
+> at 0 - `CLAUDE-GRADE-TEST`'s stream has one extra byte (`0x40`) there
+> that `CAP-C21-RULE-TWO`'s does not**, pushing its record grid to start
+> at offset 8 instead of 7 (this is why the original single-sample framing
+> said "8-byte header" - true for that piece, not universal). What that
+> extra byte encodes is unidentified; not chased further, since it doesn't
+> change any conclusion above (record content past the id is still
+> non-coordinate either way).
+>
+> `CAP-C21-SEC14.zip` (model `CAP-C21-MODEL`, piece `CAP-C21-RULE-TWO` at
+> sizes 2 and 18) added to `markers/` as a new permanent fixture - the
+> first in the corpus with two independently, distinctly ruled points.
+>
+> `python selftest.py` → **SELFTEST PASS** (analysis only; no decoder code
+> changed - the finding narrows a documented hypothesis, nothing to wire
+> into `accumark_marker.py` beyond updating the STATUS record here and the
+> §5 summary below).
+>
 > ## STATUS 2026-09-11 (retry, exhaustive) — section 14 generalization: confirmed a systemic PDS grading-UI limitation, not specific to one dialog
 >
 > User asked to push this further after the first attempt (STATUS block
@@ -1481,10 +1564,19 @@ had these - they needed the running application, not more document
 searching, which is why the earlier "exhausted" verdict below was about
 the offline route specifically and correct as far as it went.
 
-Still open: generalizing section 14's record framing to a piece with more
-than one genuinely graded point (no suitable sample exists in the corpus,
-and building one live is blocked by a confirmed PDS grading-UI automation
-limitation — see the two 2026-09-11 STATUS blocks above).
+**Solved — section 14's record framing, generalized to a piece with two
+independently-ruled points.** `CAP-C21-RULE-TWO` (already in the corpus,
+point 1 → rule 2 X-only, point 4 → rule 1 X+Y) sidestepped the PDS
+grading-UI automation limitation entirely — no live edit needed, just
+placing an already-graded piece into a new marker (`CAP-C21-SEC14.zip`).
+Result reframes the original hypothesis rather than just extending it:
+the packed `(X mod 65536, Y)` field at stream offset 3-6 is **point 1's**
+own graded coordinate specifically (confirmed exact on both sizes), not
+"the ruled point"'s as the single-sample case suggested — point 4's own
+graded coordinates (also genuinely ruled) appear nowhere in the stream,
+header or per-point records. The four id-prefixed per-point records
+remain confirmed non-coordinate for every point tested. See the
+2026-09-11 STATUS block above for the full byte-level derivation.
 
 ## 6. Superseded
 

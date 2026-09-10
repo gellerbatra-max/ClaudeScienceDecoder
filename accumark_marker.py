@@ -332,12 +332,15 @@ def check_marker(mk):
 #
 # The GAPS between tagged fields are not all the same kind of filler: the
 # ~48 KB gap between id 53 and id 54 on `2303-BD 137 PLACED` has a rich
-# byte histogram (0/1/2/6/7/8/9/10, thousands of hits each) unlike the
-# simple 2-byte and 5-byte cycles elsewhere - notably, 9 and 10 are exactly
-# the piece perimeter-point attr bytes for `turn` and `curve`
-# (`accumark_pds.POINT_TURN`/`POINT_CURVE`). Not yet shown to BE re-encoded
-# point attributes - flagged as the most promising lead for whoever
-# continues this, not a finding.
+# byte histogram unlike the simple 2- and 5-byte cycles elsewhere. It
+# decomposes into a 138-byte `01 00` filler run, a 47,915-byte residual of
+# ~12,000 quasi-periodic u16-LE pairs (94-98% period-4 self-similar), and
+# 47 trailing zero bytes. An initial guess that the residual re-encoded
+# piece perimeter-point attr bytes (it is rich in the exact values used for
+# `accumark_pds.POINT_TURN`/`POINT_CURVE`) does NOT hold up: every one of
+# the style's 1,366 perimeter points has attr 9, none has attr 10, so the
+# gap's ~1,042 tens correspond to nothing in the piece data. Retracted; see
+# MARKER_DECODE_PLAN.md's STATUS blocks for what was ruled out and why.
 def type10_object(marker_data):
     """The embedded type-10 object's own bytes (magic through its own
     trailer), or None if this marker has no slot 30 / it isn't an XGGT

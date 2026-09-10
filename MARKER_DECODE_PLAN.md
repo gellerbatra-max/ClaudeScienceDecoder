@@ -1,5 +1,47 @@
 # Marker decode plan — AccuMark native marker export
 
+> ## STATUS 2026-09-10 (later still, part 2) — the id53→id54 gap: the point-attribute lead does NOT hold up; bounded and characterized instead
+>
+> Follow-up to the STATUS block directly below, same session, still offline.
+> That block flagged the ~48 KB gap between id 53 and id 54 on
+> `2303-BD 137 PLACED` as a lead because its byte histogram was rich in
+> 9s and 10s (`accumark_pds.POINT_TURN`/`POINT_CURVE`). Checked directly
+> and it does not survive: **every one of the style's 1,366 perimeter
+> points has `attr == 9`; none has `attr == 10`.** The gap's 1,042
+> tens therefore correspond to nothing in the piece data at all, and its
+> 931 nines are not a clean multiple or fraction of 1,366 either. Retracted
+> - do not re-chase this specific coincidence.
+>
+> **Precisely bounded instead of globally characterized.** The gap is not
+> one undifferentiated blob: its first **138 bytes** are a plain `01 00`
+> repeating cycle (a *different* filler motif than the `00 00 01 01 02`
+> cycle documented elsewhere in this section), and its last **47 bytes**
+> are zero padding. The **47,915-byte middle residual** - 11,978 u16-LE
+> pairs at a strict 4-byte stride - is genuinely denser (its own period-4
+> self-match is 94-98% in three of four quarters, dropping to 83% in the
+> last), so it is not pure filler either, but tallying its values against
+> every countable quantity already decoded for this marker (the 8 models,
+> the 53 section-12 size rows and their model-index field, the per-piece
+> section-14 record counts, the 97 placements, the 66 records) finds no
+> clean match to any of them - ruled out this pass, not just untested.
+>
+> Net effect on the open question: narrower and more precisely described,
+> not closed. A future pass should stop treating this as "a 48 KB
+> unstructured gap" and start from "a 138-byte filler run, a 47.9 KB
+> region of ~12,000 quasi-periodic u16 pairs that resembles a nesting/
+> packing algorithm's own working buffer more than it resembles stored
+> per-item data, and 47 bytes of padding" - and, given the length is
+> identical regardless of laid state (established in the STATUS block
+> below), a live comparison across two markers with the SAME piece set
+> placed in genuinely different layouts (not just laid vs. unlaid) is the
+> most direct way to tell "meaningful, marker-specific" from "algorithm
+> scratch space that never varies with what's actually placed" apart -
+> offline analysis of the one marker instance already committed cannot
+> settle that distinction by itself.
+>
+> `python selftest.py` → **SELFTEST PASS** (analysis only; no decoder code
+> changed this pass).
+>
 > ## STATUS 2026-09-10 (later still) — slot 39 is not uniform filler: a small tagged-field table found inside it, byte-exact across the whole corpus
 >
 > Offline analysis only (no live AccuMark this pass) against the markers

@@ -1,5 +1,51 @@
 # Marker decode plan — AccuMark native marker export
 
+> ## STATUS 2026-09-11 (offline follow-up) — section 14's per-point records: a real structural fact found, the payload itself still resists decoding
+>
+> Direct follow-up to the section-14 generalization above, using the same
+> two pieces (`CLAUDE-GRADE-TEST`, one rule; `CAP-C21-RULE-TWO`, two
+> independent rules) - this time looking at the four id-prefixed per-point
+> records themselves (bytes past the id, i.e. `[id(u16)][tag byte][5
+> payload bytes]`), not the header.
+>
+> **The records are entirely size-invariant for the one-rule piece and
+> entirely size-varying for the two-rule piece - checked precisely in
+> code, not by eye (an earlier by-eye read of this same data got it
+> backwards).** `CLAUDE-GRADE-TEST`'s four records are **byte-for-byte
+> identical** between size 2 and size 18, for every point including the
+> three unruled ones whose positions genuinely do move (confirmed earlier
+> by the DXF match) - so constancy here does not mean "this point doesn't
+> grade." `CAP-C21-RULE-TWO`'s four records, by contrast, **all differ in
+> every payload byte** between size 2 and size 18 - ruled and unruled
+> points alike. The tag byte (offset 2 of each record) stays constant
+> per-point across sizes in both pieces (`f9,f9,f8,7a` for points 1-4 in
+> `CAP-C21-RULE-TWO`, matching a similar pattern in `CLAUDE-GRADE-TEST`) -
+> only the 5-byte payload after it is what flips from constant to
+> size-varying between the two pieces.
+>
+> **The payload's actual content does not decode against any concrete
+> geometric candidate tried.** Checked directly, byte-exact, for every
+> point at both sizes: absolute graded position (from `graded_outline()`,
+> 1e-4in units, truncated 16-bit and full 32-bit), delta from base size 8,
+> the raw individual rule-table step deltas from `CAP-C21-RULE-TWO.RUL`
+> (both rule 1 and rule 2's own per-size-break values), and several
+> plausible byte groupings (`u16,u16,u8`; `i32+tag`) - none match, for any
+> point, at either size. This is a real negative result, not an
+> unexamined gap.
+>
+> **Reading, held loosely:** a value that stays exactly constant when only
+> one independent grade rule touches the piece but changes on every point
+> (ruled and unruled alike) as soon as a second, different rule enters the
+> picture looks more like a computed/scratch artifact of AccuMark's own
+> nesting or grading engine reacting to the *complexity* of the rule
+> assignment as a whole, than per-point stored geometry - the same
+> character already established for slot 39 in the marker's type-10
+> object. Not proven, offered as the best-fitting explanation given what's
+> been ruled out.
+>
+> `python selftest.py` → **SELFTEST PASS** (analysis only, no decoder code
+> changed).
+>
 > ## STATUS 2026-09-11 (section 14, finally generalized) — the tooling blocker was sidestepped, not solved, and the answer reframes the whole hypothesis
 >
 > Found an existing corpus piece that sidesteps the PDS automation blocker
@@ -1575,8 +1621,16 @@ own graded coordinate specifically (confirmed exact on both sizes), not
 "the ruled point"'s as the single-sample case suggested — point 4's own
 graded coordinates (also genuinely ruled) appear nowhere in the stream,
 header or per-point records. The four id-prefixed per-point records
-remain confirmed non-coordinate for every point tested. See the
-2026-09-11 STATUS block above for the full byte-level derivation.
+remain confirmed non-coordinate for every point tested — and, checked
+precisely, are byte-identical across sizes for a piece with one rule
+applied but differ in every point's payload (ruled and unruled alike)
+for a piece with two independent rules applied, a real structural fact
+whose exact payload content still doesn't decode against any concrete
+geometric candidate tried (absolute position, delta-from-base, raw
+rule-table step values). Best-fitting current reading: engine scratch
+data reacting to rule-assignment complexity as a whole, in the same
+spirit as slot 39, not per-point stored geometry. See the two
+2026-09-11 STATUS blocks above for the full byte-level derivation.
 
 ## 6. Superseded
 

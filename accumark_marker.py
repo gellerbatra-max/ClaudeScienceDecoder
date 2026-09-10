@@ -289,6 +289,91 @@ def check_marker(mk):
                 (mk['sections'][SEC_SLOTS][1]-mk['sections'][SEC_SLOTS][0]) if mk['sections'][SEC_SLOTS] else True, ''))
     return out
 
+# ------------------------------------------------ type-10 object (research)
+# The marker's slot 30 embeds a second, complete XGGT object (its own magic,
+# name and 396-byte trailer) starting 26-58 bytes into the section - NOT at
+# the section's own offset 0. It carries its own 42-slot directory at the
+# same 0x8a convention as the marker itself [V, confirmed identically on
+# every marker below]. Ruled out as placement geometry: slot 33 (laid-only)
+# is a per-placement array but every one of its 72-byte records is a
+# constant `ffffffff`+68 zero bytes placeholder, never populated; slot 39
+# (95%+ of the object) is the same LENGTH whether laid or not.
+#
+# Slot 39 turns out not to be uniform filler. Its first ~20-40 KB hold a
+# sparse table of 16-byte tagged fields - [V, exact byte match across all
+# 10 markers in this repo's corpus]:
+#
+#     00 00 <u8 id> <7 zero bytes> <u32 LE value> <u16 LE tail> <2 pad>
+#
+# found by scanning for that zero-run signature; unused slots between real
+# fields hold a repeating placeholder cycle (`00 00 01 01 02` or `01 00`),
+# not real data, matching the low-entropy/0-1-2-dominated byte histogram
+# already noted for this section.
+#
+# What the fields ARE is only partly settled:
+#   id 45 -> (val=4, tail=0) and id 46 -> (val=102, tail=98) are UNIVERSAL
+#   FORMAT CONSTANTS: identical, byte for byte, on every one of the 10
+#   markers tested (two different styles, laid and unlaid, 0-97 placements,
+#   both 2026-07 and 2026-09 export vintages).
+#   id 44's value is always exactly 2x id 47's, which is always exactly
+#   id 51's value - and all three take one of only two values across the
+#   whole corpus: 88/44/44 on every style-2303 marker (BD137 laid+unlaid,
+#   the four CP150 corner probes), 8/4/4 on every marker built from a
+#   single simple test piece (CLAUDE-GRADE-MARKER, CLAUDE-QTY-TEST,
+#   AD1234 TEST 134, LADIES-BLOUSE TEST-2). It tracks which STYLE's piece
+#   catalog the marker draws from, not the marker instance: unaffected by
+#   laid state, placement count (0, 2, 13, 54 or 97), or marker length/
+#   width, and the two 2303 samples agree even though one zip bundles only
+#   the 18 referenced pieces and the other bundles the whole ~120-piece
+#   style catalog. [?] what it actually counts is not identified.
+#   ids 42/48/52/53/56 vary per marker in ways not yet explained; id 53 is
+#   ABSENT on the CP150 samples (present, with a value, on BD137 and every
+#   single-test-piece marker) - an optional field, not always emitted.
+#
+# The GAPS between tagged fields are not all the same kind of filler: the
+# ~48 KB gap between id 53 and id 54 on `2303-BD 137 PLACED` has a rich
+# byte histogram (0/1/2/6/7/8/9/10, thousands of hits each) unlike the
+# simple 2-byte and 5-byte cycles elsewhere - notably, 9 and 10 are exactly
+# the piece perimeter-point attr bytes for `turn` and `curve`
+# (`accumark_pds.POINT_TURN`/`POINT_CURVE`). Not yet shown to BE re-encoded
+# point attributes - flagged as the most promising lead for whoever
+# continues this, not a finding.
+def type10_object(marker_data):
+    """The embedded type-10 object's own bytes (magic through its own
+    trailer), or None if this marker has no slot 30 / it isn't an XGGT
+    object (should not happen on any export seen so far)."""
+    dirs = directory(marker_data)
+    outer = _section(marker_data, dirs, SEC_GEOMETRY)
+    if not outer: return None
+    region = marker_data[outer[0]:outer[1]]
+    i = region.find(MAGIC)
+    return region[i:] if i >= 0 else None
+
+def type10_directory(obj):
+    """The type-10 object's own 42-slot directory, same convention as
+    `directory()`/`_section()` on the marker itself."""
+    return [u32(obj, DIR_OFF+4*i) for i in range(DIR_SLOTS)]
+
+def type10_tagged_fields(marker_data):
+    """-> [(byte_offset_in_slot_39, id, value, tail), ...] for the small
+    tagged-field table living in slot 39's leading region (see the module
+    comment above). Returns [] if this marker has no type-10 object or no
+    slot 39. Research-grade: not used by `place_marker`/`check_marker`."""
+    obj = type10_object(marker_data)
+    if obj is None: return []
+    dirs = type10_directory(obj)
+    s39 = _section(obj, dirs, 39)
+    if not s39: return []
+    body = obj[s39[0]:s39[1]][:-TRAILER]
+    out = []; i = 0
+    while i+16 <= len(body):
+        if body[i] == 0 and body[i+1] == 0 and body[i+2] != 0 and all(c == 0 for c in body[i+3:i+10]):
+            out.append((i, body[i+2], u32(body, i+10), struct.unpack_from('<H', body, i+14)[0]))
+            i += 16
+        else:
+            i += 1
+    return out
+
 # ---------------------------------------------------------------- order
 def parse_order(d):
     """Order object (type 13): name, the four table names (lay limits,

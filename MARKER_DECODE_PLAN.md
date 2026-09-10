@@ -1,5 +1,68 @@
 # Marker decode plan — AccuMark native marker export
 
+> ## STATUS 2026-09-10 (later still) — slot 39 is not uniform filler: a small tagged-field table found inside it, byte-exact across the whole corpus
+>
+> Offline analysis only (no live AccuMark this pass) against the markers
+> already committed in `markers/`. Re-derived the type-10 object's own
+> envelope and directory independently (its magic sits 26-58 bytes into
+> the marker's slot 30, not at the section's own start - the object's own
+> `directory()`/`_section()` apply from there) and got the same slot set
+> {33,35,36,37,39,41} already logged below, which cross-checks that
+> earlier pass.
+>
+> **Slot 39's low entropy is two DIFFERENT repeating placeholder cycles
+> (`00 00 01 01 02` and `01 00`), not one, and they don't cover the whole
+> section.** Scanning for the byte signature `00 00 <id> <7 zero bytes>
+> <u32 value> <u16 tail>` (16 bytes) finds a genuine sparse table sitting
+> in slot 39's first 20-90 KB, present in every marker tested:
+> `2303-BD 137` (laid + unlaid), all four `2303-CP150-JULY` corner probes,
+> `CLAUDE-GRADE-MARKER`, `CLAUDE-QTY-TEST`, `AD1234 TEST 134`,
+> `LADIES-BLOUSE TEST-2` - 10 markers, two styles, 0-97 placements, both
+> export vintages, added to `accumark_marker.type10_tagged_fields()`.
+>
+> **Two fields are universal format constants, exact on all 10 markers:**
+> id `45` -> `(value=4, tail=0)`; id `46` -> `(value=102, tail=98)`.
+>
+> **Three fields move together and split cleanly by STYLE, not by marker
+> instance:** id `44`'s value is always exactly 2x id `47`'s value, which
+> always equals id `51`'s value. Every `2303` marker reads `88/44/44`;
+> every marker built from one of the small single-test-piece styles
+> (`CLAUDE-GRADE-TEST`, `CLAUDE-QTY-TEST`, `AD1234`, `LADIES-BLOUSE`) reads
+> `8/4/4` - unaffected by laid state, placement count (0 through 97), or
+> marker length/width, and the two `2303` samples agree even though one
+> zip bundles only the 18 pieces this marker places and the other bundles
+> that style's whole ~120-piece catalog. So this is keyed to the STYLE's
+> piece set, not the specific export. What it counts is not identified.
+>
+> **id `53` is optional** - present with a value on `2303-BD 137` and every
+> single-test-piece marker, absent (skipped entirely) on all four CP150
+> markers, which are a different export of a piece set that otherwise
+> matches BD137's id-44/47/51 values exactly.
+>
+> **Not all of slot 39's remaining bytes are filler either, and this is
+> the open lead, not a finding.** The ~48 KB gap between id 53 and id 54 on
+> `2303-BD 137 PLACED` has a rich byte histogram - 0, 1, 2, 6, 7, 8, 9, 10
+> all in the hundreds-to-thousands - unlike the simple 2- and 5-byte
+> cycles filling the rest of the section. 9 and 10 are exactly
+> `accumark_pds.POINT_TURN`/`POINT_CURVE`, the piece format's own
+> perimeter-point attr bytes. This does not show the gap re-encodes point
+> attributes - only that the byte distribution is consistent with it and
+> worth checking directly (e.g. against the total perimeter-point count of
+> the style's own catalog) before assuming it's more filler.
+>
+> This narrows, but does not close, the "no working hypothesis" verdict on
+> slot 39 from the STATUS block below: a small constant/style-keyed table
+> is now decoded at the byte level (framing solid, meaning mostly open),
+> and the true bulk of the section is now known to have at least one
+> non-filler region still unaccounted for, rather than being uniformly
+> reserved space.
+>
+> `python selftest.py` → **SELFTEST PASS** (added
+> `accumark_marker.type10_object()` / `.type10_directory()` /
+> `.type10_tagged_fields()` - research helpers, not wired into
+> `place_marker`/`check_marker`/any correctness path; no existing decode
+> logic changed).
+>
 > ## STATUS 2026-09-10 (final, part 2) — M-MARKER's label codes closed: official PDF manuals shipped with the install decode the whole table
 >
 > New technique this pass, not used before in this project: the AccuMark V17

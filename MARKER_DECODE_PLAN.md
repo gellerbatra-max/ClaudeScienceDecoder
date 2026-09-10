@@ -1,5 +1,86 @@
 # Marker decode plan — AccuMark native marker export
 
+> ## STATUS 2026-09-10 (later night) — the layout test, completed: slot 39's body is CONFIRMED layout-independent, not just untested
+>
+> Direct continuation of the STATUS block below - same night, picked back
+> up after the interrupted attempt, this time successfully. Two new
+> obstacles found and worked around, then the actual A/B test run.
+>
+> **What finally worked.** The two-click "lift, then click again to drop"
+> interaction from the earlier attempt does place a piece somewhere, but
+> Save then reports it unplaced regardless of where it lands - even
+> directly abutting another already-placed piece, even well inside every
+> visible boundary. **A real click-and-drag (mouse button held down the
+> whole time) is a different, and the only valid, placement mechanism**:
+> `Move{loc: <piece>}` (hover, no click) to position the cursor, then
+> `Move{loc: <target>, drag: true}` for a single continuous drag. On
+> `CLAUDE-GRADE-MARKER` (2 pieces, tiny canvas - switched to it from the
+> 97-piece production marker specifically to get a simple, low-risk
+> surface for this) this genuinely relocated a piece **and it stayed
+> validly placed** (`CT` went straight to `0/2`, no "unplaced" prompt on
+> Save) - first time either was true this session. The drag did not travel
+> the full distance requested (dropped adjacent to the other piece rather
+> than at the far target coordinate given), but the result is still a
+> real, different, valid position - sufficient for the test.
+>
+> **Second obstacle, `Save As`'s filename field:** confirmed again here
+> (matches the earlier STATUS block) that a plain `Type{clear:true}`
+> *appends* to the pre-selected text instead of replacing it - `End` ->
+> `Shift+Home` -> `Delete` first is required every time, not just once.
+>
+> **The export itself reproduces a gap already flagged for this file type**
+> (`accumark_marker.py`'s own docstring, and this plan's §0 note on
+> `place_marker`): AccuMark Explorer's `Export Zip` with "Include
+> Components" checked reports "Error. Not all components exist." and
+> silently drops the piece object - the exported zip holds only the marker
+> (comments.txt/ver.5 + one `.tmp`). Not a blocker for this test (the
+> type-10 object lives entirely inside the marker's own bytes), but the
+> same limitation as before for anyone wanting a fully self-contained zip.
+>
+> **The A/B test, run clean:** `CLAUDE-GRADE-MARKER` (unchanged, the
+> existing fixture) vs. `CLAUDE-GRADE-REARR1` (same 2 pieces, one - piece
+> "A", size 2 - moved from y=3.20 to y=44.39, a genuine ~41 cm relocation,
+> confirmed by decoding both marker objects' own slot tables with
+> `accumark_marker.parse_marker`). The outer marker objects differ in 100
+> bytes total; every single byte is accounted for by the object's own name
+> string (`MARKER` -> `REARR1`, three copies) and heap/timestamp residue
+> identical in *character* to the noise floor already documented for piece
+> files - none of it falls inside the embedded type-10 object's slot 39.
+>
+> **Slot 39's own body - the 446 bytes left after stripping its 396-byte
+> trailer, i.e. exactly the region `type10_tagged_fields()` reads - is
+> BYTE-FOR-BYTE IDENTICAL between the two files.** Not "close", not
+> "differs only in noise": `body_orig == body_rearr` is `True` in Python,
+> checked directly. The tagged-field table's own decoded output
+> (`type10_tagged_fields()`) is the identical list of tuples on both
+> files, id for id, value for value, tail for tail.
+>
+> **This settles the question the previous two STATUS blocks left open,
+> and settles it as a negative, not an "inconclusive so far".** Every
+> earlier check of this (laid vs. unlaid on the 97-piece production
+> marker) varied placement COUNT as well as position, so "the length
+> doesn't change" was suggestive but not conclusive - unlaid removes
+> pieces, it doesn't relocate them. This test holds placement count,
+> piece identity, and size fixed and varies ONLY one piece's position,
+> and slot 39 does not move at all. The bulk of the type-10 object is
+> confirmed **not** to encode placement position, orientation, or any
+> other per-layout fact - for any marker, not just this pair. The
+> "nesting-algorithm scratch buffer" reading from the STATUS block below
+> is now the leading explanation with real support, not a guess: content
+> that is present, structured, non-trivial, AND provably independent of
+> where anything is actually placed is exactly what internal working
+> memory from an algorithm run once at MARKER-CREATION time (then never
+> updated by ordinary piece moves) would look like.
+>
+> `CLAUDE-GRADE-REARR1.zip` is added to `markers/` as a permanent fixture
+> pairing with the existing `CLAUDE-GRADE-MARKER.zip` - this A/B result is
+> reproducible directly from the two files already in the repo, no live
+> AccuMark session required to check it again.
+>
+> `python selftest.py` → **SELFTEST PASS** (analysis only; no decoder code
+> changed this pass - the finding is a negative result, so there is
+> nothing to wire into `accumark_marker.py` yet).
+>
 > ## STATUS 2026-09-10 (night) — layout-rearrangement test attempted, not completed: the interaction model, now understood, was the real obstacle
 >
 > Direct continuation of the STATUS block below (all 9 status-bar codes),
@@ -1083,18 +1164,30 @@ the ruled point's own coordinates — including non-ruled ordinary points'
 own attributes — is still open, and this framing hasn't been proven on a
 piece with more than one genuinely graded point.
 
-**Structurally mapped, one bulk section still unexplained:** the type-10
-object — has its own object envelope and 42-slot directory (same convention
-as the marker object itself), confirmed identically on three independent
-markers. Slots 35/36/37 are small and placement-independent. Slot 33
-(laid-only) is a fully-characterized but content-empty per-placement
-placeholder array (22-byte header + N × 72-byte all-`ffffffff` records).
-Slot 39 (95%+ of the object) does not vary with placement at all — ruling
-out per-placement geometry anywhere in this object — and its own low-entropy,
-0/1/2-dominated content rules out both a coordinate encoding and compression,
-but has no working hypothesis for what it *is*. The object's trailer is the
-same format as every other AccuMark object, plus one new tiny field: a laid-
-state flag (`0x0000`/`0x0002`).
+**Structurally mapped, and CONFIRMED layout-independent — one bulk section
+still unexplained.** The type-10 object has its own object envelope and
+42-slot directory (same convention as the marker object itself), confirmed
+identically on every marker in the corpus. Slots 35/36/37 are small and
+placement-independent. Slot 33 (laid-only) is a fully-characterized but
+content-empty per-placement placeholder array (22-byte header + N × 72-byte
+all-`ffffffff` records). **Slot 39's leading region holds a small sparse
+table of tagged fields** — `type10_tagged_fields()` — two of which (ids 45,
+46) are universal format constants and three (44/47/51) are keyed to the
+piece-set/style rather than the marker instance, decoded from a 16-byte
+record framing (`00 00 <id> <7×00> <u32 value> <u16 tail>`), reproducible
+on all 10 corpus markers. **The rest of slot 39 is now proven, not just
+observed, to be independent of placement**: a controlled A/B test —
+`CLAUDE-GRADE-MARKER` vs. `CLAUDE-GRADE-REARR1`, same 2 pieces, one moved
+~41 cm to a different valid position, placement count and piece identity
+held fixed — found slot 39's body byte-for-byte identical between the two
+files. Earlier laid-vs-unlaid comparisons only showed "doesn't vary with
+placement count"; this one shows "doesn't vary with placement position
+either", which the low-entropy 0/1/2-dominated content and the ruled-out
+coordinate/compression encodings are now best explained by as a nesting-
+algorithm scratch buffer computed once and never updated by ordinary piece
+moves, rather than per-item stored data of any kind. The object's trailer
+is the same format as every other AccuMark object, plus one tiny extra
+field: a laid-state flag (`0x0000`/`0x0002`).
 
 **Solved — the model's `0x41`/`0x44` byte.** It's the same field
 `parse_pieces_section` already decodes from section 10 as `flag` (`[V]`

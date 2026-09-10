@@ -1,5 +1,21 @@
 # Marker decode plan — AccuMark native marker export
 
+> ## STATUS 2026-09-10 (later night) — the model's fabric-type byte closed out
+>
+> Cross-referenced `parse_model`'s already-extracted 14-byte per-piece
+> "flags" blob against `parse_pieces_section`'s already-decoded section-10
+> `flag` field (both existed in code; nobody had checked whether they're
+> the same value). They are, exactly: every `OUMO` piece in `2303-BD 137
+> PLACED` reads `0x41`/`'A'` in both the model object and section 10, every
+> `INMO` piece reads `0x44`/`'D'` in both. Checking across fabric codes
+> shows the letter tracks AccuMark's own **Fabric Type** role (self vs.
+> lining), not the specific fabric roll string — `OUCF` and `SA60151TH`
+> are different fabric identifiers but both read `'A'`, matching the
+> "Fabric Type" column seen directly in Easy Order's UI earlier this
+> session, not a per-fabric-string hash. Full detail in §5.
+>
+> `python selftest.py` → **SELFTEST PASS** (analysis only).
+>
 > ## STATUS 2026-09-10 (night) — section 14: first confirmed semantic content, plus a clean per-point record framing that only holds for the simplest case
 >
 > Went back to `CLAUDE-GRADE-TEST`'s two records (`RECTANGLE2G`/`RECTANGLE18G`,
@@ -573,8 +589,28 @@ but has no working hypothesis for what it *is*. The object's trailer is the
 same format as every other AccuMark object, plus one new tiny field: a laid-
 state flag (`0x0000`/`0x0002`).
 
+**Solved — the model's `0x41`/`0x44` byte.** It's the same field
+`parse_pieces_section` already decodes from section 10 as `flag` (`[V]`
+there already, just never connected to this plan-list item): the model
+object stores its own redundant copy, at a fixed offset (+12 in each
+piece's 14-byte flags blob following the piece name). Confirmed by exact
+cross-reference on `2303-BD 137 PLACED` — every `OUMO` piece is `0x41`
+('A') in both places, every `INMO` piece is `0x44` ('D') in both places.
+**Not tied 1:1 to the specific fabric code/roll string**: `OUCF` and
+`SA60151TH` are two different fabric identifiers but both read `'A'`,
+while `SI01040A17` reads `'D'`. Better explained as AccuMark's own
+**Fabric Type** role slot (A = self/primary, D = lining/secondary here) —
+the same "Fabric Type" column seen directly in Easy Order's UI when
+building `CLAUDE-QTY-TEST` earlier this session, which is an abstract
+per-style role, distinct from the concrete fabric roll assigned to fill
+it for a given cutting order/marker. A third marker's single piece
+(`ID1005 - RUFFLE`) reads `'C'`, consistent with a small A/B/C/D-style
+enum rather than a per-fabric hash. What exactly governs which piece
+gets which letter (beyond "self fabric tends to be A") isn't nailed down,
+but the byte itself is no longer unexplained.
+
 **Untouched:** `M-MARKER`/`3MM`/lay-limit/notch table
-payloads; the model's `0x41/0x44` byte; the panel's length allowance
+payloads; the panel's length allowance
 (dxfparser saw +4.00/+5.96 cm on other styles — check the Marker Properties
 panel of `PLACED` against 377.68 cm once).
 

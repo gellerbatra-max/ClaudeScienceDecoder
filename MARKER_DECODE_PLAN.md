@@ -1,5 +1,60 @@
 # Marker decode plan — AccuMark native marker export
 
+> ## STATUS 2026-09-10 (evening, live session, retry) — all 8 status-bar codes solved: the tooltips work, the earlier hover attempts were just too fast
+>
+> Direct continuation of the block below - same live session, same marker
+> (`2303-BD 137 PLACED`) still open in Easy Marking, untouched. This
+> retry's first screenshot (before any deliberate action) caught a
+> genuine tooltip on screen - `hover(clicks:0)` **does** trigger AccuMark's
+> tooltips; the STATUS block below's "no tooltip on hover" verdict was
+> wrong, most likely because that attempt's screenshot fired before the
+> tooltip had rendered. Slowing down (move away to a neutral spot first,
+> then hover the target field, then screenshot) reproduces one every time.
+>
+> **All 8 codes solved, every single one by verified tooltip text, no
+> value changed** (every hover used `clicks:0`; the marker's own values -
+> `PA`, `CU`, `CT`, all others - read identically before and after):
+>
+> | field | value here | tooltip |
+> |---|---|---|
+> | `PA` | 445.44 | **Piece Area** |
+> | `TI` | 0.13 cm | **Tilt Amount** - "Enter Tilt Amount (0.01 to 8.89 cm). Current Tilt = 0.13 cm" |
+> | `TT` | 0.00 | **Tilt Amount** (shorter tooltip, no range/current text - a paired field with `TI`, most likely the cumulative/total tilt applied vs `TI`'s per-click increment) |
+> | `FC` | 0.00 | **Fabric Cost** - "Enter Fabric Cost. Current value = 0.00" |
+> | `FW` | 0.00 | **Fabric Weight** - "Enter Fabric Weight. Current value = 0.00" |
+> | `CB` | 0.00 | **Cost per Bundle** |
+> | `MW` | 0.00 | **Marker Weight** |
+> | `PR` | 377.68 | **Piece Right Edge Location** |
+> | `BD` | 0.06 | **Yield per Bundle** (a 9th field, already flagged as unlabeled in the STATUS block below but outside the original list of 8; solved along with the rest) |
+>
+> `PR` = 377.68 reads identically to `LN` (the marker length) here only
+> because no single piece was deliberately selected when this was
+> captured - it is the rightmost piece's own edge position, which happens
+> to coincide with the full marker length in this state; not a duplicate
+> field.
+>
+> **A real methodological gotcha, worth recording because it cost most of
+> this retry's time:** the tooltip window renders offset down-right of the
+> cursor, and on this densely-packed panel that offset routinely lands the
+> tooltip *box* visually on top of a different, adjacent field's label.
+> Reading "which field this tooltip belongs to" from the box's screen
+> position rather than from the coordinate actually hovered produces
+> exactly the kind of misattribution that happened here mid-session: a
+> tooltip read at cursor (1246, 946) - `PR`'s field - rendered its box
+> low enough to visually sit over `BD`'s label one row down, and was very
+> nearly logged as `BD`'s answer. **The cursor coordinate that triggered
+> the hover is the ground truth for which field a tooltip describes, the
+> box's rendered position is not** - re-verified by hovering `BD`'s own
+> coordinate directly afterward and getting the distinct "Yield per
+> bundle" text.
+>
+> This closes the status-bar-codes item completely: every field visible
+> in the Marker Info panel now has a confirmed meaning, live-sourced from
+> the application itself, not inferred.
+>
+> `python selftest.py` → not re-run this pass (no decoder files touched;
+> this is UI documentation, not a format-decode change).
+>
 > ## STATUS 2026-09-10 (evening, live session) — the 8 status-bar codes: offline route now genuinely exhausted, not just believed so
 >
 > Live on the AccuMark machine, `2303-BD 137 PLACED` already open in Easy
@@ -1036,15 +1091,19 @@ Y)` at header offset 3-6; see the dedicated STATUS block above. Only
 overflows the `u16` on unusually wide pieces (this test piece is 48 in);
 an ordinary piece's X would just read directly, no wraparound.
 
-**Untouched, and the offline-doc route is exhausted for it:** the 8
-newer Easy Marking status-bar fields (`TI`, `PA`, `TT`, `FC`, `FW`, `CB`,
-`MW`, `PR`) - checked against every shipped manual, not present in any of
-them; likely belong to a UI generation newer than these manuals, so closing
-them needs either live internet access (for AccuMark's own online help,
-confirmed unreachable from this machine) or further live UI probing, not
-more offline-doc searching. Also still open: generalizing section 14's
-record framing to a piece with more than one genuinely graded point (no
-suitable sample exists in the corpus).
+**Solved — all 9 Easy Marking status-bar fields** (`TI`, `PA`, `TT`, `FC`,
+`FW`, `CB`, `MW`, `PR`, `BD`), by live tooltip on the machine itself: `PA`
+Piece Area, `TI`/`TT` Tilt Amount (current/increment vs. a paired total),
+`FC` Fabric Cost, `FW` Fabric Weight, `CB` Cost per Bundle, `MW` Marker
+Weight, `PR` Piece Right Edge Location, `BD` Yield per Bundle. See the
+dedicated STATUS block above for the full table and the tooltip-box-vs-
+cursor-position gotcha that nearly caused a misattribution. No manual ever
+had these - they needed the running application, not more document
+searching, which is why the earlier "exhausted" verdict below was about
+the offline route specifically and correct as far as it went.
+
+Still open: generalizing section 14's record framing to a piece with more
+than one genuinely graded point (no suitable sample exists in the corpus).
 
 ## 6. Superseded
 

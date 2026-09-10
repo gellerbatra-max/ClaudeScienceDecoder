@@ -1,5 +1,71 @@
 # Marker decode plan — AccuMark native marker export
 
+> ## STATUS 2026-09-11 (retry, exhaustive) — section 14 generalization: confirmed a systemic PDS grading-UI limitation, not specific to one dialog
+>
+> User asked to push this further after the first attempt (STATUS block
+> directly below). Tried **four more, structurally different techniques**
+> on top of the original five, bringing the total to nine independent
+> attempts across **two different PDS dialogs** - all with the same
+> disposable `CLAUDE-GRADE-TEST2` copy, never the original piece.
+>
+> - **Numpad digit instead of top-row digit** (`Shortcut{"numpad1"}`) on
+>   the Rule Number dialog's `D1` field - same failure, `Point Id`
+>   decremented instead of `D1` receiving text.
+> - **Explicitly clicking the floating dialog's own title bar first**, to
+>   test whether it just needed a real click to become the OS-focused
+>   window before typing - `Snapshot`'s "Focused Window" stayed
+>   `Work Area 1...` (the parent frame) even immediately after clicking
+>   directly on the "Tracking Information" title bar. **This is the root
+>   cause, now confirmed rather than inferred**: the floating dialog never
+>   actually becomes the real Win32 foreground window, so keyboard input
+>   sent by any tool is delivered to the parent frame's own message loop,
+>   where it's consumed by an accelerator table (digit keys -> point
+>   navigation) before it can reach the dialog's child edit control - this
+>   matches every symptom observed, including why `Snapshot`'s
+>   `has_focused: true` on `D1` never lined up with what typing actually did.
+> - **`MultiEdit`** (a tool built for exactly this - filling fields by
+>   coordinate/label in one call) - tested against both a plausible value
+>   (`"1"`, which happened to land on already-existing data for point 1,
+>   initially looking like a false positive) and a value with no possible
+>   legitimate meaning (`"99"`) to disambiguate. The `"99"` test is
+>   decisive: `Point Id` still moved (4 -> 3) and `D1` stayed empty, so
+>   `MultiEdit` is not a different code path here - it still goes through
+>   the same intercepted keyboard route.
+> - **A second, completely different PDS tool** - `Create Delta` (Grade
+>   tab -> Create/Edit group), which sets a point's raw X/Y grade deltas
+>   directly rather than referencing a named rule number, and opens as a
+>   genuine modal dialog (`Create Grade Point - Small-Large Incremental`)
+>   rather than a floating docked panel. This rules out "it's just this
+>   one dialog": **the `Delta X`/`Delta Y` grid cells never appear as
+>   `Edit` controls in the accessibility tree at all** - only the read-only
+>   `Break` boundary values do (confirmed via `Snapshot`, comparing the
+>   full interactive-element list against the visible grid columns). The
+>   grid is evidently a custom-drawn control not exposed to UI Automation
+>   as editable cells, a different failure mode from the first dialog but
+>   the same practical outcome: no available tool can write to it.
+>
+> **Conclusion: this is a genuine, now well-characterized limitation of
+> PDS's grading UI under the available automation tools, not a gap in
+> effort or technique.** Nine attempts, two independent root causes found
+> (parent-frame accelerator interception on the Rule Number dialog;
+> non-automatable custom grid on Create Delta), zero successes, and no
+> tenth technique is evidently available within this toolset - every
+> remaining idea (WM_CHAR message posting to a specific HWND, a different
+> automation library) is outside what `Windows-MCP`'s tools expose.
+> **What would actually unblock this:** a human doing the one-time
+> per-point rule assignment manually in the live app (the mouse-only parts
+> - point selection, `Apply`, `Save As` - all work fine via automation,
+> it is specifically typing a value into these two control types that
+> fails), after which the resulting export could be decoded normally like
+> any other capture. No piece was modified in any of these nine attempts; worked entirely in
+> the already-open in-memory `CLAUDE-GRADE-TEST2` work area tab left over
+> from the first attempt (never re-saved to `DATA90` - it had already been
+> deleted from storage at the end of that attempt), then closed the tab
+> without saving at the end of this one. `CLAUDE-GRADE-TEST` itself was
+> never opened for writing.
+>
+> `python selftest.py` → not run (no decoder code touched).
+>
 > ## STATUS 2026-09-11 — section 14 generalization attempted live, blocked by a genuine PDS automation limitation (not a decoder gap)
 >
 > Direct attempt at the one remaining item from §5: generalize section 14's
@@ -1416,7 +1482,9 @@ searching, which is why the earlier "exhausted" verdict below was about
 the offline route specifically and correct as far as it went.
 
 Still open: generalizing section 14's record framing to a piece with more
-than one genuinely graded point (no suitable sample exists in the corpus).
+than one genuinely graded point (no suitable sample exists in the corpus,
+and building one live is blocked by a confirmed PDS grading-UI automation
+limitation — see the two 2026-09-11 STATUS blocks above).
 
 ## 6. Superseded
 

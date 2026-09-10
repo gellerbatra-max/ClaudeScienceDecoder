@@ -83,17 +83,30 @@ def list_zip(path):
     two entries sharing a member name used to alias to the same bytes and
     silently double-count every object in the archive. Each entry is now
     decoded independently regardless of name collisions; duplicate_member_names
-    reports any names that occur more than once, for diagnostics."""
-    out = {}; seen_names = {}
+    reports any names that occur more than once, for diagnostics.
+
+    v2: a single corrupt/truncated member (read_object raising) is skipped
+    and recorded in object_errors rather than aborting the whole listing -
+    a 34-member marker zip with one bad piece should still return the other
+    33 objects, the same fail-soft-and-record philosophy as
+    place_marker/load_pieces (found while building robustness/run.py's
+    Oracle C: the old all-or-nothing behaviour meant one corrupted member
+    made a caller lose visibility into every OTHER object in the zip)."""
+    out = {}; seen_names = {}; obj_errors = []
     with zipfile.ZipFile(path) as z:
         for info in z.infolist():
             seen_names[info.filename] = seen_names.get(info.filename, 0) + 1
             d = z.read(info)
             if not d.startswith(MAGIC): continue
-            o = read_object(d); o['member'] = info.filename
+            try:
+                o = read_object(d)
+            except Exception as e:
+                obj_errors.append(dict(member=info.filename, error=str(e))); continue
+            o['member'] = info.filename
             out.setdefault(o['kind'], []).append(o)
     dupes = [n for n, c in seen_names.items() if c > 1]
     if dupes: out['duplicate_member_names'] = dupes
+    if obj_errors: out['object_errors'] = obj_errors
     return out
 
 # -------------------------------------------------------------- strings

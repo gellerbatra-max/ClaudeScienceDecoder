@@ -185,6 +185,33 @@ for name, *_ in R2:
     print(f"   {name:22} unknown_bytes={f['unknown_bytes']:4d}  coverage_pct={f['coverage_pct']}")
 print(f'   worst coverage_pct across round-2 captures: {worst_pct}')
 
+print('-- generated garment dataset (dataset/, skipped when MANIFEST.json is absent)')
+manifest = os.path.join(HERE, 'dataset', 'MANIFEST.json')
+if os.path.isfile(manifest):
+    import dataset_test
+    n_ok, n_fail, dfails = dataset_test.quick()
+    print(f"   {'ok ' if not n_fail else 'FAIL'} {n_ok} checked, {n_fail} failed"
+          + (f" ({dfails[0]})" if dfails else ""))
+    for x in dfails: fails.append('dataset: ' + x)
+else:
+    print('   --  (absent - run: python dataset/build.py)')
+
+print('-- zip robustness (robustness/, quick matrix - see ROBUSTNESS_REPORT.md for the full run)')
+import robustness.run as rr
+r_ok, r_fail, rfails = rr.quick()
+# Oracle A (metamorphic) and B (controlled-failure contract) gate the run -
+# any failure there is a real regression. Oracle C's known, documented gap
+# (redundant Region-C/line-table shadow copies not cross-validated - see
+# ROBUSTNESS_REPORT.md's Recommendations) is reported, not gated, the same
+# way the coverage section above is informational-only.
+gating = [r for r in rfails if r['oracle'] in ('A', 'B')]
+informational = [r for r in rfails if r['oracle'] == 'C']
+print(f"   {'ok ' if not gating else 'FAIL'} {r_ok}/{r_ok+r_fail} checked, "
+      f"{len(gating)} gating failures, {len(informational)} known-gap (Oracle C) failures")
+for r in gating:
+    print(f"      FAIL {r['case']}: {r['detail']}")
+    fails.append('robustness: %s: %s' % (r['case'], r['detail']))
+
 print()
 if fails:
     print('SELFTEST FAIL'); [print('  -', x) for x in fails]; sys.exit(1)

@@ -1,5 +1,61 @@
 # Marker decode plan — AccuMark native marker export
 
+> ## STATUS 2026-09-10 (evening) — the type-10 object's structure is now mapped, even though its bulk content isn't
+>
+> New angle, not another encoding sweep: every AccuMark object shares one
+> envelope (magic, name, type at 0x7a) - the *marker* object additionally
+> carries its own 42-slot section directory at 0x8a. Nobody had checked
+> whether the embedded type-10 blob, which starts with the same `XGGT
+> IXPORT` magic and its own name, *also* has a directory at that same
+> offset. It does.
+>
+> **Confirmed identically across three independent markers** (`2303-BD 137
+> PLACED`/`unlaid` production pair, `CLAUDE-GRADE-MARKER`, `AD1234 TEST
+> 134` - 2, 13 and 97 placements respectively):
+>
+> - Directory slots used: **33, 35, 36, 37, 39, 41** (of 42) - the same set
+>   every time.
+> - Slots 35 (88 B), 36 (44 B), 37 (4 B) are small, fixed, and **byte-for-
+>   byte identical** whether the marker is laid or not.
+> - **Slot 33 exists only when laid** and is exactly `22-byte header + N ×
+>   72-byte records` where `N` = the marker's own placement count (2, 13,
+>   97 all confirmed exactly). Every single record in every sample is
+>   `ff ff ff ff` + 68 zero bytes, uniformly - a per-placement array that
+>   gets allocated to the right size but is never populated with real
+>   content in anything captured so far. This is what accounts for the
+>   "168 → 175 KB when laid" growth previously logged: it's exactly this
+>   array's size (7008 B for 97 placements), not per-placement geometry.
+> - **Slot 39 is 95%+ of the object's bytes** (167,602 of 175,050 on
+>   `PLACED`) and is the same *length* whether laid or not, differing by
+>   only **19 bytes total**, every one of them inside its own trailing
+>   object trailer (§ below) - not scattered through the bulk. This rules
+>   out per-placement position/rotation data living anywhere in type-10:
+>   97 real placements cannot be encoded in 19 changed bytes.
+> - That 19-byte trailer diff is fully explained, and confirms type-10 uses
+>   the **same trailer format as every other object** (name, two identical
+>   Unix timestamps, `u32` constant `5`, repeated `MSI` author slots) - the
+>   only new field is a `u16` right after the `5` that reads `0x0000`
+>   unlaid and `0x0002` laid: a genuine, if minor, laid-state flag.
+> - Slot 39's own content: **low entropy** (1.6-1.9 bits/byte vs ~8 for
+>   compressed/random data, on all three markers) and **85-95%+ of its
+>   bytes are the raw values 0, 1 or 2**. This rules out both a
+>   straightforward coordinate encoding (already tried pre-2026-09-10:
+>   int32/int16/float32/float64, 8 orientations, absolute or delta - all
+>   negative, now explained *why*: real coordinates don't look like this)
+>   and a compressed encoding. Its size doesn't divide cleanly by
+>   placement count, section-14 record count, size count, or model count in
+>   any sample tried. Still the one piece of this object with no working
+>   hypothesis.
+>
+> **Net effect:** the type-10 object is no longer "an opaque 168-175 KB
+> blob with no geometry found anywhere" - it's a mapped envelope + directory
+> + one fully-characterized placeholder array + a fully-explained trailer,
+> with exactly one remaining unknown (slot 39's low-entropy bulk), which is
+> now a much narrower, well-described target than "the whole object" was.
+>
+> `python selftest.py` → **SELFTEST PASS** (analysis only this pass; no
+> decoder code changed).
+>
 > ## STATUS 2026-09-10 (later) — `@454` closed on independent data; section 14 narrowed further
 >
 > **`@454` — now confirmed, not just "understood in the simple case."** The
@@ -441,7 +497,20 @@ pairs of small values (all within the piece's own perimeter-index range)
 before turning opaque. Internal layout past that short header is still
 open.
 
-**Untouched:** the type-10 object; `M-MARKER`/`3MM`/lay-limit/notch table
+**Structurally mapped, one bulk section still unexplained:** the type-10
+object — has its own object envelope and 42-slot directory (same convention
+as the marker object itself), confirmed identically on three independent
+markers. Slots 35/36/37 are small and placement-independent. Slot 33
+(laid-only) is a fully-characterized but content-empty per-placement
+placeholder array (22-byte header + N × 72-byte all-`ffffffff` records).
+Slot 39 (95%+ of the object) does not vary with placement at all — ruling
+out per-placement geometry anywhere in this object — and its own low-entropy,
+0/1/2-dominated content rules out both a coordinate encoding and compression,
+but has no working hypothesis for what it *is*. The object's trailer is the
+same format as every other AccuMark object, plus one new tiny field: a laid-
+state flag (`0x0000`/`0x0002`).
+
+**Untouched:** `M-MARKER`/`3MM`/lay-limit/notch table
 payloads; the model's `0x41/0x44` byte; the panel's length allowance
 (dxfparser saw +4.00/+5.96 cm on other styles — check the Marker Properties
 panel of `PLACED` against 377.68 cm once).

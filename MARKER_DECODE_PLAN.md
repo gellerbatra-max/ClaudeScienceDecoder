@@ -1,5 +1,60 @@
 # Marker decode plan — AccuMark native marker export
 
+> ## STATUS 2026-09-10 (night) — section 14: first confirmed semantic content, plus a clean per-point record framing that only holds for the simplest case
+>
+> Went back to `CLAUDE-GRADE-TEST`'s two records (`RECTANGLE2G`/`RECTANGLE18G`,
+> 65 bytes each - the smallest streams in the corpus and the only genuinely-
+> graded ones available) and mapped them byte-for-byte instead of just
+> diffing whole streams.
+>
+> **Record framing (this piece only):** an 8-byte header, then one 8-byte
+> record per NUMBERED perimeter point, each starting with a literal `u16`
+> point id (`01 00`, `02 00`, `03 00`, `04 00` - this piece's real ids,
+> found at exactly the expected 8-byte stride), except the *last*-listed
+> point's record, which continues on to the end of the stream (33 bytes
+> here) rather than stopping at 8.
+>
+> **The point records for ids 2/3/4 (unruled - no `rule_ref` on this
+> piece) are byte-identical between the two sizes**, confirming they are
+> not storing per-size coordinates - consistent with AccuMark computing
+> their positions the same way this project's own `graded_outline()` chain-
+> interpolation does, rather than storing them.
+>
+> **First real crack in section 14: found what the header actually holds.**
+> Point 1 (the piece's only ruled point, rule 1) is graded to Y = 58369
+> (size "2") and Y = 51287 (size "18") in 1e-4 in - values computed
+> independently via `graded_outline()` (base Y 57190, plus the rule's
+> cumulative delta). The `u16` at header offset 5 reads exactly `58369` on
+> the size-2 record and exactly `51287` on the size-18 record - a precise
+> match, not an approximation, confirmed on two independent, genuinely
+> different values. **This is the first concrete semantic field ever
+> identified in section 14.** The matching X coordinate (318371 / 332540 -
+> too large for a `u16`) was not found anywhere in the header or the long
+> trailing record under `i32`/`u32`/`float32` at any byte offset - still
+> unlocated.
+>
+> **The clean 8-byte-per-point framing does not generalize as-is.** Tried
+> the identical stride search on a real production piece with 5 genuinely
+> graded (if placeholder-valued) points (`2303-B1-A1- OUCF-SP24`, 272-byte
+> stream): the expected id sequence at 8-byte stride from a plausible
+> header length was not found at any tested header length (2-12 bytes),
+> and the piece's own rule id (`10001`) does not appear literally anywhere
+> in the stream either. Record length most likely scales with each point's
+> own attribute complexity (as the piece's own perimeter-point records do
+> elsewhere in this format) rather than being a fixed 8 bytes in general.
+>
+> **Independent confirmation that placeholder-graded pieces produce zero
+> stream variation:** diffed all 10 same-piece, different-size records of
+> that same OUCF piece (32A through 38A) - **zero differing bytes across
+> every pair**, matching the already-established fact that style 2303's
+> grading is all-zero placeholder. This is expected, not a gap: a piece
+> whose shape genuinely never changes should have a genuinely unchanging
+> stream, and now it's been checked pairwise across all 10 of its real
+> size records rather than assumed.
+>
+> `python selftest.py` → **SELFTEST PASS** (analysis only; no decoder code
+> changed this pass).
+>
 > ## STATUS 2026-09-10 (evening) — the type-10 object's structure is now mapped, even though its bulk content isn't
 >
 > New angle, not another encoding sweep: every AccuMark object shares one
@@ -483,19 +538,27 @@ is no longer "the simple case only." Only loose end: it still doesn't
 resolve against the production `PLACED` marker, whose export doesn't bundle
 every piece its order references — a bundling gap, not a formula doubt.
 
-**Investigated further, one hypothesis ruled out, narrowed but not cracked:**
-the per-point attribute stream in section 14 — confirmed *not* the piece
-line table's TLV vocabulary (zero `0a 00` record headers anywhere in it)
-and confirmed piece-level, not per-placement (identical across sizes of the
-same piece apart from a heap pointer and a 1-byte counter). Also now
-confirmed *not* a literal copy of any part of the piece's own raw bytes
-(zero substring matches from 10 to 200 bytes). Total length tracks piece
-complexity in a family-specific way (`stream_len / raw_piece_size` clusters
-tightly per style — OUCF fold pieces ≈0.042, OUMO/INMO cup pieces
-≈0.085-0.089 — not one constant ratio), and the stream opens with ~11 `u16`
-pairs of small values (all within the piece's own perimeter-index range)
-before turning opaque. Internal layout past that short header is still
-open.
+**First semantic field found — section 14's per-point attribute stream.**
+On the one genuinely-graded piece available (`CLAUDE-GRADE-TEST`), the
+`u16` at header offset 5 is exactly the ruled perimeter point's own graded
+Y coordinate (1e-4 in) for that size — confirmed exactly on two different
+sizes (58369 and 51287, both matching `graded_outline()`'s own computed
+value with zero error). The matching X coordinate is not yet located. The
+8-byte-per-point record framing that surfaced this (one `u16`-id-prefixed
+record per numbered perimeter point) does not generalize as tested to a
+production piece with several graded points — record length there likely
+scales with per-point attribute complexity rather than being fixed at 8
+bytes, the same variable-length pattern the piece's own point records use
+elsewhere in this format. Confirmed *not* the piece line table's TLV
+vocabulary (zero `0a 00` record headers), confirmed piece-level not
+per-placement (unruled points' records are byte-identical across sizes;
+a placeholder-graded production piece's stream is byte-identical across
+all 10 of its real size records, checked pairwise), and confirmed *not* a
+literal copy of any part of the piece's own raw bytes. Total length tracks
+piece complexity in a family-specific way (`stream_len / raw_piece_size`
+clusters per style: OUCF ≈0.042, OUMO/INMO ≈0.085-0.089). Full internal
+layout — including where X coordinates and non-ruled ordinary points'
+own attributes live — is still open.
 
 **Structurally mapped, one bulk section still unexplained:** the type-10
 object — has its own object envelope and 42-slot directory (same convention

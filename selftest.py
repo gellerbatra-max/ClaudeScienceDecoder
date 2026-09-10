@@ -7,7 +7,15 @@ import glob, os, sys, subprocess
 HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, HERE)
 import accumark_pds as ap
+import accumark_marker as am
 import verify_capture as vc
+
+fails = []
+
+print('-- decoder version')
+ok = ap.__version__ == am.__version__ == '2.0'
+print(f"   {'ok ' if ok else 'FAIL'} accumark_pds={ap.__version__} accumark_marker={am.__version__}")
+if not ok: fails.append('decoder version mismatch')
 
 CAPS = os.path.join(HERE, 'captures')
 EXPECT = {   # task -> (perimeter_points, notches, graded_points, seam_cm, piece_records)
@@ -29,7 +37,6 @@ PAIRS = [  # (variant, baseline, structural_change_expected)
  ('TASK3-NONOTCH',    'TASK4-DRILLPOINT', 'no'),
 ]
 
-fails = []
 print('-- decode + DXF agreement')
 for name, exp in sorted(EXPECT.items()):
     folder = os.path.join(CAPS, name)

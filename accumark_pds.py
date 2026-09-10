@@ -3,9 +3,19 @@
 (the .tmp member inside an AccuMark 'XGGT IXPORT DB5.1' export ZIP),
 plus a parser for the companion ASTM/D6673 .RUL grade-rule table.
 Reverse-engineered from a controlled A/B export set; see FORMAT_SPEC.md.
+
+v2 (see CHANGELOG.md): malformed/unusual ZIP input now raises a specific
+accumark_errors.AccuMarkError subclass (a ValueError, so v1 `except
+ValueError` call sites are unaffected) instead of a bare IndexError,
+struct.error or a plausible-looking wrong answer. Every v1 decode result is
+unchanged byte-for-byte; selftest.py is the gate that proves it.
 """
 import io, re, struct, zipfile
+from accumark_errors import (AccuMarkError, NotAnAccuMarkZip, NestedArchive,
+    NotAnAccuMarkObject, TruncatedObject, WrongObjectType, NoSuchObject,
+    AmbiguousObject, DecodeError)
 
+__version__ = '2.0'
 MAGIC = b'XGGT IXPORT DB5.'
 UNITS_PER_INCH = 10000.0          # coordinates are int32 in 1e-4 inch
 
@@ -460,15 +470,22 @@ def decode_piece_block(d, field_off=None):
 def decode(data):
     """Decode a full piece file; returns dict with one or more piece blocks."""
     if not data.startswith(MAGIC):
-        raise ValueError('not an AccuMark IXPORT piece file')
+        raise NotAnAccuMarkObject('not an AccuMark IXPORT piece file')
     # [V] every object type carries its type code as u16 at 0x7a in both the
     # 2026-07 and 2026-09 export vintages (the u32 copy sits at 0x60 in one
     # and 0x68 in the other); 20 = piece. Markers (9), models (12), orders
     # (13) and the parameter tables must be refused here rather than
     # crashing inside decode_piece_block.
-    otype = u16(data, 0x7a) if len(data) > 0x80 else None
+    # v2: a truncated object (too short to hold the 0x80 header + trailer)
+    # is a length problem, not a type problem - say so distinctly.
+    if len(data) <= 0x80:
+        raise TruncatedObject('object too short to hold a header',
+                               declared=0x80, actual=len(data))
+    otype = u16(data, 0x7a)
     if otype != 20:
-        raise ValueError('not a piece object (type %r); see accumark_marker.read_object' % otype)
+        raise WrongObjectType(
+            'not a piece object (type %r); see accumark_marker.read_object' % otype,
+            got=otype, want=20)
     hdr = dict(magic=data[:18].decode('latin1').rstrip('\x00'),
                db_version=data[16:19].decode('latin1').rstrip('\x00'),
                object_type=otype)
@@ -478,20 +495,27 @@ def decode(data):
     for o in range(len(data)-160, len(data)-4):
         v = i32(data,o)
         if 1_500_000_000 < v < 2_200_000_000: ts.append(v)
-    blocks = []; off = None
+    blocks = []; block_errors = []; off = None
     while True:
         # [V] start at the payload (0x80), not 0x60: the 2026-07 vintage's
         # header residue at 0x60-0x7f looks enough like a field block to
         # hijack the search on every one of its 122 pieces.
         try: off = _find_field_block(data, (blocks[-1]['block_end'] if blocks else 0x80),
                                      (blocks[-1]['block_end']+0x120 if blocks else 0x140))
-        except ValueError: break
+        except ValueError: break   # normal loop termination: no further field block
         try: b = decode_piece_block(data, off)
-        except Exception: break
+        except Exception as e:
+            # v2: don't discard *why* - a block that fails to decode is
+            # recorded, not silently dropped, so a zero-block result can say
+            # what went wrong instead of just being empty (fixes summarize()'s
+            # and verify_capture's unguarded blocks[0]).
+            block_errors.append(dict(offset=off, error=str(e)))
+            break
         blocks.append(b)
         if b['block_end'] >= len(data)-8: break
         if len(blocks) > 8: break
-    return dict(header=hdr, timestamps=sorted(set(ts)), blocks=blocks)
+    return dict(header=hdr, timestamps=sorted(set(ts)), blocks=blocks,
+                block_errors=block_errors)
 
 # -------------------------------------------------------------- coverage
 def _block_ranges(d, m, objs, pstart, block_end, tail):
@@ -648,10 +672,51 @@ def check_line_table(b):
                 return False
     return True
 
-def decode_zip(path):
+def _select_piece_member(path, member=None):
+    """v2: pick the single piece (type 20) object in a ZIP by content
+    (the XGGT magic), not by the `.tmp` extension - so a renamed member
+    still decodes, an ambiguous zip is refused by name rather than silently
+    resolved by namelist() order (the old bug: the first `.tmp` in a 34-
+    member production marker zip is a lay_limits object, not a piece), and a
+    zip with no piece at all raises a specific, actionable error instead of
+    a bare IndexError.
+
+    `member`, when given, disambiguates a multi-piece zip by exact member
+    name."""
     z = zipfile.ZipFile(path)
-    name = [n for n in z.namelist() if n.lower().endswith('.tmp')][0]
-    return decode(z.read(name))
+    source = getattr(path, 'name', None) or (path if isinstance(path, str) else 'zip')
+    if member is not None:
+        try: d = z.read(member)
+        except KeyError:
+            raise NoSuchObject('no member %r in zip' % member, source=source)
+        if not d.startswith(MAGIC):
+            raise NotAnAccuMarkObject('member %r is not an AccuMark object' % member, source=source)
+        return member, d
+    xggt, nested = [], []
+    for n in z.namelist():
+        d = z.read(n)
+        if d.startswith(MAGIC): xggt.append((n, d))
+        elif d[:4] in (b'PK', b'PK'):
+            nested.append(n)
+    pieces = [(n, d) for n, d in xggt if len(d) > 0x80 and u16(d, 0x7a) == 20]
+    if not pieces:
+        if nested:
+            raise NestedArchive('no AccuMark object at the top level of the zip',
+                                 source=source, nested=nested)
+        if xggt:
+            raise NoSuchObject('zip has %d AccuMark object(s) but none is a piece '
+                                '(type 20); see accumark_marker.list_zip' % len(xggt),
+                                source=source)
+        raise NotAnAccuMarkZip('no AccuMark object found in zip', source=source)
+    if len(pieces) > 1:
+        raise AmbiguousObject('zip has %d piece objects; pass member= to pick one'
+                               % len(pieces), source=source,
+                               candidates=[n for n, _ in pieces])
+    return pieces[0]
+
+def decode_zip(path, member=None):
+    name, d = _select_piece_member(path, member)
+    return decode(d)
 
 # ------------------------------------------------------------ .RUL (ASCII)
 def parse_rul(text):
@@ -804,6 +869,13 @@ def summarize(data):
         if len(blocks) > 8: break     # matches decode()'s own safety cap
     name_hdr = d[0x15:d.index(b'\x00',0x15)].decode('latin1')
     segs = parse_segments(d)
+    if not blocks:
+        # v2: a forged/corrupt-but-magic-bearing object can pass decode()'s
+        # header check yet contain zero plausible field blocks under this
+        # function's own (independent, brute-force) scan - surface that
+        # distinctly instead of IndexError on blocks[0].
+        raise DecodeError('no piece block found in object payload',
+                           source=name_hdr or None)
     b0 = blocks[0]
     return dict(
         header_piece_name = name_hdr,
@@ -840,7 +912,6 @@ def summarize(data):
         object_records = [(o_['id'], o_['payload']) for o_ in b0['objects']],
     )
 
-def summarize_zip(path):
-    z = zipfile.ZipFile(path)
-    name = [n for n in z.namelist() if n.lower().endswith('.tmp')][0]
-    return summarize(z.read(name))
+def summarize_zip(path, member=None):
+    name, d = _select_piece_member(path, member)
+    return summarize(d)

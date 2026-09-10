@@ -27,15 +27,24 @@ import glob, math, os, re, sys
 HERE = os.path.dirname(os.path.abspath(__file__)); sys.path.insert(0, HERE)
 import accumark_pds as ap
 import accumark_marker as am
+from accumark_errors import NotADxf
 
 # ---------------------------------------------------------- drawn DXF
 def dxf_marker(path):
     """Polylines of a drawn-marker DXF (plot-style export: one polyline per
     edge run, labels as TEXT) -> (loops, meta, marker name). Chunks are
     chained by shared endpoints into closed loops; the loop spanning the
-    whole drawing is the marker boundary and is dropped."""
+    whole drawing is the marker boundary and is dropped.
+
+    v2: raises NotADxf when the file shows no DXF evidence at all, instead of
+    silently returning ([], {}, '') - the same empty-but-"successful" result
+    a real DXF with zero loops would produce, which made an empty file, plain
+    text or random bytes indistinguishable from a genuine empty drawing."""
     L = [l.rstrip('\r\n') for l in open(path, encoding='latin1')]
     pairs = [(L[i].strip(), L[i+1]) for i in range(0, len(L)-1, 2)]
+    if not any(k == '0' and v.strip() == 'SECTION' for k, v in pairs) \
+       and not any(v.strip() == '$ACADVER' for k, v in pairs):
+        raise NotADxf('no SECTION or $ACADVER found - not a DXF', source=path)
     # $INSUNITS (header group 70) tells us what unit the raw X/Y vertex
     # coordinates below are in - 1=inches (the July markers), 5=centimeters
     # (this vintage's "Metric [cm]" AccuMark session; confirmed against
@@ -105,8 +114,10 @@ def facts(path, dxf=None, buffer_in=None):
     out = []
     for mkr in res['markers']:
         mk = mkr['marker']; f = {}
+        f['decoder_version'] = am.__version__
         f['name'] = mk['name']
         f['laid'] = 'yes' if mk['laid'] else 'no'
+        f['pieces_failed'] = len(res.get('piece_errors') or {})
         f['width_cm'] = round(mk['width']*2.54, 2); f['length_cm'] = round(mk['length']*2.54, 2)
         f['util_pct'] = round(mk['util'], 2); f['area_422'] = round(mk['total_area'], 4)
         f['placements'] = len(mk['placements']); f['bundles'] = len(mk['bundles'])

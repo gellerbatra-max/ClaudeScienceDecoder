@@ -47,15 +47,20 @@ hex) instead of just the summary counts.
 import argparse, glob, os, re, sys, zipfile, difflib
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import accumark_pds as ap
+from accumark_errors import AccuMarkError, NotAnAccuMarkZip, NoSuchObject, NotADxf
 
 # ----------------------------------------------------------------- loading
 def load(folder):
+    """v2: raises accumark_errors.AccuMarkError subclasses instead of
+    SystemExit - the CLI main() below still turns those into the same
+    stderr-message-and-nonzero-exit behaviour, but a library caller (e.g.
+    selftest.py, or robustness/dataset_test.py) can now catch them."""
     folder = folder.rstrip('/\\')
     z = glob.glob(os.path.join(folder, '*.ZIP')) + glob.glob(os.path.join(folder, '*.zip'))
-    if not z: raise SystemExit(f'no .ZIP in {folder}')
+    if not z: raise NotAnAccuMarkZip(f'no .ZIP in {folder}', source=folder)
     zf = zipfile.ZipFile(z[0])
     tmp = [n for n in zf.namelist() if n.lower().endswith('.tmp')]
-    if not tmp: raise SystemExit(f'{z[0]} has no .tmp member - not an AccuMark piece export')
+    if not tmp: raise NoSuchObject(f'{z[0]} has no .tmp member - not an AccuMark piece export', source=z[0])
     data = zf.read(tmp[0])
     dxf = (glob.glob(os.path.join(folder,'*.DXF')) + glob.glob(os.path.join(folder,'*.dxf')) or [None])[0]
     rul = (glob.glob(os.path.join(folder,'*.RUL')) + glob.glob(os.path.join(folder,'*.rul')) or [None])[0]
@@ -63,8 +68,14 @@ def load(folder):
 
 # ------------------------------------------------------------ DXF geometry
 def dxf_outline(path):
+    """v2: raises NotADxf when the file shows no DXF evidence (no SECTION
+    group, no $ACADVER) instead of silently returning an empty polyline list
+    indistinguishable from a genuine empty drawing."""
     L = [l.rstrip('\n') for l in open(path, errors='replace')]
     pr = [(L[i].strip(), L[i+1].strip()) for i in range(0, len(L)-1, 2)]
+    if not any(k == '0' and v == 'SECTION' for k, v in pr) \
+       and not any(v == '$ACADVER' for k, v in pr):
+        raise NotADxf('no SECTION or $ACADVER found - not a DXF', source=path)
     polys, cur, lay, x = [], None, None, None
     for k, v in pr:
         if k == '0':
@@ -209,6 +220,7 @@ def facts(cap):
         line_kinds = ''
     cov = ap.coverage(cap['data'], summary=s)
     f = dict(
+        decoder_version=ap.__version__,
         file_bytes=len(cap['data']),
         exported_name=s['header_piece_name'], category=s['category'],
         annotation=s['annotation'], rule_table=s['rule_table'],
@@ -309,4 +321,7 @@ def _isnum(x):
     except ValueError: return False
 
 if __name__ == '__main__':
-    sys.exit(main())
+    try:
+        sys.exit(main())
+    except AccuMarkError as e:
+        print(str(e), file=sys.stderr); sys.exit(2)

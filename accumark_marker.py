@@ -7,6 +7,11 @@ Format knowledge: MARKER_DECODE_PLAN.md (this repo) and, for the slot
 layout and the slot->piece binding, gellerbatra-max/dxfparser
 docs/accumark-decoded-so-far.md section 6 (verified there on 2,830 placements).
 
+v2 (see CHANGELOG.md): a truncated object raises accumark_errors.TruncatedObject
+instead of returning a plausible-looking dict built from wrapped-around bytes;
+list_zip() reads each ZIP member by position (ZipInfo) rather than by name, so
+members that happen to share a name no longer alias to the same object.
+
     import accumark_marker as am
     objs = am.list_zip('2303-BD 137 PLACED.zip')          # every object, typed
     mk   = am.parse_marker(objs['marker'][0]['data'])       # header + placements
@@ -14,10 +19,14 @@ docs/accumark-decoded-so-far.md section 6 (verified there on 2,830 placements).
 """
 import math, re, struct, zipfile
 import accumark_pds as ap
+from accumark_errors import (AccuMarkError, NotAnAccuMarkZip, NestedArchive,
+    NotAnAccuMarkObject, TruncatedObject, WrongObjectType, NoSuchObject,
+    AmbiguousObject, DecodeError)
 
 u16, i16, i32, u32 = ap.u16, ap.i16, ap.i32, ap.u32
 def f64(d, o): return struct.unpack_from('<d', d, o)[0]
 
+__version__ = '2.0'
 MAGIC = b'XGGT IXPORT DB5.'
 TRAILER = 396
 OBJECT_TYPES = {20: 'piece', 12: 'model', 13: 'order', 9: 'marker',
@@ -29,10 +38,33 @@ def read_object(d):
     """Envelope shared by every object type and both export vintages [V]:
     name at 0x15, type u16 at 0x7a (the u32 copy is at 0x60 or 0x68
     depending on vintage), payload length u32 at 0x7e, payload from 0x80,
-    396-byte trailer with created/modified Unix stamps and user names."""
-    if not d.startswith(MAGIC): raise ValueError('not an AccuMark IXPORT object')
-    name = d[0x15:d.index(b'\x00', 0x15)].decode('latin1')
+    396-byte trailer with created/modified Unix stamps and user names.
+
+    v2: validates the object is actually long enough to hold what read_object
+    claims before slicing it. Note payload (d[0x80:0x80+plen]) and the
+    396-byte trailer are NOT sequential, non-overlapping regions in general -
+    real small objects (e.g. a 480-byte lay_limits) have payload data sitting
+    inside what the trailer's fixed 396-byte tail also covers, so `0x80+plen
+    +TRAILER <= len(d)` is not a valid invariant (checked against the corpus:
+    it fails on several genuine, correctly-decoding production fixtures).
+    What IS reproducibly true, and what the truncation bug actually needs: a
+    marker truncated to ~120-200 bytes used to return a plausible-looking
+    dict where d[-TRAILER:] covered the *entire* short buffer (header
+    included) instead of a real, distinct trailer region - guard against
+    that by requiring the buffer be at least TRAILER bytes on its own."""
+    if not d.startswith(MAGIC): raise NotAnAccuMarkObject('not an AccuMark IXPORT object')
+    if len(d) < 0x82:
+        raise TruncatedObject('object too short to hold a header', declared=0x82, actual=len(d))
+    try:
+        name_end = d.index(b'\x00', 0x15)
+    except ValueError:
+        raise TruncatedObject('object header name is not NUL-terminated (truncated?)',
+                               actual=len(d))
+    name = d[0x15:name_end].decode('latin1')
     t = u16(d, 0x7a); plen = u32(d, 0x7e)
+    if len(d) < TRAILER:
+        raise TruncatedObject('object shorter than its own trailer region',
+                               source=name, declared=TRAILER, actual=len(d))
     tr = d[-TRAILER:]
     stamps = [u32(tr, o) for o in range(0, len(tr)-4)
               if 1_400_000_000 < u32(tr, o) < 2_200_000_000]
@@ -44,14 +76,24 @@ def read_object(d):
                 users=users, data=d)
 
 def list_zip(path):
-    """{kind: [object, ...]} for every XGGT member of an export ZIP."""
-    out = {}
+    """{kind: [object, ...]} for every XGGT member of an export ZIP.
+
+    v2: reads members by position (ZipInfo from infolist()) rather than by
+    name - zipfile.ZipFile.read(name) resolves through a name->info dict, so
+    two entries sharing a member name used to alias to the same bytes and
+    silently double-count every object in the archive. Each entry is now
+    decoded independently regardless of name collisions; duplicate_member_names
+    reports any names that occur more than once, for diagnostics."""
+    out = {}; seen_names = {}
     with zipfile.ZipFile(path) as z:
-        for n in z.namelist():
-            d = z.read(n)
+        for info in z.infolist():
+            seen_names[info.filename] = seen_names.get(info.filename, 0) + 1
+            d = z.read(info)
             if not d.startswith(MAGIC): continue
-            o = read_object(d); o['member'] = n
+            o = read_object(d); o['member'] = info.filename
             out.setdefault(o['kind'], []).append(o)
+    dupes = [n for n, c in seen_names.items() if c > 1]
+    if dupes: out['duplicate_member_names'] = dupes
     return out
 
 # -------------------------------------------------------------- strings
@@ -80,6 +122,15 @@ def directory(d):
 def _section(d, dirs, k):
     a = dirs[k]
     if a in (0xffffffff, 0): return None
+    # v2: a section's directory offset is trusted absolute file position with
+    # no built-in bound - on a truncated object this used to point past EOF
+    # and only fail much later, as a bare struct.error deep inside whichever
+    # section parser (e.g. parse_slots's '<dddd' unpack). Catch it here,
+    # where the offset is still attributable to "this object is truncated"
+    # rather than "this struct doesn't unpack".
+    if a >= len(d):
+        raise TruncatedObject('section %d offset points past end of object' % k,
+                               declared=a, actual=len(d))
     later = [v for v in dirs if v not in (0xffffffff, 0) and v > a]
     return a, (min(later) if later else len(d))
 
@@ -204,7 +255,7 @@ def parse_marker(d, size_vocab=None):
     [size names]} from the piece objects of the same ZIP, used to split the
     record strings; without it the size is taken by pattern."""
     obj = read_object(d)
-    if obj['type'] != 9: raise ValueError('not a marker object (type %d)' % obj['type'])
+    if obj['type'] != 9: raise WrongObjectType('not a marker object', got=obj['type'], want=9)
     dirs = directory(d)
     sec = {k: _section(d, dirs, k) for k in range(DIR_SLOTS)}
     mk = dict(name=obj['name'], object=obj, directory=dirs, sections=sec,
@@ -383,7 +434,7 @@ def parse_order(d):
     annotation, block buffer, notch), then per model the requested sizes
     with their (still unlabelled [?]) quantity fields."""
     obj = read_object(d)
-    if obj['type'] != 13: raise ValueError('not an order object')
+    if obj['type'] != 13: raise WrongObjectType('not an order object', got=obj['type'], want=13)
     strs = [(m.start(), m.group().decode('latin1')) for m in re.finditer(rb'[\x20-\x7e]{2,}', d[0x80:len(d)-TRAILER])]
     strs = [(o+0x80, s) for o, s in strs]
     models = []
@@ -398,7 +449,7 @@ def parse_order(d):
 def parse_model(d):
     """Model object (type 12): the pieces of a garment [V for names]."""
     obj = read_object(d)
-    if obj['type'] != 12: raise ValueError('not a model object')
+    if obj['type'] != 12: raise WrongObjectType('not a model object', got=obj['type'], want=12)
     pieces = []
     p = 0x80
     end = len(d) - TRAILER
@@ -514,18 +565,24 @@ def piece_outline(piece, size=None):
     return outline, note
 
 def load_pieces(objs):
-    pieces = {}
+    """-> (pieces, errors). Fails soft per piece by design - one corrupt piece
+    must not sink a marker with a hundred others - but v2 keeps *why* instead
+    of discarding it: `errors[name]` holds the exception every place_marker()
+    caller can now surface (piece_errors below), rather than every failure
+    reading identically as the misleading 'piece not in ZIP'."""
+    pieces = {}; errors = {}
     for o in objs.get('piece', []):
         try: pieces[o['name']] = dict(block=ap.decode(o['data'])['blocks'][0], data=o['data'])
-        except Exception: pieces[o['name']] = None
-    return pieces
+        except Exception as e:
+            pieces[o['name']] = None; errors[o['name']] = e
+    return pieces, errors
 
 def place_marker(path, use_grading=True):
-    """Decode a marker ZIP: -> dict(marker, pieces, placed=[(slot, piece,
-    size, outline_in_marker_frame or None, note)])."""
+    """Decode a marker ZIP: -> dict(marker, pieces, piece_errors, placed=[(slot,
+    piece, size, outline_in_marker_frame or None, note)])."""
     objs = list_zip(path)
-    if 'marker' not in objs: raise ValueError('no marker object in %s' % path)
-    pieces = load_pieces(objs)
+    if 'marker' not in objs: raise NoSuchObject('no marker object in zip', source=str(path))
+    pieces, piece_errors = load_pieces(objs)
     vocab = {n: [s['name'] for s in p['block']['meta']['sizes']] for n, p in pieces.items() if p}
     out = []
     for mo in objs['marker']:
@@ -534,11 +591,15 @@ def place_marker(path, use_grading=True):
         for s in mk['placements']:
             piece = pieces.get(s['piece']) if s['piece'] else None
             if piece is None:
-                placed.append((s, s['piece'], s['size'], None, 'piece not in ZIP' if s['piece'] else 'unbound slot')); continue
+                if s['piece'] in piece_errors:
+                    note = 'piece failed to decode: %s' % piece_errors[s['piece']]
+                else:
+                    note = 'piece not in ZIP' if s['piece'] else 'unbound slot'
+                placed.append((s, s['piece'], s['size'], None, note)); continue
             outline, note = piece_outline(piece, s['size'] if use_grading else None)
             placed.append((s, s['piece'], s['size'], transform(outline, s), note))
         out.append(dict(marker=mk, placed=placed, checks=check_marker(mk)))
-    return dict(markers=out, pieces=pieces, objects=objs)
+    return dict(markers=out, pieces=pieces, piece_errors=piece_errors, objects=objs)
 
 def bbox_check(place_result, buffer_in=0.0):
     """No-DXF geometry test: the slot's home centre is the bbox centre of

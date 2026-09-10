@@ -1,5 +1,78 @@
 # Marker decode plan — AccuMark native marker export
 
+> ## STATUS 2026-09-10 (night) — layout-rearrangement test attempted, not completed: the interaction model, now understood, was the real obstacle
+>
+> Direct continuation of the STATUS block below (all 9 status-bar codes),
+> same live session. Picked up the other open lead - whether the type-10
+> object's ~48 KB residual (previous two STATUS blocks) tracks placement
+> layout - by trying to build the comparison file it needs: the same 97
+> pieces as `2303-BD 137 PLACED`, one of them moved to a different valid
+> position.
+>
+> **What worked, safely:** File menu → Save As → typed a new name
+> (`2303-BD137-REARR1`) *before* making any edit, specifically so a mistake
+> could only affect the copy - confirmed by title bar and "MARKER STORED"
+> banner, original `2303-BD 137 PLACED` never opened for writing. The
+> `Save As` dialog's filename field needs `End` → `Shift+Home` → `Delete`
+> to clear; `Ctrl+A` alone deletes a single character instead of selecting
+> all, and the `Type` tool's own `clear:true` appended rather than
+> replaced. `Ctrl+Z` does nothing in Easy Marking; the toolbar Undo icon
+> (top-left, not File-menu) reliably reverts a piece move, confirmed by CT
+> returning to `0/97` and CU to 71.51%.
+>
+> **The interaction model: click lifts a piece, click again drops it - no
+> drag needed, but no plain "select" either.** A single left click *or*
+> right click on a placed piece removes it from the marker (`CT` goes
+> `0/97` → `1/96`, visible in the field before the piece visually
+> disappears) and it follows the cursor until the next click, which drops
+> it at that point. Right-click offers no context menu on a piece in this
+> state - it lifts it exactly like left-click. This means there is no way
+> to select a piece for inspection or a numeric operation without also
+> picking it up; `Translate Data` (View ribbon) is unrelated - it is a
+> UI-language dictionary editor, not a piece transform, ruled out directly.
+>
+> **The valid drop area is narrower than the visible canvas, and by more
+> than expected.** Dropping the lifted piece anywhere outside the existing
+> pieces' own tightly-packed footprint - including immediately adjacent to
+> it, at `610,700` and `420,685` screen coordinates, a few pixels from the
+> cluster's own edge - produces "NOT ALL PIECES PLACED (1 unplaced, 0 in
+> matrix menu), ARE YOU SURE YOU WANT TO STORE?" on Save, i.e. genuinely
+> unplaced, not just relocated. This despite the drop point sitting well
+> inside the green top/bottom lines that mark the fabric width. Whatever
+> bounds a valid drop is not simply "between the fabric edges" - it is
+> tied to some other extent (most likely the already-nested length/matrix,
+> not re-derived live from a manual move).
+>
+> **One attempt left the piece invisible** (dropped near `420,685`,
+> inside/behind the existing cluster) - not found again by eye, state
+> ambiguous. Recovered cleanly with the toolbar Undo rather than
+> investigating further; not a corruption, just this session declining to
+> chase an uncertain state on a live install.
+>
+> **Also reconfirmed the focus-drift hazard from the earlier STATUS block
+> is real and recurring, not a one-off:** it happened again, a third time,
+> mid-task - `Snapshot` calls started reporting no active window with no
+> error, and the very next click landed back on this Claude session's own
+> sidebar, one item from Delete on an unrelated chat, again. Caught and
+> dismissed immediately both times; the marker file was verified unchanged
+> after each incident (title bar, CT, CU, PA all read as expected).
+>
+> **Net result: the comparison file was not built this pass.** The blocker
+> was never the risky part (moving a piece) - it was not knowing, in
+> advance, that (a) click lifts rather than selects, (b) the valid area is
+> much smaller than the visible canvas and its true boundary is still
+> unmapped, and (c) `Ctrl+Z` is a no-op here. A next attempt with these
+> three facts in hand should be able to drop the piece back inside its own
+> existing footprint (e.g. swap two adjacent pieces' positions, which stays
+> inside the already-valid region by construction) rather than searching
+> blind for new open space, and should succeed in far fewer tries.
+> `2303-BD137-REARR1` is left on disk as a byte-identical duplicate of
+> `2303-BD 137 PLACED` (every attempted edit was undone before any Save) -
+> harmless, and available as the starting point for that next attempt.
+>
+> `python selftest.py` → not re-run (no decoder files touched; this was a
+> live-editing attempt, not a format-decode change).
+>
 > ## STATUS 2026-09-10 (evening, live session, retry) — all 8 status-bar codes solved: the tooltips work, the earlier hover attempts were just too fast
 >
 > Direct continuation of the block below - same live session, same marker

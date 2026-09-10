@@ -1,5 +1,41 @@
 # Marker decode plan — AccuMark native marker export
 
+> ## STATUS 2026-09-11 (offline, stronger than expected) — slot 39's whole body is a function of piece topology, not content: proven, not just id2
+>
+> Follow-up test to the id2 investigation, using `CAP-C21-SEC14` (built
+> for the section-14 work above) as a genuinely independent data point:
+> different piece (`CAP-C21-RULE-TWO`, not `CLAUDE-GRADE-TEST`), different
+> actual dimensions, and - the specific thing being tested - **two
+> distinct grade rules applied instead of one**. If id2's repeat count (or
+> anything else in slot 39) tracked rule complexity, this marker should
+> show it.
+>
+> **It doesn't, and the result is stronger than "id2 still reads 1."**
+> `type10_tagged_fields()` returns the exact same list, id for id, value
+> for value, as `CLAUDE-GRADE-MARKER`'s (one rule) - and checking the
+> *entire* 446-byte slot 39 body directly (not just the sparse tagged
+> table) shows it is **byte-for-byte identical** between the two markers,
+> despite a different piece, different coordinates, different rule
+> tables, and different graded dimensions entirely. The only things the
+> two markers actually share are *structural*: 1 piece, 4 perimeter
+> points, 2 sizes placed, 2 placements total.
+>
+> **This adds "number of distinct grade rules applied" to the list of
+> ruled-out explanations for id2 specifically, and generalizes the
+> existing findings into a stronger claim about slot 39 as a whole**: its
+> content isn't just independent of layout and fabric cost/weight - on
+> this evidence, it looks like a pure function of the piece's *topology*
+> (point count, size count, placement count) and not of any actual
+> geometric, rule-table, or coordinate value at all. That is consistent
+> with (and strengthens) the standing "nesting-algorithm scratch buffer"
+> reading: a buffer sized and structured from topological parameters,
+> whose contents converge to the same state regardless of the actual
+> numbers being nested, is a more natural explanation for exact
+> byte-identity across genuinely different pieces than any per-piece
+> computed value would be.
+>
+> `python selftest.py` → **SELFTEST PASS** (analysis only).
+>
 > ## STATUS 2026-09-11 (offline follow-up) — section 14's per-point records: a real structural fact found, the payload itself still resists decoding
 >
 > Direct follow-up to the section-14 generalization above, using the same
@@ -1526,10 +1562,19 @@ at most once) is reproducible and structural** — identical across re-exports
 of the same cut and across different cuts of the same style/order — **but
 still doesn't match any already-decoded quantity**: not total placements,
 not declared/placed piece names, not embedded piece-object count, not
-embedded model-object count, not the model-list length (all checked
-directly against the corpus and ruled out). The object's trailer is the
-same format as every other AccuMark object, plus one tiny extra field: a
-laid-state flag (`0x0000`/`0x0002`).
+embedded model-object count, not the model-list length, and — checked
+later with a genuinely different piece and rule tables (`CAP-C21-SEC14`)
+— not the number of distinct grade rules applied either (all checked
+directly against the corpus and ruled out). That same later check found
+something stronger than an id2-specific negative: **slot 39's entire
+446-byte body is byte-for-byte identical** between two markers sharing
+only *topology* (1 piece, 4 perimeter points, 2 sizes, 2 placements) and
+differing in everything else - piece identity, coordinates, rule tables,
+graded dimensions - strengthening the "nesting-algorithm scratch buffer"
+reading into a fuller claim: slot 39 looks like a pure function of piece
+topology, not of any actual geometric or rule value. The object's
+trailer is the same format as every other AccuMark object, plus one tiny
+extra field: a laid-state flag (`0x0000`/`0x0002`).
 
 **Solved — the model's `0x41`/`0x44` byte.** It's the same field
 `parse_pieces_section` already decodes from section 10 as `flag` (`[V]`

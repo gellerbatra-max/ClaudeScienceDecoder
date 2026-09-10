@@ -1,5 +1,53 @@
 # Marker decode plan — AccuMark native marker export
 
+> ## STATUS 2026-09-10 (still later night, completed) — the FC/FW hypothesis for slot 39's remaining tagged fields: `Shortcut` succeeds where `Type` fails, but the result is another clean negative
+>
+> Follow-up to the layout test above, same session. With `TI`/`PA`/`FC`/
+> `FW`/etc. now named (see the status-bar STATUS block further below), the
+> next concrete test was: set `FC` (Fabric Cost) and `FW` (Fabric Weight)
+> to distinctive values on `CLAUDE-GRADE-REARR1`, export, and see which
+> tagged field in slot 39 picks them up.
+>
+> **First obstacle, then the actual fix.** The three techniques tried
+> earlier this session (`Type{text, press_enter:true}` directly,
+> double-click-then-`Type`, plain-click-then-`Type`) all still fail on
+> this field the same way - caret visible, value never changes. But
+> `mcp__Windows-MCP__Shortcut` (real OS-level keystroke events, one digit
+> at a time - e.g. `Shortcut{shortcut:"4"}` then `Shortcut{shortcut:"2"}`)
+> **does work**. The field is a calculator-style append field, not a
+> normal decimal-shifting one: typing "4","2" gives "0.42"; two more
+> digits "4","2" on top of that give "0.4242", which then rounds/truncates
+> back to "0.42" on Enter. Set `FC=0.42` and `FW=0.73` this way; `CB`
+> (Cost per Bundle) auto-updated to `0.16` and `MW` (Marker Weight)
+> auto-updated to `0.78`, confirming those two are derived, not
+> independently stored. **Reusable finding: on these custom-drawn
+> AccuMark numeric fields, `Shortcut` succeeds where `Type` fails** - this
+> supersedes the "resists synthetic keystrokes" verdict from earlier in
+> this same session, which was a `Type`-specific limitation, not a
+> field-wide one.
+>
+> Saved this as `CLAUDE-GRADE-FCFW1` (Save-As copy of `CLAUDE-GRADE-REARR1`,
+> same End/Shift+Home/Delete filename-clearing technique as before),
+> exported via AccuMark Explorer (same "Not all components exist." /
+> piece-dropped limitation as every marker export - not a blocker, the
+> type-10 object lives entirely inside the marker's own bytes).
+>
+> **Result: `type10_tagged_fields()` is byte-for-byte IDENTICAL between
+> the FC=0.00/FW=0.00 baseline and the FC=0.42/FW=0.73/CB=0.16/MW=0.78
+> file** - all 10 tuples, id for id, value for value, tail for tail
+> (checked directly in Python: same list on both files). This rules out
+> every one of slot 39's tagged fields (ids 2, 4, 8, 44-48, 51, 52 in this
+> pair's table) as the storage location for fabric cost, fabric weight,
+> cost-per-bundle, or marker weight - none of them move when those four
+> status-bar values change by a large, distinctive amount. Combined with
+> the layout-independence result directly above, slot 39's tagged-field
+> table is now confirmed independent of both placement layout AND these
+> four fabric/cost fields; whatever it does encode, it isn't per-marker
+> user-editable data of either kind tested so far.
+>
+> `python selftest.py` → **SELFTEST PASS** (analysis only; no decoder code
+> changed this pass - another negative result, nothing new to wire in).
+>
 > ## STATUS 2026-09-10 (later night) — the layout test, completed: slot 39's body is CONFIRMED layout-independent, not just untested
 >
 > Direct continuation of the STATUS block below - same night, picked back
@@ -1185,9 +1233,15 @@ placement count"; this one shows "doesn't vary with placement position
 either", which the low-entropy 0/1/2-dominated content and the ruled-out
 coordinate/compression encodings are now best explained by as a nesting-
 algorithm scratch buffer computed once and never updated by ordinary piece
-moves, rather than per-item stored data of any kind. The object's trailer
-is the same format as every other AccuMark object, plus one tiny extra
-field: a laid-state flag (`0x0000`/`0x0002`).
+moves, rather than per-item stored data of any kind. **Also now confirmed
+independent of fabric cost/weight**: a second controlled A/B test
+(`CLAUDE-GRADE-REARR1` vs. `CLAUDE-GRADE-FCFW1`, same file with `FC` set
+to `0.42` and `FW` to `0.73` via Easy Marking's Marker Info panel, `CB`/`MW`
+auto-deriving to `0.16`/`0.78`) found `type10_tagged_fields()` byte-for-byte
+identical between the two — none of ids 2/4/8/44-48/51/52 move when those
+four status-bar values change by a large, distinctive amount. The object's
+trailer is the same format as every other AccuMark object, plus one tiny
+extra field: a laid-state flag (`0x0000`/`0x0002`).
 
 **Solved — the model's `0x41`/`0x44` byte.** It's the same field
 `parse_pieces_section` already decodes from section 10 as `flag` (`[V]`

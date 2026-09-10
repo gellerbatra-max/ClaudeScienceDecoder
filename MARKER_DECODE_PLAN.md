@@ -1,5 +1,39 @@
 # Marker decode plan — AccuMark native marker export
 
+> ## STATUS 2026-09-10 (last) — M-MARKER's label codes and COSTINGS's ply byte, both narrowed with real evidence
+>
+> Compared annotation and lay-limit objects **across every captured
+> marker at once** instead of reading one payload in isolation - the
+> corpus already had differently-named instances of both, which is what
+> made this tractable without a new capture.
+>
+> **`M-MARKER`/`A` (annotation) - framing confirmed, one code tentatively
+> identified.** Every sample repeats `[u16 tag][20-byte padded name]
+> [00 00][u16 count][code bytes]` for up to three named sub-blocks
+> (`DEFAULT`, `MARKER`, `LABELD`). The `MARKER` sub-block's 8 code bytes
+> are **byte-identical across all three independent samples**
+> (`14 0b 18 0b 17 15 16 1c`) - a real, reproducible constant, meaning
+> in this vintage. The `DEFAULT` sub-block's codes differ, and comparing
+> them is what breaks in: `LADIES-BLOUSE TEST-2`'s annotation object is
+> descriptively named **`SIZE-AND-BUNDLE`** and its `DEFAULT` codes are
+> two 3-byte triples, `(07,01,06)` and `(09,01,03)` - `2303-BD 137`'s
+> generic `A` object's first triple is `(06,01,14)` and its **second is
+> the identical `(07,01,06)`**. Tentatively: **code `07` = SIZE** (it's
+> the one recurring value, and it sits in the object literally named for
+> showing size). `LABELD` is a real third slot, populated with its own
+> count+codes only in the fuller `M-MARKER` sample - empty/truncated in
+> the simpler `A` objects, so it's an optional preset, not always used.
+>
+> **`COSTINGS`/`L`/`SINGLE-PLY` (lay limits) - one byte identified.** The
+> byte right before each object's own `DEFAULT` name reads `2` on every
+> generic `L` object and `1` on the one named **`SINGLE-PLY`** - matching
+> its own name exactly. Tentatively: **this byte is the configured ply
+> count** (or a lay-type code where 1 = single ply). A second, smaller
+> flag two bytes past the name differs between `COSTINGS` (`01`) and the
+> generic objects (`00`) - unidentified, but distinct and reproducible.
+>
+> `python selftest.py` → **SELFTEST PASS** (analysis only).
+>
 > ## STATUS 2026-09-10 (final) — M-MARKER/3MM/lay-limit/notch table payloads: mostly closed, one real prior mystery resolved
 >
 > These four object kinds (types 2/3/6/17) turned out to already be sitting
@@ -704,9 +738,19 @@ structure only, no confirmed numeric meaning yet. Bonus: identified a
 fifth object kind (type 23 = rule table) while surveying the corpus,
 confirmed by content match against `CAP-RULES-A`'s known deltas.
 
-**Untouched:** the status-bar fields above; `M-MARKER`'s label codes;
-`COSTINGS`'s numeric fields; section 14's X coordinate and its
-generalization to multi-graded-point pieces.
+**Narrowed with cross-sample evidence:** `M-MARKER`'s label-code framing
+(`[tag][20-byte name][00 00][count][codes]` per named sub-block, up to 3
+slots) is confirmed, the `MARKER` sub-block's 8 codes are a reproducible
+constant across all 3 samples, and code `07` is tentatively `SIZE` (the
+value recurring between the generic default preset and the
+descriptively-named `SIZE-AND-BUNDLE` object). `COSTINGS`'s ply-count byte
+is tentatively identified (`1` on the object literally named
+`SINGLE-PLY`, `2` elsewhere); one further flag byte differs on `COSTINGS`
+specifically but isn't identified.
+
+**Untouched:** the status-bar fields above; the rest of `M-MARKER`'s and
+`COSTINGS`'s codes; section 14's X coordinate and its generalization to
+multi-graded-point pieces.
 
 ## 6. Superseded
 

@@ -582,10 +582,24 @@ def load_pieces(objs):
     must not sink a marker with a hundred others - but v2 keeps *why* instead
     of discarding it: `errors[name]` holds the exception every place_marker()
     caller can now surface (piece_errors below), rather than every failure
-    reading identically as the misleading 'piece not in ZIP'."""
+    reading identically as the misleading 'piece not in ZIP'.
+
+    v2: a piece object that decodes with zero blocks - a stub/placeholder
+    (found on `markers/misc-test-markers/LADIES-BLOUSE TEST-2.zip`: an
+    AMXDLL "Include Components" export limitation, already documented in
+    MARKER_DECODE_PLAN.md, writes a type-20 envelope+trailer with no real
+    field-block payload in between when a referenced piece can't be
+    resolved) - now records a named DecodeError instead of the bare
+    `IndexError: list index out of range` indexing `blocks[0]` used to
+    raise, matching the same fix already applied to accumark_pds.summarize()."""
     pieces = {}; errors = {}
     for o in objs.get('piece', []):
-        try: pieces[o['name']] = dict(block=ap.decode(o['data'])['blocks'][0], data=o['data'])
+        try:
+            blocks = ap.decode(o['data'])['blocks']
+            if not blocks:
+                raise DecodeError('no piece block found in object payload (stub/placeholder object?)',
+                                   source=o['name'])
+            pieces[o['name']] = dict(block=blocks[0], data=o['data'])
         except Exception as e:
             pieces[o['name']] = None; errors[o['name']] = e
     return pieces, errors

@@ -1,5 +1,46 @@
 # Changelog
 
+## v2.0 (2026-09-11, continued once more #4) - LADIES-BLOUSE decode failure investigated: not a bug, plus a real error-message fix found along the way
+
+User asked to investigate why all 5 pieces in `LADIES-BLOUSE TEST-2.zip`
+fail to decode (flagged, not chased, in the previous entry).
+
+**Root cause: not a decoder bug - a known, already-documented AccuMark
+export limitation, confirmed by this project's own prior-session capture
+notes** (`MARKER_DECODE_PLAN.md`'s 2026-09-10 STATUS block): exporting this
+marker hit the "Include Components silently drops pieces" limitation
+already on record elsewhere in this project - "0 of 5 needed pieces came
+through". Byte-level investigation confirms exactly that shape: each of
+the 5 objects has a fully legitimate XGGT envelope and trailer (real
+timestamps, the standard heap-residue pattern, correctly classified as
+type 20 by `read_object`/`list_zip`) but **no valid metadata field block
+anywhere in the payload** - `accumark_pds._find_field_block` was tried
+across the entire file (not just `decode()`'s narrow default window) and
+found nothing real; the one candidate a wider ad-hoc search turned up
+(`LADIES-BLOUSE-COL` at offset 0x277) decodes to obvious garbage
+(`len_size=1879047945`) confirming it's a false-positive coincidence, not
+a genuine field block. Readable-looking fragments in the payload ("BACK",
+"CUT1", "A1-LADIES") are real terminology but not stored in the standard
+length-prefixed layout - consistent with a placeholder/stub object AccuMark
+wrote when the referenced component couldn't be resolved at export time,
+not a differently-encoded real piece. These are correctly-behaving
+decoder refusals, not something to make succeed by force-fitting a parse.
+
+**Found and fixed along the way**: `accumark_marker.load_pieces` had the
+exact same unguarded-`blocks[0]` pattern `accumark_pds.summarize()` used to
+have (fixed earlier in this v2 effort) - a piece that decodes with zero
+blocks raised a bare `IndexError: list index out of range` instead of a
+named error. `place_marker`'s existing `piece_errors` mechanism (previous
+v2 fix) already caught and recorded it without crashing, but with an
+unhelpful message. Now raises `DecodeError('no piece block found in object
+payload (stub/placeholder object?)', source=<piece name>)`, matching
+`summarize()`'s equivalent fix and giving all three affected entry points
+(`decode()`, `summarize()`, `load_pieces()`/`place_marker()`) consistent,
+correctly-scoped behaviour on this exact input shape.
+
+`selftest.py` SELFTEST PASS; `robustness/run.py` still 303/303;
+`dataset_test.py` still 36/36.
+
 ## v2.0 (2026-09-11, continued once more #3) - the whole corpus checked: 99 pieces, 2 explained regressions, 0 bugs
 
 User asked to check the rest of the corpus. Extended the same worktree-diff

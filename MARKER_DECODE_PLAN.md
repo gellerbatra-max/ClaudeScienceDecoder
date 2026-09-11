@@ -1125,6 +1125,16 @@
 > `selftest.py`'s fixture list since `LADIES-BLOUSE TEST-2` can't fully
 > decode without its missing piece components).
 >
+> **[2026-09-11 addendum]** Investigated further as part of the v2
+> ZIP-robustness work (see `CHANGELOG.md`): confirmed all 5 `LADIES-BLOUSE
+> TEST-2` piece objects are genuinely unrecoverable placeholder/stub
+> objects (a valid XGGT envelope+trailer, but no real metadata field block
+> anywhere in the payload - not a differently-encoded real piece), matching
+> this note's "Include Components" explanation exactly. `place_marker`'s
+> `piece_errors` now reports a clear `DecodeError` for each instead of a
+> bare `IndexError`. No fix needed beyond that - there is no real geometry
+> here to recover.
+>
 > ## STATUS 2026-09-10 — a pass at §5's "still open" list: two solved, one reframed, one narrowed
 >
 > Worked the long-tail unexplained-byte list (piece-side §10.3/§12 and

@@ -1,5 +1,52 @@
 # Changelog
 
+## v2.0 (2026-09-11, continued once more #23) - implemented the corner-miter check for BACK/FRONT's seam values, and found+fixed a real corruption-detection gap in the process
+
+User asked to implement the corner-miter check for `AD1234 TEST 134`'s
+`BACK`/`FRONT` seam values, flagged as a genuine possibility the
+previous entry deliberately left unattempted.
+
+**Added `_curved_seam_trimmed_indices`**: `check_line_table` now trims
+at most one point from either end of a kind=2 record before testing for
+a tight offset - a corner-miter boundary is structurally one point, not
+a run. `BACK`'s 11-point record 9 now correctly validates its own 9
+interior points at the genuine 3750-unit (0.375in) offset, stdev 0.3,
+while its own first/last points (the transition values shared with
+neighbouring records) stay correctly unresolved.
+
+**Added a polyline candidate** (`_nearest_polyline`, point-to-segment
+distance against the whole real perimeter as one closed curve, not just
+individual `kind=1` edges) - needed because these records don't sit
+parallel to any single stored edge, only to the perimeter as a whole,
+the same reason the bra-cup family's own clean segments needed it.
+
+**Found and fixed a real corruption-detection gap within this same
+pass, not shipped blind**: deliberately corruption-testing the new
+polyline candidate before trusting it found that a single point shifted
+by 20000 units (2in) produced a *lower* stdev (1.7) than the genuine
+data - completely undetected by distance alone, because the real
+perimeter can have multiple roughly-parallel regions a corrupted point
+coincidentally lands near. Fixed with `_seg_path_ok`: each point's own
+nearest polyline segment must now move consistently in one direction
+with no single step larger than a small bound - a real curve traces
+adjacent segments in order (this fixture's genuine run steps by exactly
+1 every time; `aCF3B.tmp`'s already-confirmed plateau steps by up to 4,
+still one direction), and the 20000-unit corruption jumps against the
+flow of its own neighbours, now rejected. Smaller, localized shifts
+(500 and 5000 units, checked directly) still slip through - the same
+coarse-tolerance limitation every seam check in this function already
+has, not a new weakness this specific check introduced.
+
+**Verified via corpus-wide diff (191 blocks: 156 production + 35
+small-corpus)**: zero `check_line_table` results changed anywhere,
+confirmed both before and after the corruption-detection fix - additive
+at the per-point level, doesn't flip any fixture's own overall pass/
+fail, same honest scope as every extension in this investigation.
+
+`selftest.py` SELFTEST PASS; `dataset_test.py` 36/36; `robustness/
+run.py` (full) 303/303. `FORMAT_SPEC.md` §11 updated with the fix and
+the corruption-detection finding.
+
 ## v2.0 (2026-09-11, continued once more #22) - surveyed the rest of the corpus for more bridging chains: found two new, genuinely different manifestations of the same phenomenon
 
 User asked to keep surveying the corpus for more bridging chains beyond

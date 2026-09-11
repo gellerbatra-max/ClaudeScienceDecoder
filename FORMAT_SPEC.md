@@ -1162,15 +1162,50 @@ rest). `CLAUDE-GRADE-TEST` and `RUFFLE` already have `check_line_table()
   TAPER`, §10.1/§11) than to the bra cup's smooth single bulge: *multiple*
   constant-but-different per-edge seam values joined by corner miters,
   just confirmed here at production scale with round, standard-width
-  values rather than the small corpus's own idiosyncratic ones. None of
-  the individual clean segments pass `_curved_seam_record_ok` even though
-  they look tight when measured against the whole perimeter polyline -
-  checked directly, not assumed: `record 9`'s own per-*single-kind1-edge*
-  stdev is too high to trigger it, meaning (like the bra cup's bridging
-  segments) it isn't parallel to any one stored edge either. Not fixed -
-  same reasoning as everywhere else in this investigation: the check
-  exists to catch corruption, and loosening it to accept a value this
-  case-specific would risk exactly that.
+  values rather than the small corpus's own idiosyncratic ones. `record
+  9`'s own per-*single-kind1-edge* stdev was too high to trigger the
+  original `_curved_seam_record_ok` even though it looked tight against
+  the whole perimeter polyline - it isn't parallel to any one stored
+  edge, only to the full perimeter (like the bra cup's own multi-edge
+  clean segments).
+
+  **A corner-miter check implemented for this case [V, fixed
+  2026-09-11]**: `check_line_table` now trims at most one point from
+  either end of a kind=2 record (`_curved_seam_trimmed_indices`) before
+  testing for a tight offset - a corner-miter boundary is structurally
+  one point, not a run, matching the small corpus's own mitered-corner
+  model. `BACK`'s 11-point record 9 now correctly validates its own 9
+  INTERIOR points (indices 1-9) at the genuine 3750-unit offset, stdev
+  0.3 - among the tightest matches found anywhere in this investigation -
+  while its own first and last points (the transition values shared with
+  neighbouring records) are correctly left unresolved, same as records 7/
+  10 (whose own clean interior, if any, is too short to isolate: trimming
+  one point from a 3- or 4-point record leaves fewer than the 4-point
+  minimum this check requires).
+
+  **A real corruption-detection gap found and fixed within this same
+  pass, not shipped blind**: deliberately corruption-testing the new
+  polyline candidate before trusting it (the same discipline applied to
+  every fix in this investigation) found that a single point shifted by
+  20000 units (2 in) produced a LOWER stdev (1.7) than the genuine data -
+  completely undetected by distance alone, because the real perimeter has
+  multiple roughly-parallel regions a corrupted point can coincidentally
+  land near. Fixed by also requiring each point's own nearest polyline
+  SEGMENT to move consistently in one direction with no single step
+  larger than a small bound (`_seg_path_ok`) - a real curve traces
+  adjacent segments in order; the 20000-unit corruption jumps 3 segments
+  against the flow of its own neighbours and is now rejected. Smaller,
+  more localized shifts (500 and 5000 units, checked directly) still slip
+  through - the same coarse-tolerance limitation every seam-offset check
+  in this function already has, not a new category of weakness.
+
+  Verified via corpus-wide diff (191 blocks: 156 production + 35 small-
+  corpus, both before AND after the corruption-detection fix): zero
+  `check_line_table` results changed anywhere - the fix is additive at
+  the per-point level without flipping any fixture's own overall pass/
+  fail, same honest scope as every extension in this investigation.
+  `selftest.py` SELFTEST PASS, `dataset_test.py` 36/36, `robustness/
+  run.py` (full) 303/303.
 
 Net picture after the full survey: the "clean-offset-plus-transition"
 shape shows up on every real, non-trivial piece with a mismatched line

@@ -1066,12 +1066,16 @@ def check_line_table(b):
     near-constant 7877 units (0.79in) from perimeter edge record 2 (stdev
     2.2 units); record 9 matches edge 3 the same way (stdev 2.31). A
     second, different piece (`aCF12.tmp`) shows the same shape at 15760
-    units (stdev 44.0). `_curved_seam_record_ok` below accepts a seam/
-    cutline record as a WHOLE - never point-by-point - when every one of
-    its points sits within SEAM_OFFSET_MAX of the SAME perimeter edge with
-    a tight, consistent stdev (CURVED_SEAM_STDEV_MAX): a real curved seam
-    keeps that consistency across every point; an unrelated or corrupted
-    point breaks it immediately, which is what keeps this from quietly
+    units (stdev 44.0). `_curved_seam_trimmed_indices` below accepts a
+    seam/cutline record's own points (all of them, or all but a one-point
+    mitered corner at either end - see its own docstring) when they sit
+    within SEAM_OFFSET_MAX of the SAME perimeter edge - or, `AD1234 TEST
+    134`'s `BACK`/`FRONT` pieces confirmed the same tight offset can hold
+    against the full perimeter as one closed polyline instead of any
+    single stored edge - with a tight, consistent stdev
+    (CURVED_SEAM_STDEV_MAX): a real curved seam keeps that consistency
+    across every point; an unrelated or corrupted point breaks it
+    immediately, which is what keeps this from quietly
     widening what Oracle C can catch. Deliberately conservative - most
     kind=2 records in the production corpus still don't match any single
     edge this cleanly and are correctly left failing, not force-fit into
@@ -1131,14 +1135,38 @@ def check_line_table(b):
     example - both corrected in FORMAT_SPEC.md/CHANGELOG.md.
 
     Honest scope: confirmed via a corpus-wide diff, this fix does not flip
-    `check_line_table`'s overall True/False result on any of the 156
-    production blocks or 35 small-corpus blocks checked - every piece that
-    has a genuine curved-seam record also has at least one OTHER kind=2
-    record that still doesn't match anything (FORMAT_SPEC.md SS12's own
-    open item). What this does confirm and fix is the per-record logic
-    itself: the specific records this fix targets (e.g. `aCEFC.tmp`
-    records 8/9) now correctly validate instead of failing for a reason
-    that was never really about them being wrong."""
+    `check_line_table`'s overall True/False result on any of the 191
+    production + small-corpus blocks checked (156 production, 35 small-
+    corpus) - every piece that has a genuine curved-seam record also has
+    at least one OTHER kind=2 record that still doesn't match anything
+    (FORMAT_SPEC.md SS12's own open item). What this does confirm and fix
+    is the per-record (now per-POINT, see `_curved_seam_trimmed_indices`
+    and `_seg_path_ok` below) logic itself: the specific points this fix
+    targets now correctly validate instead of failing for a reason that
+    was never really about them being wrong.
+
+    [V, found and fixed 2026-09-11, same session] Extending this to a
+    corner-miter check for `AD1234 TEST 134`'s `BACK`/`FRONT` pieces
+    surfaced a real corruption-detection gap in the polyline candidate
+    ABOVE, found by deliberately corruption-testing the new mechanism
+    before trusting it, not assumed safe: because the perimeter can have
+    multiple roughly-parallel regions, a single corrupted point could
+    land near a different, unrelated stretch of the boundary and still
+    show a plausible, tightly-consistent DISTANCE - a 20000-unit (2 in)
+    shift on one point produced a LOWER stdev (1.7) than the genuine data,
+    completely undetected by distance alone. `_seg_path_ok` closes this:
+    it also requires each point's own nearest polyline SEGMENT INDEX to
+    move consistently in one direction with no single step larger than
+    `_SEG_STEP_MAX` - a real curve traces adjacent segments in order (this
+    fixture's own genuine run steps by exactly 1 every time; `aCF3B.tmp`'s
+    already-confirmed plateau steps by up to 4, still one direction), and
+    the 20000-unit corruption jumps 3 segments against the flow of its own
+    neighbours, now correctly rejected. Smaller, more localized shifts
+    (checked directly: 500 and 5000 units both still slip through) remain
+    undetected - the same coarse-tolerance limitation every seam-offset
+    check in this function already has (`SEAM_OFFSET_MAX`,
+    `CURVED_SEAM_STDEV_MAX`), not a new category of weakness this
+    specific check introduced."""
     tail = b.get('tail')
     if not tail or 'error' in tail or not tail.get('line_records'): return False
     real = {(p['x'], p['y']) for p in b['perimeter']}
@@ -1156,8 +1184,70 @@ def check_line_table(b):
             if dx == 0 or dy == 0 or abs(dx) == abs(dy): return True
         return False
     edge_records = [rec['points'] for rec in tail['line_records'] if rec['kind'] == 1 and rec['points']]
-    def _curved_seam_record_ok(pts):
-        coords = [(tp['x'], tp['y']) for tp in pts]
+    # [V, added 2026-09-11] the real perimeter as one closed polyline (point-
+    # to-LINE-SEGMENT distance, not nearest stored point) - a corner-miter
+    # candidate alongside each individual kind=1 edge below. Confirmed
+    # necessary, not just belt-and-braces (FORMAT_SPEC.md SS11/SS12): on
+    # `AD1234 TEST 134`'s `BACK`/`FRONT` pieces, a seam/cutline record can
+    # sit a tight, constant distance from the perimeter as a WHOLE - one
+    # record measured 3749.9-3750.9 units (stdev ~1) across 11 points, a
+    # textbook clean seam allowance (0.375in to the unit) - while matching
+    # no SINGLE kind=1 edge's own point set tightly, because the record's
+    # own path crosses more than one edge (the same reason the bra-cup
+    # family's clean segments needed this too, confirmed separately there).
+    perim_poly = [(p['x'], p['y']) for p in b['perimeter']]
+    def _point_seg_dist(pt, a, c):
+        px, py = pt; ax, ay = a; cx, cy = c
+        dx, dy = cx-ax, cy-ay
+        if dx == 0 and dy == 0: return ((px-ax)**2 + (py-ay)**2) ** 0.5
+        t = ((px-ax)*dx + (py-ay)*dy) / (dx*dx + dy*dy)
+        t = max(0.0, min(1.0, t))
+        ex, ey = ax + t*dx, ay + t*dy
+        return ((px-ex)**2 + (py-ey)**2) ** 0.5
+    def _nearest_polyline(pt, poly):
+        n = len(poly)
+        best_i, best_d = None, None
+        for i in range(n):
+            dd = _point_seg_dist(pt, poly[i], poly[(i+1) % n])
+            if best_d is None or dd < best_d: best_d, best_i = dd, i
+        return best_i, best_d
+    def _stdev_ok(dists):
+        if not dists or len(dists) < 2: return False
+        mean = sum(dists) / len(dists)
+        stdev = (sum((v-mean)**2 for v in dists) / len(dists)) ** 0.5
+        return stdev <= CURVED_SEAM_STDEV_MAX
+    # [V, added 2026-09-11, tightened the same day] the polyline candidate
+    # above is checked for tight, consistent DISTANCE alone - not enough on
+    # its own. Found by deliberately corruption-testing this exact
+    # mechanism before trusting it (FORMAT_SPEC.md SS11/SS12): because the
+    # perimeter can have multiple roughly-parallel regions, a single
+    # corrupted point can land near a DIFFERENT, unrelated stretch of the
+    # boundary and still show a distance close to the record's own genuine
+    # value by coincidence - on `AD1234 TEST 134`'s `BACK` piece, shifting
+    # one point by 20000 units (2 in) produced a *lower* stdev (1.7) than
+    # the uncorrupted data, completely undetected by distance alone. Fixed
+    # by also requiring the sequence of each point's own NEAREST SEGMENT
+    # INDEX to move consistently in one direction with no step larger than
+    # `_SEG_STEP_MAX` - a real curve traces adjacent segments in order (the
+    # genuine BACK run steps by exactly 1 every time; `aCF3B.tmp`'s own
+    # plateau steps by up to 4, still one consistent direction); the same
+    # 20000-unit corruption jumps 3 segments against the flow of its
+    # neighbours, breaking monotonicity, and is now rejected.
+    _SEG_STEP_MAX = 6
+    def _seg_path_ok(coords):
+        n = len(perim_poly)
+        idxs = [_nearest_polyline(pt, perim_poly)[0] for pt in coords]
+        sign = 0
+        for i in range(1, len(idxs)):
+            diff = (idxs[i] - idxs[i-1]) % n
+            if diff > n/2: diff -= n
+            if abs(diff) > _SEG_STEP_MAX: return False
+            s = (diff > 0) - (diff < 0)
+            if s != 0:
+                if sign == 0: sign = s
+                elif s != sign: return False
+        return True
+    def _coords_ok_against_any_candidate(coords):
         for edge_pts in edge_records:
             edge_coords = [(tp['x'], tp['y']) for tp in edge_pts]
             dists = []
@@ -1165,11 +1255,43 @@ def check_line_table(b):
                 dmin = min((x-ex)**2 + (y-ey)**2 for ex, ey in edge_coords) ** 0.5
                 if dmin > SEAM_OFFSET_MAX: dists = None; break
                 dists.append(dmin)
-            if not dists or len(dists) < 2: continue
-            mean = sum(dists) / len(dists)
-            stdev = (sum((v-mean)**2 for v in dists) / len(dists)) ** 0.5
-            if stdev <= CURVED_SEAM_STDEV_MAX: return True
+            if dists and _stdev_ok(dists): return True
+        if len(perim_poly) >= 2:
+            dists = []
+            for x, y in coords:
+                dmin = _nearest_polyline((x, y), perim_poly)[1]
+                if dmin > SEAM_OFFSET_MAX: dists = None; break
+                dists.append(dmin)
+            if dists and _stdev_ok(dists) and _seg_path_ok(coords): return True
         return False
+    # [V, added 2026-09-11] a record can itself straddle a corner - its own
+    # first and/or last point is the mitered boundary shared with the
+    # NEXT record's own chain, not part of either side's clean offset.
+    # Confirmed real, not hypothetical (FORMAT_SPEC.md SS11/SS12): `AD1234
+    # TEST 134`'s `BACK` piece has an 11-point record whose 9 INTERIOR
+    # points sit at a rock-steady 3750.3 units (stdev 0.3 - as clean as any
+    # match found anywhere in this investigation) while its own first and
+    # last points are the transition values shared with its neighbours -
+    # the whole-record test above correctly rejects it (stdev ~480 with
+    # those two included) even though 9 of its 11 points are genuinely
+    # understood. Trims at most one point from EACH end (never more - a
+    # corner miter is structurally one point, not a run, matching the small
+    # corpus's own mitered-corner model) and accepts only the interior
+    # points of whichever trim (none/first/last/both) is both valid
+    # (>= 4 points left) and passes the same candidate test above - the
+    # trimmed boundary point(s) are NOT marked accepted here and must still
+    # pass some other check or the record (and so the whole piece) still
+    # correctly fails, same as an untouched mitered corner always has.
+    def _curved_seam_trimmed_indices(pts):
+        n = len(pts)
+        coords = [(tp['x'], tp['y']) for tp in pts]
+        best = frozenset()
+        for lo in (0, 1):
+            for hi in (n, n-1):
+                if hi - lo < 4 or hi - lo <= len(best): continue
+                if _coords_ok_against_any_candidate(coords[lo:hi]):
+                    best = frozenset(range(lo, hi))
+        return best
     for rec in tail['line_records']:
         pts = rec['points']
         if not pts: return False
@@ -1193,17 +1315,17 @@ def check_line_table(b):
         # empirically (selftest.py/robustness suite below), not assumed.
         is_numbered_seam = rec['kind'] == 2 and pts[0]['a'] != 65535
         curved_eligible = rec['kind'] == 2 and len(pts) >= 4
-        curved_ok = None                    # computed lazily, at most once
-        for tp in pts:
+        curved_indices = None                # computed lazily, at most once
+        for idx, tp in enumerate(pts):
             pt = (tp['x'], tp['y'])
             if pt in real:
                 pass
             elif is_numbered_seam and _is_seam_offset(pt):
                 pass
             elif curved_eligible:
-                if curved_ok is None:
-                    curved_ok = _curved_seam_record_ok(pts)
-                if not curved_ok:
+                if curved_indices is None:
+                    curved_indices = _curved_seam_trimmed_indices(pts)
+                if idx not in curved_indices:
                     return False
             else:
                 return False

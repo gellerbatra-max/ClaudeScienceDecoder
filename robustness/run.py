@@ -345,6 +345,7 @@ def write_report(rows, n_ok, n_fail, elapsed):
 
     c_fails = [r for r in fails if r['oracle'] == 'C']
     lines.append('\n## Recommendations\n\n')
+    lines.append('History of two now-resolved Oracle-C findings, kept for context:\n')
     lines.append(
         '- **RESOLVED: Region-C snapshot cross-validation.** The earlier version of this report '
         'flagged snapshot1/snapshot2 (Region C\'s two perimeter re-listings) as parsed-but-not-'
@@ -362,25 +363,32 @@ def write_report(rows, n_ok, n_fail, elapsed):
         'three seam-allowanced pieces `check_line_table` already documents as a known, separate gap '
         '(CAP-C30-SEAM-UNEVEN, CAP-C31-SEAM-TAPER, TASK2-SEAM1CM - their uneven/tapered seam corners '
         'aren\'t plain per-corner offsets on either check).\n')
+    lines.append(
+        '\n- **RESOLVED: kind=2 "internal-line echo" points were over-covered by the seam-offset '
+        'tolerance.** A follow-up session investigated the 9 Oracle-C cases the Region-C fix above '
+        'left behind (CAP-C00-BASE, a piece with no seam allowance at all). Root cause: `kind=2` line-'
+        'table records are not specific to seam allowance - they are the echo record for EVERY internal '
+        'line (grain, drill, cutout), one per segment, present on any piece that has one, seamed or not '
+        '(confirmed point-for-point exact on CAP-C00-BASE/CAP-C10-PENT/CAP-C50-DRILL1/CAP-C60-CUTOUT/'
+        'CAP-C12-TWOINTLINES). `check_line_table`\'s seam-offset leniency (`_is_seam_offset`, '
+        '+-`SEAM_OFFSET_MAX`=2in) was being applied to every kind=2 record indiscriminately, so a '
+        'corrupted echo point on a non-seam piece still landed "near" its own real, uncorrupted point '
+        'by coincidence (sharing an axis with it) and was waved through as a plausible seam miter on a '
+        'piece that was never seamed. Internal-line echoes are structurally distinct from genuine seam/'
+        'cutline records by their points\' own id field (`a == 65535`, unnumbered, vs a real numbered '
+        'corner id on every seam/cutline point in the corpus - no fixture mixes the two within one '
+        'record). Fixed: the leniency now only applies to points that carry a numbered id; an '
+        'internal-line echo point must coincide exactly, like everything else. `robustness/run.py`\'s '
+        'Oracle C: 294/303 -> **303/303, all passing.**\n')
     if c_fails:
         seeds_hit = sorted({r['seed'] for r in c_fails})
         offs = sorted({r['case'].split('/off=')[1].split('/')[0] for r in c_fails})
         lines.append(
-            '\n- **New, narrower finding: some line-table "kind 2" points tolerate corruption within '
-            'check_line_table\'s own leniency band.** %d Oracle-C cases (not Region C - these are line-'
-            'table points, via `dataset/templates.coord_offsets`) across %s: representative offsets %s. '
-            'These are `kind=2` table-point records with `a=65535` (unnumbered) that `check_line_table` '
-            'already accepts through its documented seam/miter-offset tolerance '
-            '(`_is_seam_offset`, +-`SEAM_OFFSET_MAX`=2in) rather than exact coincidence with a real '
-            'corner. That tolerance is deliberately generous (a real mitered seam corner can legitimately '
-            'sit up to 2in from the nearest stored corner), so a small byte-level corruption inside it '
-            'does not necessarily push the point outside the accepted band, and the consistency check '
-            'correctly keeps passing. Not a parser bug like the Region-C one above, and not chased '
-            'further this session - narrowing the tolerance would need real seam-offset samples to '
-            'calibrate against, not a guess.\n' % (len(c_fails), ', '.join(seeds_hit), ', '.join(offs[:6])))
+            '\n- **New Oracle-C finding (neither of the two above):** %d cases across %s, '
+            'representative offsets %s - see the Unsupported section above for full detail.\n'
+            % (len(c_fails), ', '.join(seeds_hit), ', '.join(offs[:6])))
     else:
-        lines.append('\n- No remaining Oracle-C gaps: every corruption case either raised or changed '
-                      'the decode.\n')
+        lines.append('\nNo further Oracle-C gaps as of this run.\n')
 
     with open(REPORT_PATH, 'w', encoding='utf-8') as f:
         f.writelines(lines)

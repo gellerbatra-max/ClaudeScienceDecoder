@@ -1,7 +1,7 @@
 # Robustness report (v2)
 decoder_version: accumark_pds=2.0 accumark_marker=2.0
 
-303 cases, 294 passed, 9 failed, 6.0s
+303 cases, 303 passed, 0 failed, 6.5s
 
 ## Supported
 
@@ -156,7 +156,7 @@ decoder_version: accumark_pds=2.0 accumark_marker=2.0
 | truncated_object_123B_list_zip | CAP-C00-BASE | ok | ok (no exception, as required) |
 | truncated_object_200B_list_zip | 2303-BD137-PLACED | ok | ok (no exception, as required) |
 
-## Oracle C (156/165 ok)
+## Oracle C (165/165 ok)
 
 | case | seed | verdict | detail |
 |---|---|---|---|
@@ -175,9 +175,9 @@ decoder_version: accumark_pds=2.0 accumark_marker=2.0
 | CAP-C00-BASE/off=0x37a/flip_bit | CAP-C00-BASE | ok | ok (decode changed, as required) |
 | CAP-C00-BASE/off=0x37a/zero | CAP-C00-BASE | ok | ok (decode changed, as required) |
 | CAP-C00-BASE/off=0x37a/ff | CAP-C00-BASE | ok | ok (decode changed, as required) |
-| CAP-C00-BASE/off=0x4c8/flip_bit | CAP-C00-BASE | FAIL | SILENT: corrupted input decoded identically |
-| CAP-C00-BASE/off=0x4c8/zero | CAP-C00-BASE | FAIL | SILENT: corrupted input decoded identically |
-| CAP-C00-BASE/off=0x4c8/ff | CAP-C00-BASE | FAIL | SILENT: corrupted input decoded identically |
+| CAP-C00-BASE/off=0x4c8/flip_bit | CAP-C00-BASE | ok | ok (decode changed, as required) |
+| CAP-C00-BASE/off=0x4c8/zero | CAP-C00-BASE | ok | ok (decode changed, as required) |
+| CAP-C00-BASE/off=0x4c8/ff | CAP-C00-BASE | ok | ok (decode changed, as required) |
 | CAP-C00-BASE/off=0x2bc/flip_bit | CAP-C00-BASE | ok | ok (decode changed, as required) |
 | CAP-C00-BASE/off=0x2bc/zero | CAP-C00-BASE | ok | ok (decode changed, as required) |
 | CAP-C00-BASE/off=0x2bc/ff | CAP-C00-BASE | ok | ok (decode changed, as required) |
@@ -187,15 +187,15 @@ decoder_version: accumark_pds=2.0 accumark_marker=2.0
 | CAP-C00-BASE/off=0x2e9/flip_bit | CAP-C00-BASE | ok | ok (decode changed, as required) |
 | CAP-C00-BASE/off=0x2e9/zero | CAP-C00-BASE | ok | ok (decode changed, as required) |
 | CAP-C00-BASE/off=0x2e9/ff | CAP-C00-BASE | ok | ok (decode changed, as required) |
-| CAP-C00-BASE/off=0x4b6/flip_bit | CAP-C00-BASE | FAIL | SILENT: corrupted input decoded identically |
-| CAP-C00-BASE/off=0x4b6/zero | CAP-C00-BASE | FAIL | SILENT: corrupted input decoded identically |
-| CAP-C00-BASE/off=0x4b6/ff | CAP-C00-BASE | FAIL | SILENT: corrupted input decoded identically |
+| CAP-C00-BASE/off=0x4b6/flip_bit | CAP-C00-BASE | ok | ok (decode changed, as required) |
+| CAP-C00-BASE/off=0x4b6/zero | CAP-C00-BASE | ok | ok (decode changed, as required) |
+| CAP-C00-BASE/off=0x4b6/ff | CAP-C00-BASE | ok | ok (decode changed, as required) |
 | CAP-C00-BASE/off=0x151/flip_bit | CAP-C00-BASE | ok | ok (decode changed, as required) |
 | CAP-C00-BASE/off=0x151/zero | CAP-C00-BASE | ok | ok (decode changed, as required) |
 | CAP-C00-BASE/off=0x151/ff | CAP-C00-BASE | ok | ok (decode changed, as required) |
-| CAP-C00-BASE/off=0x4b2/flip_bit | CAP-C00-BASE | FAIL | SILENT: corrupted input decoded identically |
-| CAP-C00-BASE/off=0x4b2/zero | CAP-C00-BASE | FAIL | SILENT: corrupted input decoded identically |
-| CAP-C00-BASE/off=0x4b2/ff | CAP-C00-BASE | FAIL | SILENT: corrupted input decoded identically |
+| CAP-C00-BASE/off=0x4b2/flip_bit | CAP-C00-BASE | ok | ok (decode changed, as required) |
+| CAP-C00-BASE/off=0x4b2/zero | CAP-C00-BASE | ok | ok (decode changed, as required) |
+| CAP-C00-BASE/off=0x4b2/ff | CAP-C00-BASE | ok | ok (decode changed, as required) |
 | CAP-C00-BASE/off=0x2ed/flip_bit | CAP-C00-BASE | ok | ok (decode changed, as required) |
 | CAP-C00-BASE/off=0x2ed/zero | CAP-C00-BASE | ok | ok (decode changed, as required) |
 | CAP-C00-BASE/off=0x2ed/ff | CAP-C00-BASE | ok | ok (decode changed, as required) |
@@ -326,20 +326,15 @@ decoder_version: accumark_pds=2.0 accumark_marker=2.0
 | 2303-BD137-PLACED/off=0x19141/zero | 2303-BD137-PLACED | ok | ok (decode changed, as required) |
 | 2303-BD137-PLACED/off=0x19141/ff | 2303-BD137-PLACED | ok | ok (decode changed, as required) |
 
-## Unsupported (9)
+## Unsupported (0)
 
-- **CAP-C00-BASE/off=0x4c8/flip_bit** (Oracle C, seed CAP-C00-BASE): SILENT: corrupted input decoded identically
-- **CAP-C00-BASE/off=0x4c8/zero** (Oracle C, seed CAP-C00-BASE): SILENT: corrupted input decoded identically
-- **CAP-C00-BASE/off=0x4c8/ff** (Oracle C, seed CAP-C00-BASE): SILENT: corrupted input decoded identically
-- **CAP-C00-BASE/off=0x4b6/flip_bit** (Oracle C, seed CAP-C00-BASE): SILENT: corrupted input decoded identically
-- **CAP-C00-BASE/off=0x4b6/zero** (Oracle C, seed CAP-C00-BASE): SILENT: corrupted input decoded identically
-- **CAP-C00-BASE/off=0x4b6/ff** (Oracle C, seed CAP-C00-BASE): SILENT: corrupted input decoded identically
-- **CAP-C00-BASE/off=0x4b2/flip_bit** (Oracle C, seed CAP-C00-BASE): SILENT: corrupted input decoded identically
-- **CAP-C00-BASE/off=0x4b2/zero** (Oracle C, seed CAP-C00-BASE): SILENT: corrupted input decoded identically
-- **CAP-C00-BASE/off=0x4b2/ff** (Oracle C, seed CAP-C00-BASE): SILENT: corrupted input decoded identically
+None.
 
 ## Recommendations
 
+History of two now-resolved Oracle-C findings, kept for context:
 - **RESOLVED: Region-C snapshot cross-validation.** The earlier version of this report flagged snapshot1/snapshot2 (Region C's two perimeter re-listings) as parsed-but-not-cross-validated. Root cause turned out to be a real parser bug, not an unvalidated-but-correct redundant copy: `accumark_pds.parse_region_c` read snapshot2 (and, on notched/darted/annotated/curved pieces, part of snapshot1 too) from the wrong byte offset, so what was being reported as "snapshot data" was partly garbage from adjacent structures. Found by byte-searching for known-real coordinates around the reported offsets (not by guessing), fixed in `parse_region_c`/`parse_point_snapshot` (variable-width point records instead of a fixed 15-byte stride; a corrected offset for snapshot2's true start; the snapshot count is now `n_perimeter_a`, the same corners-minus-notches count `parse_pretable_header` already used for that other field). A new `accumark_pds.check_region_c` / `region_c_consistent` fact cross-validates both snapshots against the perimeter, wired into Oracle C's canon. Verified clean (`region_c_consistent=yes`, geometry matches) on every corpus fixture except the same three seam-allowanced pieces `check_line_table` already documents as a known, separate gap (CAP-C30-SEAM-UNEVEN, CAP-C31-SEAM-TAPER, TASK2-SEAM1CM - their uneven/tapered seam corners aren't plain per-corner offsets on either check).
 
-- **New, narrower finding: some line-table "kind 2" points tolerate corruption within check_line_table's own leniency band.** 9 Oracle-C cases (not Region C - these are line-table points, via `dataset/templates.coord_offsets`) across CAP-C00-BASE: representative offsets 0x4b2, 0x4b6, 0x4c8. These are `kind=2` table-point records with `a=65535` (unnumbered) that `check_line_table` already accepts through its documented seam/miter-offset tolerance (`_is_seam_offset`, +-`SEAM_OFFSET_MAX`=2in) rather than exact coincidence with a real corner. That tolerance is deliberately generous (a real mitered seam corner can legitimately sit up to 2in from the nearest stored corner), so a small byte-level corruption inside it does not necessarily push the point outside the accepted band, and the consistency check correctly keeps passing. Not a parser bug like the Region-C one above, and not chased further this session - narrowing the tolerance would need real seam-offset samples to calibrate against, not a guess.
+- **RESOLVED: kind=2 "internal-line echo" points were over-covered by the seam-offset tolerance.** A follow-up session investigated the 9 Oracle-C cases the Region-C fix above left behind (CAP-C00-BASE, a piece with no seam allowance at all). Root cause: `kind=2` line-table records are not specific to seam allowance - they are the echo record for EVERY internal line (grain, drill, cutout), one per segment, present on any piece that has one, seamed or not (confirmed point-for-point exact on CAP-C00-BASE/CAP-C10-PENT/CAP-C50-DRILL1/CAP-C60-CUTOUT/CAP-C12-TWOINTLINES). `check_line_table`'s seam-offset leniency (`_is_seam_offset`, +-`SEAM_OFFSET_MAX`=2in) was being applied to every kind=2 record indiscriminately, so a corrupted echo point on a non-seam piece still landed "near" its own real, uncorrupted point by coincidence (sharing an axis with it) and was waved through as a plausible seam miter on a piece that was never seamed. Internal-line echoes are structurally distinct from genuine seam/cutline records by their points' own id field (`a == 65535`, unnumbered, vs a real numbered corner id on every seam/cutline point in the corpus - no fixture mixes the two within one record). Fixed: the leniency now only applies to points that carry a numbered id; an internal-line echo point must coincide exactly, like everything else. `robustness/run.py`'s Oracle C: 294/303 -> **303/303, all passing.**
+
+No further Oracle-C gaps as of this run.

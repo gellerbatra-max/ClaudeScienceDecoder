@@ -1,5 +1,39 @@
 # Changelog
 
+## v2.0 (2026-09-11, continued again) - the last Oracle-C gap closed: 303/303
+
+The Region-C fix below left 9 Oracle-C cases behind, all on `CAP-C00-BASE` -
+a piece with **no seam allowance at all**. Investigating found a second,
+unrelated bug: `check_line_table`'s seam-offset leniency (`_is_seam_offset`,
++-`SEAM_OFFSET_MAX` = 2in) was being applied to **every** `kind=2` line-table
+record, but `kind=2` is not specific to seam allowance - it is the line
+table's echo record for **every internal line** (grain, drill, cutout), one
+per segment, present on any piece that has one, seamed or not. Confirmed
+point-for-point exact (no offset at all) on `CAP-C00-BASE`, `CAP-C10-PENT`,
+`CAP-C50-DRILL1`, `CAP-C60-CUTOUT`, `CAP-C12-TWOINTLINES`. So a corrupted
+echo point on a non-seam piece still landed "near" its own real, uncorrupted
+point by sheer coincidence (sharing an X or Y axis with it) and was waved
+through by the seam-miter tolerance meant for genuine cut-line records on
+an actually-seamed piece.
+
+**The fix**: internal-line echoes are structurally distinguishable from
+genuine seam/cutline records by their points' own id field - every point in
+an echo carries `a == 65535` (unnumbered, the id=-1 convention), while every
+seam/cutline point in the corpus carries a real numbered corner id (no
+fixture mixes the two within one record). The leniency now only applies to
+points with a numbered id; an internal-line echo point must coincide
+exactly with `real`, like every other checked point.
+
+`robustness/run.py`'s Oracle C: 294/303 -> **303/303, all passing** - no
+open corruption-detection gaps remain. `check_line_table`'s existing,
+correctly-conservative `False` result on the three genuinely-uneven-seam
+fixtures (`CAP-C30-SEAM-UNEVEN`, `CAP-C31-SEAM-TAPER`, `TASK2-SEAM1CM`) is
+untouched - that is a real, documented, separate open item (the seam
+corner's own miter math, not a leniency-scoping bug), not affected by this
+fix. `selftest.py` SELFTEST PASS throughout; `dataset_test.py` unaffected
+(this is a validation-logic fix, not a byte-parsing change - no generated
+dataset file changed).
+
 ## v2.0 (2026-09-11, continued) - Region-C snapshot parser fix
 
 `ROBUSTNESS_REPORT.md`'s Recommendations section originally flagged Region

@@ -616,6 +616,24 @@ segment contains, in perimeter order.
 
 ### 10.1 Cut-line records (seam allowance)
 
+**`kind = 2` is not exclusive to seam allowance [V, corrected 2026-09-11]:**
+it is also the line table's echo record for every internal line (grain,
+drill, cutout — §9), one record per segment, present on any piece that has
+an internal line at all, seamed or not (`CAP-C00-BASE`'s grain line, on a
+piece with zero seam allowance, produces exactly one `kind=2` record whose
+2 points match `internal_lines[0]` exactly, no offset). These echo records
+are structurally distinguishable from genuine seam/cut-line records by
+their points' own id field: every point in an internal-line echo carries
+`a == 65535` (unnumbered, the `id = -1` convention used elsewhere), while
+every point in a genuine seam/cut-line record carries a real numbered
+corner id — confirmed across the whole corpus, no fixture ever mixes the
+two within one record. `accumark_pds.check_line_table()`'s seam-offset
+leniency (below) originally applied to every `kind=2` record regardless of
+this distinction, which let a corrupted internal-line-echo point on a
+non-seam piece slip through as a "plausible seam miter" by sheer
+coincidence (found via `robustness/run.py`'s Oracle C — see CHANGELOG.md);
+the leniency is now scoped to points carrying a numbered id only.
+
 A seam-allowanced edge (§6.1) adds one **kind-2** record after the ordinary
 perimeter/internal-line records, `n_points = 4`, whose points are not raw
 stored geometry: `[mitered corner at this edge's start, plain offset at

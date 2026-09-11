@@ -698,7 +698,31 @@ def check_line_table(b):
     offset edges (e.g. dx=-3934,dy=-66 - neither axis-aligned nor diagonal),
     not a simple per-corner offset; that needs the corner's two adjacent
     seam_begin/seam_end values threaded through to re-derive properly, which
-    is Phase B work, not a parser bug."""
+    is Phase B work, not a parser bug.
+
+    [V, corrected 2026-09-11] kind=2 is NOT specific to seam allowance - it
+    is the line table's echo record for EVERY internal line (grain, drill,
+    cutout; §10's `internal_kinds`), one kind=2 record per internal-line
+    segment, always present whether or not the piece has a seam at all
+    (confirmed on CAP-C00-BASE/CAP-C10-PENT/CAP-C50-DRILL1/CAP-C60-CUTOUT/
+    CAP-C12-TWOINTLINES: their grain/drill/cutout kind=2 records match
+    b['internal_lines'] point-for-point, exactly, in order - no offset
+    involved). These echo records are structurally distinct from genuine
+    seam/cutline kind=2 records by their points' own `a` (id) field: every
+    point in an internal-line echo has `a == 65535` (unnumbered, the same
+    convention id=-1 uses elsewhere), while a genuine seam/cutline record's
+    points carry real numbered corner ids (confirmed: no corpus fixture ever
+    mixes the two within one record). robustness/run.py's Oracle C is what
+    surfaced this: corrupting an internal-line echo's own point on a
+    NON-seam piece (CAP-C00-BASE has no seam at all) was passing this check
+    anyway, because the pre-fix code applied the seam-offset leniency to
+    EVERY kind=2 record indiscriminately - a corrupted echo point still
+    landed "near" its own real, uncorrupted internal-line point by dumb
+    coincidence (sharing an axis with it) and was waved through as a
+    plausible seam miter on a piece that was never seamed. The leniency is
+    now scoped to points that actually carry a numbered id, matching what
+    real seam/cutline records structurally look like; an internal-line echo
+    point must now coincide exactly, like everything else."""
     tail = b.get('tail')
     if not tail or 'error' in tail or not tail.get('line_records'): return False
     real = {(p['x'], p['y']) for p in b['perimeter']}
@@ -718,7 +742,11 @@ def check_line_table(b):
         if not pts: return False
         for tp in pts:
             pt = (tp['x'], tp['y'])
-            if pt not in real and not (rec['kind'] == 2 and _is_seam_offset(pt)):
+            # the seam-offset leniency only applies to a genuine seam/
+            # cutline point (a real numbered corner id) - an internal-line
+            # echo point (a == 65535, unnumbered) must coincide exactly.
+            is_seam_candidate = rec['kind'] == 2 and tp['a'] != 65535
+            if pt not in real and not (is_seam_candidate and _is_seam_offset(pt)):
                 return False
     return True
 

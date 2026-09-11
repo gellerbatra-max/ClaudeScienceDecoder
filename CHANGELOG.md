@@ -1,5 +1,47 @@
 # Changelog
 
+## v2.0 (2026-09-11, continued once more #15) - investigated the duplicate header block: it's an Import Component reference, not a stale duplicate or a missed block
+
+User asked to investigate the second grain+cutout header sequence found
+~12KB into `aCEFC.tmp`, past this block's own `tail_end`, that the
+previous entry deliberately left unresolved.
+
+**Resolved, not just narrowed down.** Two of the three original
+hypotheses were ruled out directly: the second occurrence's own point
+*coordinates* are entirely different from the first's (checked point-by-
+point, not assumed - refutes "stale duplicate"), and `summarize()`'s own
+brute-force scan (which visits every byte of the file) finds no second
+metadata field block anywhere after `block_end` (refutes "undetected
+second `piece_records` block").
+
+**What it actually is**: 33 bytes past `tail_end` sits literal ASCII
+`32AIMPORT11` - this piece's own base size immediately followed by the
+word "IMPORT". Checked across the whole marker zip: the identical marker,
+at the identical `tail_end + 33` offset, appears on **all 14**
+`SA60151TH`/`SI01040A17` piece objects in this one marker, each tagged
+with that specific piece's own base size (`32A`, `32B`, `32D`, `36D`,
+`36C`, `38D` - matching one-for-one). This is a real, already-documented
+AccuMark behavior from earlier in this project's history
+(`MARKER_DECODE_PLAN.md`'s "Include Components" findings, previously seen
+only in its *failure* mode on `LADIES-BLOUSE TEST-2`) - an Import
+Component reference. What follows it is the imported component's own
+grain/cutout internal-line data, structurally identical in shape to the
+host piece's own section (same header format, same tag) but genuinely
+different content, which is exactly why the coordinates don't match.
+
+**Consequence for the fix flagged last entry**: extending
+`decode_piece_block`'s internal-line-list walker to reach `aCEFC.tmp`'s
+own missed cutout segments now has a well-defined stop condition (the
+`IMPORT` marker, or a decoded field block) instead of an open question -
+the earlier caution about conflating two copies was justified, and is now
+resolved rather than just avoided. Still not implemented this pass:
+identifying the boundary and safely walking past it are separate pieces
+of work.
+
+No code changed - pure investigation, docstrings/comments only.
+`selftest.py` still passing. `FORMAT_SPEC.md` §11/§12 and
+`_curved_seam_record_ok`'s own docstring updated.
+
 ## v2.0 (2026-09-11, continued once more #14) - checked the remaining kind=2 records for another pattern: they chain into continuous curves, one of which is a genuine internal feature the decoder currently misses
 
 User asked to check the still-unmatched `kind=2` records (the ones

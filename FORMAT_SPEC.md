@@ -940,16 +940,46 @@ same mystery:
    only) `internal_lines`/`internal_kinds` currently reports - a real,
    concrete gap, confirmed at the byte level, not inferred.
 
-   **Not fixed this pass**: a near-identical second copy of the exact
-   same grain+cutout header sequence exists again ~12,000 bytes further
-   into the same file (offset ~14039), well past this block's own
-   `tail_end` (12737) - a stale pre-edit duplicate, an undetected second
-   `piece_records` block (the same *class* of gap `decode()`'s next-block
-   search had before §8/§12's fix, just not yet confirmed to be the same
-   thing), or something else entirely isn't known. Extending the
-   internal-line-list walker without first understanding this risks
-   conflating the current copy with the stale one. Flagged as a concrete,
-   well-scoped next step - not attempted this pass.
+   **The second copy investigated and resolved [V, resolved 2026-09-11]:
+   it is neither a stale duplicate nor an undetected block - it's an
+   Import Component reference, evidenced directly, not guessed.** A
+   near-identical grain+cutout header sequence (same shape, different
+   counts: 37/36/33 here vs. 36/33/37 above) sits at offset ~14039, but
+   its actual point *coordinates* are entirely different from the first
+   occurrence's (confirmed - not a byte-identical copy at all, refuting
+   "stale duplicate" directly). `summarize()`'s own brute-force scan
+   (which visits every byte of the file) finds no second metadata field
+   block anywhere after `block_end`, ruling out an undetected
+   `piece_records` block too. What actually sits at the boundary, 33
+   bytes after `tail_end`, checked byte-by-byte: `00 06 00 00 00 00 00 00
+   03 00 00 00 00 00 01 00 02 00 06 00 00 00 52 00 00 00 0a 00 01 00`
+   followed by the literal ASCII text **`32AIMPORT11`** (the piece's own
+   base size, immediately followed by the word "IMPORT"), then `00 00 00
+   00`. Confirmed on all **14** `SA60151TH`/`SI01040A17` piece objects in
+   this one marker zip, at the *identical* relative offset (`tail_end +
+   33`) on every one, each tagged with that piece's own base size (`32A`,
+   `32B`, `32D`, `36D`, `36C`, `38D` - matching, size-for-size) and the
+   same constant `IMPORT11` suffix - a universal, per-piece structural
+   marker, not a one-off coincidence. This matches a real, already-
+   documented AccuMark behavior from earlier in this project's own history
+   (`MARKER_DECODE_PLAN.md`'s "Include Components" findings): a piece can
+   import another component's geometry, and what follows this marker is
+   that **imported component's own grain/cutout internal-line data** -
+   structurally identical in shape to the host piece's own internal-line
+   section (same header format, same tag) but genuinely different content,
+   because it describes a different, referenced piece.
+
+   This resolves the earlier caution rather than deepening it: extending
+   `decode_piece_block`'s internal-line-list walker to keep scanning past
+   the first chain (so it reaches `aCEFC.tmp`'s own 3 missed cutout
+   segments, finding 2) would need to explicitly stop at the `IMPORT`
+   boundary - otherwise it would silently merge an imported component's
+   internal features into the host piece's own `internal_lines`, a real
+   correctness bug, not just noise. The fix is now well-scoped (walk
+   forward for more internal-line headers, but treat a decoded field
+   block or the literal `IMPORT` marker as a hard stop) but still not
+   attempted this pass - implementing and verifying it is a distinct next
+   step from identifying what needs to be respected.
 
 3. **One correction to the previous entry's own numbers**, caught by
    re-checking rather than reusing them: `aCF12.tmp`'s records 5/6/7 (also
@@ -1126,12 +1156,17 @@ account for:
   internal `cutout`-type feature whose own raw header+points exist in the
   file but that `decode_piece_block`'s internal-line-list walker never
   reaches - a real, byte-confirmed gap (this piece's real feature count is
-  4, not the 1 currently decoded), not yet fixed pending understanding of
-  a second, unexplained near-duplicate copy of the same header sequence
-  found ~12KB further into the same file. (An earlier pass also
-  miscounted `aCF12.tmp`'s records 5/6/7 among the confirmed subset - they
-  already matched `internal_lines` exactly and were never part of the
-  mismatch; corrected here.)
+  4, not the 1 currently decoded). A second, structurally-similar
+  grain+cutout sequence found ~12KB further into the same file is **not**
+  a stale duplicate or an undetected second block - resolved the same day
+  - it's the `32AIMPORT11`-tagged start of an **Import Component**
+  reference (§11), confirmed on all 14 pieces of this marker at the
+  identical `tail_end + 33` offset, each tagged with its own base size.
+  A walker fix now needs to stop at that boundary, not just scan further -
+  well-scoped, not yet implemented. (An earlier pass also miscounted
+  `aCF12.tmp`'s records 5/6/7 among the confirmed subset - they already
+  matched `internal_lines` exactly and were never part of the mismatch;
+  corrected here.)
 
   **Fixed for the confirmed subset [V, fixed 2026-09-11]**:
   `check_line_table`'s new `_curved_seam_record_ok()` accepts a kind=2

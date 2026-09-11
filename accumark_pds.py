@@ -995,14 +995,29 @@ def check_line_table(b):
     chain and this one that isn't itself another internal-line header, so
     the `while _is_internal_header(...)` loop correctly stops before it).
     This is a real, fixable gap - `internal_lines`/`internal_kinds` should
-    have 4 entries for this piece, not 1 - but NOT fixed here: a near-
-    identical second copy of the same grain+cutout header sequence exists
-    again ~12KB further into the same file, well past this block's own
-    `tail_end`, and until that's understood (a stale pre-edit duplicate?
-    an undetected second block, echoing the decode() undercounting bug
-    fixed earlier this session?) touching the internal-line-list walker
-    risks conflating the two. Flagged as a concrete, well-scoped next step,
-    not attempted this pass.
+    have 4 entries for this piece, not 1 - but NOT fixed here: a
+    structurally-similar second grain+cutout header sequence exists again
+    ~12KB further into the same file, well past this block's own
+    `tail_end`.
+
+    [V, resolved 2026-09-11] That second sequence is NEITHER a stale
+    pre-edit duplicate NOR an undetected second block - its own point
+    coordinates are entirely different from the first occurrence's
+    (checked directly, not assumed), and summarize()'s own brute-force
+    scan finds no second metadata field block anywhere in the file. What
+    is actually there, 33 bytes past `tail_end`: literal ASCII
+    `32AIMPORT11` (this piece's own base size + the word "IMPORT"),
+    confirmed at the IDENTICAL `tail_end + 33` offset on all 14
+    `SA60151TH`/`SI01040A17` piece objects in this one marker zip, each
+    tagged with its own base size. This is an **Import Component**
+    reference (matching the already-documented "Include Components" real
+    AccuMark behavior, MARKER_DECODE_PLAN.md) - what follows is the
+    IMPORTED component's own grain/cutout data, not this piece's own,
+    which is exactly why its coordinates differ. A walker fix now has a
+    well-defined stop condition (the `IMPORT` marker, or a decoded field
+    block) instead of an unknown risk - still not implemented this pass,
+    since identifying the boundary and safely walking past it are
+    separate pieces of work.
     One correction from an earlier pass, caught while re-checking rather
     than reusing the old numbers: `aCF12.tmp`'s records 5/6/7 (also a
     closed 3-segment loop) were previously miscounted among the "confirmed

@@ -154,6 +154,67 @@ def _internal_list_label(d, o):
 def _is_internal_header(d, o):
     return o+10 <= len(d) and u16(d,o) in (0, 0xFFFF) and u16(d,o+2) in INTERNAL_TAGS
 
+def _looks_like_field_block(d, o):
+    """Cheap prefilter for 'a new piece_record's own metadata starts here' -
+    the same test summarize()'s own brute-force scan applies before the full
+    parse_metadata() call. Used only to bound _next_internal_header below."""
+    n = u16(d,o)
+    return (3 <= n <= 64 and o+22+n+3 <= len(d)
+            and all(32 <= c < 127 for c in d[o+22:o+22+n+3]))
+
+def _next_internal_header(d, start, limit):
+    """[V, added 2026-09-11] Bridge a real, non-adjacent gap between two
+    internal-line-list chains - e.g. Region A's own Lnn segment-attribute
+    records (parsed separately by parse_segments/parse_line_geometry, never
+    by decode_piece_block's own loop), which can sit between a piece's
+    grain-line chain and further cutout-tagged lists that continue after
+    them. Confirmed real on `2303-BD137-PLACED`'s `aCEFC.tmp`: its grain
+    line (label L21) is followed by ~1.2KB of such content before 5 more
+    cutout-tagged lists (L00-L04) resume and are found here for the first
+    time - each one's points independently confirmed, byte-for-byte, against
+    the line table's own already-decoded kind=2 echo records (FORMAT_SPEC.md
+    SS11/SS12), not assumed from the header pattern alone.
+
+    Scans forward from `start`, stopping BEFORE `limit` (exclusive) -
+    callers must bound `limit` to the first 'IMPORT' marker at or after
+    `start`, so this can never wander into an Import Component's own,
+    structurally-identical-looking internal-line data (same SS11/12 write-
+    up: a second, genuinely different piece's geometry, confirmed by its
+    coordinates not matching this piece's own). Also stops at the first
+    sign of another piece_record's own field block (`_looks_like_field_
+    block`), so a genuine second `piece_records` block is never crossed
+    into either - returns None in that case, same as finding nothing.
+
+    [V, corrected 2026-09-11] `_is_internal_header`'s own test (2 bytes in
+    {0,0xFFFF} then 2 bytes matching one of 3 tag values) is loose enough
+    that real production data - a rule table's own packed deltas, in this
+    case - can satisfy it by pure coincidence: found by a corpus-wide diff
+    that caught `aCF2B.tmp` picking up a spurious 8th 'segment' (drill,
+    0 points, no genuine label after it) that broke its own tail parsing
+    outright, a real regression the first version of this function shipped
+    with. A candidate position is now walked all the way through its own
+    claimed point count and checked for a genuine `Lnn` label afterward -
+    the same bar decode_piece_block's own loop already requires to trust a
+    same-position chain continuation - before being accepted; a header-
+    shaped false positive essentially never also produces a valid label by
+    further coincidence. `cnt > 500` is rejected outright without walking
+    (the largest genuine list seen anywhere in the corpus is 48 points) -
+    a guard against wasting time walking a garbage count from a false
+    match, not a real format constraint."""
+    for o in range(start, limit):
+        if _looks_like_field_block(d, o): return None
+        if not _is_internal_header(d, o): continue
+        cnt = u16(d, o+4)
+        if cnt > 500: continue
+        p = o + 10
+        ok = True
+        for _ in range(cnt):
+            if p+14 > len(d): ok = False; break
+            p += parse_point(d, p)['size']
+        if ok and _internal_list_label(d, p)[0] is not None:
+            return o
+    return None
+
 # ---------------------------------------------------------- point sequences
 COORD_LO, COORD_HI = -2_000_000, 2_000_000   # plausible coordinate window
 POINT_TURN, POINT_CURVE, POINT_DART_APEX = 0x09, 0x0A, 0x12
@@ -542,8 +603,10 @@ def decode_piece_block(d, field_off=None):
     # satisfies "first==last" but reads terminator 3, not 6 - there's no
     # path to close with only one point, so `closed` below requires >=2.
     internal = []; internal_kinds = []; internal_labels = []; internal_closed = []
-    internal_terminator_offsets = []; o = after
+    internal_terminator_offsets = []; internal_header_offsets = []
+    internal_label_end_offsets = []; o = after
     while _is_internal_header(d, o):
+        internal_header_offsets.append(o)
         kind = INTERNAL_TAGS[u16(d,o+2)]; cnt = u16(d,o+4); o += 10
         seg = []
         for _ in range(cnt):
@@ -569,8 +632,25 @@ def decode_piece_block(d, field_off=None):
         internal_closed.append(closed); internal_terminator_offsets.append(term_off)
         label, past = _internal_list_label(d, o)
         internal_labels.append(label)
-        if label is not None and _is_internal_header(d, past):
-            o = past; continue
+        # [V, added 2026-09-11] the position right after THIS list's own
+        # terminator+padding+label - genuinely parsed content either way
+        # (whether the next list, if any, continues immediately or only
+        # after a bridged gap - see _block_ranges, which uses this instead
+        # of a naive (header_offsets[i], header_offsets[i+1]) span so the
+        # label bytes stay covered without ever covering a real gap).
+        internal_label_end_offsets.append(past if label is not None else term_off+4)
+        if label is not None:
+            if _is_internal_header(d, past):
+                o = past; continue
+            # [V, added 2026-09-11] no header immediately follows this
+            # list's own label, but a LATER one may still belong to this
+            # piece rather than an Import Component's - see FORMAT_SPEC.md
+            # SS11/SS12 and _next_internal_header's own docstring for the
+            # confirmed real-world case this closes.
+            import_at = d.find(b'IMPORT', past)
+            nxt = _next_internal_header(d, past, import_at if import_at != -1 else len(d))
+            if nxt is not None:
+                o = nxt; continue
         break                      # block_end stays at the last list's own terminator
     # tail: pretable header + two perimeter snapshots + the line table -
     # re-anchored independently of `block_end` above (which intentionally
@@ -606,6 +686,8 @@ def decode_piece_block(d, field_off=None):
                 closing=closing, internal_lines=internal, internal_kinds=internal_kinds,
                 internal_labels=internal_labels, internal_closed=internal_closed,
                 internal_terminator_offsets=internal_terminator_offsets,
+                internal_header_offsets=internal_header_offsets,
+                internal_label_end_offsets=internal_label_end_offsets,
                 block_end=o, tail=tail)
 
 def decode(data):
@@ -689,7 +771,8 @@ def decode(data):
                 block_errors=block_errors)
 
 # -------------------------------------------------------------- coverage
-def _block_ranges(d, m, objs, pstart, block_end, tail, internal_terminator_offsets=(), real=None):
+def _block_ranges(d, m, objs, pstart, block_end, tail, internal_terminator_offsets=(),
+                   internal_header_offsets=(), internal_label_end_offsets=(), real=None):
     """Byte ranges 'identified' by one piece block, as (start,end) pairs.
     `block_end` is the pre-tail end (perimeter + internal lines, as computed
     by decode_piece_block - NOT the tail's own end) so that anything between
@@ -717,14 +800,31 @@ def _block_ranges(d, m, objs, pstart, block_end, tail, internal_terminator_offse
     geometry) while snapshot2 is correctly left 'unknown'."""
     r = [(m['field_off'], m['end'])]                       # metadata + strings + size list
     if objs: r.append((objs[0]['offset'], objs[-1]['offset']+8+8*len(objs[0]['deltas'])))
-    r.append((pstart, block_end))                          # perimeter + internal lines
-    # [V, corrected 2026-09-11] block_end stops exactly AT the last internal
-    # list's own u32 terminator (3 open / 6 closed - decode_piece_block's
-    # `internal_closed`), so (pstart, block_end) above never covers those 4
-    # bytes even though their value and meaning are both fully known. Mark
-    # every internal list's terminator explicitly, not just the last one -
-    # an interior list's terminator sits between two lists and was equally
-    # uncovered before.
+    # [V, corrected 2026-09-11] a single (pstart, block_end) span assumed the
+    # perimeter and every internal list sit back-to-back with nothing
+    # unaccounted for in between - true until decode_piece_block's internal-
+    # line loop learned to bridge a real gap (Region A's own Lnn segment-
+    # attribute records, parsed separately and never by this loop - see
+    # _next_internal_header) to reach further internal lists past it. Mark
+    # the perimeter only up to the FIRST internal list's own header (or
+    # block_end, if there are none), then each list's own header+points+
+    # terminator+padding+label individually, up to `internal_label_end_
+    # offsets[i]` (decode_piece_block's own `past` - genuinely parsed either
+    # way, whether the next list continues immediately or only after a
+    # bridged gap) rather than a naive (header[i], header[i+1]) span - so a
+    # bridged gap stays honestly 'unknown' instead of getting silently
+    # swallowed by one wide range, while the label bytes a direct
+    # continuation shares with its neighbour stay covered.
+    perim_end = internal_header_offsets[0] if internal_header_offsets else block_end
+    r.append((pstart, perim_end))                          # perimeter only
+    for i, hdr in enumerate(internal_header_offsets):
+        if i < len(internal_label_end_offsets):
+            end = internal_label_end_offsets[i]
+        elif i < len(internal_terminator_offsets):
+            end = internal_terminator_offsets[i]+4
+        else:
+            end = block_end
+        r.append((hdr, end))                     # this list's header+points+terminator[+label]
     for off in internal_terminator_offsets:
         r.append((off, off+4))
     if tail and 'error' not in tail:
@@ -811,7 +911,9 @@ def coverage(data, summary=None):
         for seg in b['internal_lines']:
             for p in seg: real.add((p['x'], p['y']))
         for a, e in _block_ranges(d, b['meta'], b['objects'], b['points_offset'], b['block_end'], b['tail'],
-                                   b.get('internal_terminator_offsets', ()), real=real):
+                                   b.get('internal_terminator_offsets', ()),
+                                   b.get('internal_header_offsets', ()),
+                                   b.get('internal_label_end_offsets', ()), real=real):
             mark(a, e, 'identified')
     # Region A - the 'Lnn' line-attribute records (parse_segments, FORMAT_SPEC
     # §6) and, on seam-allowanced pieces, the derived-cut-line records

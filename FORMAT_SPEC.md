@@ -969,17 +969,24 @@ same mystery:
    section (same header format, same tag) but genuinely different content,
    because it describes a different, referenced piece.
 
-   This resolves the earlier caution rather than deepening it: extending
-   `decode_piece_block`'s internal-line-list walker to keep scanning past
-   the first chain (so it reaches `aCEFC.tmp`'s own 3 missed cutout
-   segments, finding 2) would need to explicitly stop at the `IMPORT`
-   boundary - otherwise it would silently merge an imported component's
-   internal features into the host piece's own `internal_lines`, a real
-   correctness bug, not just noise. The fix is now well-scoped (walk
-   forward for more internal-line headers, but treat a decoded field
-   block or the literal `IMPORT` marker as a hard stop) but still not
-   attempted this pass - implementing and verifying it is a distinct next
-   step from identifying what needs to be respected.
+   This resolves the earlier caution rather than deepening it: it means
+   the walker fix could be implemented with a well-defined stop condition
+   (a decoded field block or the literal `IMPORT` marker) instead of an
+   open risk of silently merging an imported component's internal features
+   into the host piece's own `internal_lines`.
+
+   **Implemented the same day [V, fixed 2026-09-11]**: `decode_
+   piece_block`'s internal-line-list loop now bridges exactly this kind of
+   gap (`_next_internal_header`) - `aCEFC.tmp` now decodes all 6 of its
+   real internal-line segments (grain + 5 cutout), not 1. A candidate
+   found while bridging is walked all the way through its own points and
+   checked for a genuine trailing `Lnn` label before being trusted, not
+   just matched against the loose 4-byte header pattern alone - a corpus-
+   wide diff caught the first version of this fix accepting one spurious
+   match (`aCF2B.tmp`'s rule table, coincidentally header-shaped) that
+   broke that block's own tail parsing outright; the stricter check closes
+   that. Verified safe across the full corpus (302 objects) - zero
+   `coverage_pct` decreases anywhere.
 
 3. **One correction to the previous entry's own numbers**, caught by
    re-checking rather than reusing them: `aCF12.tmp`'s records 5/6/7 (also
@@ -1162,11 +1169,31 @@ account for:
   - it's the `32AIMPORT11`-tagged start of an **Import Component**
   reference (§11), confirmed on all 14 pieces of this marker at the
   identical `tail_end + 33` offset, each tagged with its own base size.
-  A walker fix now needs to stop at that boundary, not just scan further -
-  well-scoped, not yet implemented. (An earlier pass also miscounted
-  `aCF12.tmp`'s records 5/6/7 among the confirmed subset - they already
-  matched `internal_lines` exactly and were never part of the mismatch;
-  corrected here.)
+
+  **Fixed [V, fixed 2026-09-11]**: `decode_piece_block`'s internal-line-
+  list loop now bridges this kind of gap (`_next_internal_header`),
+  stopping at the first `IMPORT` marker or anything that looks like
+  another `piece_record`'s own field block, whichever comes first.
+  `aCEFC.tmp` now correctly decodes all 6 of its real internal-line
+  segments (grain + 5 cutout), not 1. A candidate position found during
+  the bridge is walked all the way through its own points and checked for
+  a genuine trailing `Lnn` label before being trusted, not just matched
+  against the loose 4-byte header pattern - a corpus-wide diff caught the
+  first version of this fix picking up one spurious match (`aCF2B.tmp`, a
+  rule table's own bytes coincidentally shaped like a header) that broke
+  the whole block's tail parsing; the stricter check closes that. Verified
+  safe across the full corpus (302 objects: the small `CAP-*`/`TASK*`
+  corpus plus every embedded production piece) - zero coverage_pct
+  decreases anywhere, `check_line_table`'s and `check_region_c`'s own
+  pass/fail results unchanged on every fixture that already passed.
+  `_block_ranges()` was updated alongside this so the newly-reachable
+  bytes are marked `identified` precisely - each internal list's own
+  header+points+terminator+label, not a naive single span from the
+  perimeter through the last list found, which would have silently
+  claimed the bridged gap itself (genuinely not understood) as identified
+  too. (An earlier pass also miscounted `aCF12.tmp`'s records 5/6/7 among
+  the confirmed subset - they already matched `internal_lines` exactly and
+  were never part of the mismatch; corrected here.)
 
   **Fixed for the confirmed subset [V, fixed 2026-09-11]**:
   `check_line_table`'s new `_curved_seam_record_ok()` accepts a kind=2

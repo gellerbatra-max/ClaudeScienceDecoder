@@ -1,5 +1,54 @@
 # Changelog
 
+## v2.0 (2026-09-11, continued once more #16) - implemented the internal-line-list walker fix with the IMPORT stop
+
+User asked to implement the fix the previous entry scoped: bridge the
+real gap in `decode_piece_block`'s internal-line-list loop, stopping at
+an Import Component boundary rather than crossing into it.
+
+**Added**: `_next_internal_header(d, start, limit)` scans forward for the
+next internal-line-list header, bounded by the first `IMPORT` marker (or
+another `piece_record`'s own field block, `_looks_like_field_block`) at
+or after `start`. `decode_piece_block`'s loop calls it whenever a list's
+own label isn't immediately followed by another header, instead of
+giving up. `aCEFC.tmp` now decodes all 6 of its real internal-line
+segments (grain + 5 cutout), not 1.
+
+**One bug found and fixed within this same pass, via a corpus-wide diff
+rather than trusting the first version**: `_is_internal_header`'s own
+4-byte test is loose enough that real production data can satisfy it by
+coincidence - `aCF2B.tmp`'s own rule table did, and the first version of
+`_next_internal_header` accepted it as a genuine 8th internal-line
+segment (0 points, no real label after it), which broke that block's tail
+parsing outright (coverage_pct 64.81% -> 52.89%, a real regression).
+Fixed by requiring a candidate to walk cleanly through its own claimed
+points AND produce a genuine trailing `Lnn` label before being trusted -
+the same bar `decode_piece_block`'s own loop already requires for a
+normal same-position continuation - not just the loose header pattern
+alone.
+
+**`_block_ranges()` updated alongside this, not left to drift**: the old
+single `(pstart, block_end)` span assumed the perimeter and every
+internal list sit back-to-back with nothing unaccounted for between them
+- no longer true once a bridged gap can exist. Each internal list is now
+marked individually, up to `decode_piece_block`'s own `internal_label_
+end_offsets[i]` (the position right after that list's own terminator+
+padding+label - genuinely parsed either way, whether the next list
+continues immediately or only after a bridge), so a bridged gap stays
+honestly `unknown` instead of being silently swallowed by one wide range.
+
+**Verified safe across the full corpus**, not just the two example
+pieces: 21 small-corpus fixtures + 2 `captures/` fixtures + 302 embedded
+production objects, comparing `coverage()` output against the pre-fix
+code. Zero `coverage_pct` decreases anywhere (confirmed only after fixing
+the `aCF2B.tmp` false-positive bug above - the first version had several).
+`check_line_table`'s and `check_region_c`'s own pass/fail results are
+unchanged on every fixture that already passed.
+
+`selftest.py` SELFTEST PASS; `dataset_test.py` 36/36; `robustness/run.py`
+(full) 303/303. `FORMAT_SPEC.md` §11/§12 updated to mark this fixed
+rather than "well-scoped, not yet implemented."
+
 ## v2.0 (2026-09-11, continued once more #15) - investigated the duplicate header block: it's an Import Component reference, not a stale duplicate or a missed block
 
 User asked to investigate the second grain+cutout header sequence found

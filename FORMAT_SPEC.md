@@ -1247,31 +1247,46 @@ decode artifact, corruption, or coincidence specific to one piece family.
 **Quantified how much of this the shipped checks now actually recover,
 corpus-wide [V, measured 2026-09-11]**, rather than leaving the picture
 at "some pieces pass, some don't": across every embedded piece with a
-tail, **7226 kind=2 points still don't match `real` directly; the
-corner-miter + polyline + segment-path checks (§12) now validate 1958 of
-them (27%)**, leaving 5268 genuinely unresolved. The unresolved majority
-splits into two distinct causes, not one:
+tail, **7226 kind=2 points still don't match `real` directly**; before
+the interior-window search below, the corner-miter + polyline +
+segment-path checks validated 1958 of them (27%).
 
-1. **Genuine multi-edge bulges** (the already-characterized bra-cup/
-   `BACK`/`FRONT`/`OUCF` shape) - structurally correct to leave open;
-   nothing in this investigation explains what they are.
-2. **A mechanical gap in the shipped checks, not a geometric mystery**:
-   `_curved_seam_trimmed_indices` only trims a single point from EACH
-   END of a record (deliberately, to model a corner miter, §12) - it
-   does not search for a clean window buried in the INTERIOR of a large
-   merged record. `aCF3B.tmp`'s own 103-point record (§11's earlier
-   write-up) has exactly this shape - a genuine, tight 32-point plateau
-   at indices 49-80 that boundary-only trimming can never reach - and
-   it is not the only one: the same survey found a previously-unchecked
-   `SI01040A17` object (`aE769.tmp`, sizes `42DD`/`40E`) with an
-   identical 123-point single record hiding an 8-point plateau at stdev
-   0.39. Extending the trim to search an interior window, not just the
-   two ends, is a concrete, well-scoped next step - not attempted this
-   pass, since it is a meaningfully larger and riskier change (an
-   unconstrained interior search has a higher false-positive surface
-   than trimming one boundary point) than anything shipped so far in
-   this investigation and needs its own careful design and corpus-wide
-   verification.
+**Interior-window search implemented [V, fixed 2026-09-11]**:
+`_curved_seam_trimmed_indices` only ever trimmed a single point from
+EACH END of a record (deliberately, to model a corner miter) - it never
+searched for a clean window buried in the INTERIOR of a large merged
+record. `aCF3B.tmp`'s own 103-point record has exactly this shape - a
+genuine, tight 32-point plateau at indices 49-80 that boundary-only
+trimming could never reach. Fixed by sliding a small `_INTERIOR_SEED`
+(6-point) window across each record; wherever it passes the same
+candidate test used everywhere else in this function, it's greedily
+grown in both directions for as long as growing keeps passing, then the
+search jumps past the found run rather than re-testing positions already
+inside it - only the single LARGEST such run per record is trusted, the
+same "biggest coherent match wins" rule the boundary trim already used.
+Confirmed correct on the known case: recovers `aCF3B.tmp`'s indices
+49-81 (33 points, extending one further than the plateau originally
+found by eye).
+
+**A second real limit found and fixed while verifying the new search on
+the rest of the corpus, not left half-checked**: a previously-unchecked
+`SI01040A17` object (`aE769.tmp`, sizes `42DD`/`40E`) has an identical
+123-point single record hiding its own plateau - but the interior search
+alone still found nothing there. Traced to `SEAM_OFFSET_MAX` itself: this
+plateau's own offset is a rock-steady 27559-27560 units (**2.756 in**,
+stdev < 1) - tighter than almost anything else confirmed in this whole
+investigation, but rejected outright by the old 2 in cap regardless of
+how tight its own stdev was. Widened to **30000 (3 in)**, comfortable
+margin above the confirmed need. Both fixes verified together via the
+same corpus-wide diff as every other change in this investigation (191
+blocks): zero `check_line_table` results changed anywhere.
+
+**Net corpus-wide recovery after both fixes: 2920 of 7226 mismatched
+points (40%)**, up from 27% - a real, measured improvement, not just a
+targeted fix for the two example pieces. `aE78C.tmp` (the third piece in
+that same size-cluster family) still shows zero recovery despite the
+fixes - not chased down further this pass, a genuinely open loose end
+rather than assumed identical to its two siblings.
 
 **Also found while running this survey**: the `SA60151TH`/`SI01040A17`
 family has **11 distinct size-cluster objects per side, not the 7**

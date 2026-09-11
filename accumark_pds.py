@@ -520,7 +520,17 @@ def parse_region_c(d, o, n_perimeter, category_name, table_start=None):
                 unclassified_gap_offset=p, unclassified_gap=unclassified_gap,
                 name_echo_offset=name_at, end=end), end
 
-SEAM_OFFSET_MAX = 20000            # generous bound (2 in) for a cutline miter/offset - see check_line_table
+SEAM_OFFSET_MAX = 30000            # bound (3 in) for a cutline miter/offset - see check_line_table
+# [V, widened 2026-09-11] originally 20000 (2in), calibrated against the
+# small CAP-C30/C31/TASK2-SEAM1CM test corpus - too tight for a confirmed
+# real production value found while verifying the interior-window search:
+# `aE769.tmp` (a previously-unchecked SI01040A17 size tier) has a 12-point
+# interior plateau at a rock-steady 27559-27560 units (2.756in, stdev < 1)
+# that the OLD 2in cap rejected outright regardless of how tight its own
+# stdev was. 30000 keeps comfortable margin above the confirmed need
+# without removing the bound entirely; verified via the same corpus-wide
+# diff as every other threshold change in this investigation - zero
+# check_line_table results changed anywhere it wasn't meant to.
 # [V, added 2026-09-11, tightened the same day] tolerance for the curved-
 # seam checks in check_line_table: how much a seam/cutline record's (or
 # trimmed sub-range's) per-point distances to its matched edge/perimeter
@@ -555,6 +565,15 @@ SEAM_OFFSET_MAX = 20000            # generous bound (2 in) for a cutline miter/o
 # sub-tolerance data variance without an independent ground truth), not
 # something a tighter stdev threshold alone can solve.
 CURVED_SEAM_STDEV_MAX = 60
+# [V, added 2026-09-11] seed window size for the interior-window search in
+# check_line_table's _curved_seam_trimmed_indices - deliberately larger
+# than the 4-point minimum the boundary-trim search uses, since scanning
+# every possible interior start position has more room to match by
+# coincidence than trimming one fixed end does. Confirmed against the two
+# known genuine interior plateaus: 6 comfortably fits inside both
+# (`aCF3B.tmp`'s 32-point run, `aE769.tmp`'s 8-point one) without being so
+# large it could miss a real but short one.
+_INTERIOR_SEED = 6
 TABLE_POINT_TAG = 0x10
 
 def parse_table_point(d, o):
@@ -1311,6 +1330,37 @@ def check_line_table(b):
                 if hi - lo < 4 or hi - lo <= len(best): continue
                 if _coords_ok_against_any_candidate(coords[lo:hi]):
                     best = frozenset(range(lo, hi))
+        # [V, added 2026-09-11] boundary trimming alone still misses a real
+        # shape: a large MERGED kind=2 record can hold a genuine clean run
+        # anywhere in its INTERIOR, not just after dropping one point from
+        # each end. Confirmed, not hypothetical (FORMAT_SPEC.md SS11/SS12):
+        # `aCF3B.tmp`'s own 103-point record has a tight 32-point plateau
+        # at indices 49-80 (stdev 1.3, tighter than most matches this
+        # check accepts) that boundary trimming can never reach; a second,
+        # previously-unchecked piece (`aE769.tmp`) has the same shape at a
+        # different size. Slide a small seed window (`_INTERIOR_SEED`
+        # points - deliberately larger than the 4-point boundary minimum,
+        # since an unconstrained interior search has more room to match by
+        # coincidence than trimming one fixed end does) across the record;
+        # wherever it passes, greedily grow it in both directions for as
+        # long as growing keeps passing, then jump the search past the
+        # found run rather than re-testing positions already inside it.
+        # Only trusted for the LARGEST such run per record (`> len(best)`
+        # below), same "biggest coherent match wins" rule the boundary
+        # trim already used - a record can genuinely have more than one
+        # clean sub-run (aCF3B.tmp is exactly this: the interior plateau
+        # AND, separately, its own first/last points individually satisfy
+        # nothing), but only the single best one is claimed, not a union
+        # of several small coincidental ones.
+        start = 0
+        while start <= n - _INTERIOR_SEED:
+            if not _coords_ok_against_any_candidate(coords[start:start+_INTERIOR_SEED]):
+                start += 1; continue
+            lo, hi = start, start + _INTERIOR_SEED
+            while lo > 0 and _coords_ok_against_any_candidate(coords[lo-1:hi]): lo -= 1
+            while hi < n and _coords_ok_against_any_candidate(coords[lo:hi+1]): hi += 1
+            if hi - lo > len(best): best = frozenset(range(lo, hi))
+            start = hi
         return best
     for rec in tail['line_records']:
         pts = rec['points']

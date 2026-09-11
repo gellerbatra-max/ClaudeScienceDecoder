@@ -1,5 +1,39 @@
 # Changelog
 
+## v2.0 (2026-09-11, continued once more #26) - implemented the interior-window search; found+fixed a second real limit (SEAM_OFFSET_MAX) along the way
+
+User asked to implement the interior-window search flagged as a concrete
+next step by the previous entry.
+
+**Added the search**: `_curved_seam_trimmed_indices` slides a small
+6-point (`_INTERIOR_SEED`) window across each record; wherever it passes
+the existing candidate test, it's greedily grown in both directions for
+as long as growing keeps passing, then the search jumps past the found
+run. Only the single largest run per record is trusted. Confirmed
+correct on the known case: recovers `aCF3B.tmp`'s indices 49-81 (33
+points).
+
+**A second real limit found and fixed while verifying the new search
+across the rest of the corpus, not left half-checked**: a previously-
+unchecked `SI01040A17` object (`aE769.tmp`) has an identical hidden
+plateau, but the interior search alone still found nothing there.
+Traced to `SEAM_OFFSET_MAX`: this plateau's own offset is a rock-steady
+2.756in, stdev < 1 - tighter than almost anything else confirmed in
+this investigation, but rejected outright by the old 2in cap regardless
+of stdev. Widened to 3in, comfortable margin above the confirmed need.
+
+**Verified both fixes together via corpus-wide diff (191 blocks)**: zero
+`check_line_table` results changed anywhere. Net corpus-wide recovery:
+2920 of 7226 mismatched kind=2 points (40%), up from 27% before this
+entry - a measured improvement, not just a fix for the two example
+pieces. `aE78C.tmp` (the third piece in that same size-cluster family)
+still shows zero recovery despite both fixes - flagged as a genuinely
+open loose end, not assumed identical to its siblings.
+
+`selftest.py` SELFTEST PASS; `dataset_test.py` 36/36; `robustness/
+run.py` (full) 303/303. `FORMAT_SPEC.md` §11 updated with both fixes
+and the corrected recovery numbers.
+
 ## v2.0 (2026-09-11, continued once more #25) - checked the remaining kind=2 records across the rest of the corpus: quantified how much the shipped checks recover, found a mechanical gap and 4 unchecked size tiers
 
 User asked to check the remaining kind=2 records across the rest of the

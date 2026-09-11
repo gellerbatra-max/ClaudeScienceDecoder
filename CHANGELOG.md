@@ -1,5 +1,52 @@
 # Changelog
 
+## v2.0 (2026-09-11, continued once more #3) - the whole corpus checked: 99 pieces, 2 explained regressions, 0 bugs
+
+User asked to check the rest of the corpus. Extended the same worktree-diff
+method to every remaining fixture: `captures/TASK1-5` + the 2 production
+piece captures, and every remaining `markers/*` zip (`CLAUDE-GRADE-MARKER`,
+`CLAUDE-QTY-TEST`, `COSTORDER`, `CAP-C21-SEC14`, `CLAUDE-GRADE-FCFW1`,
+`CLAUDE-GRADE-REARR1`, `misc-test-markers/AD1234 TEST 134.zip`,
+`misc-test-markers/LADIES-BLOUSE TEST-2.zip`). **99 pieces checked across
+the entire corpus** (every `CAP-C*`/`captures/*`/`markers/*` zip in the
+repo).
+
+**One more real regression found, and it's the most dramatic evidence yet
+that the Region-C fix matters**: `AD1234 TEST 134`'s `ID1005 - RUFFLE`
+piece, 21 -> 38 unknown bytes. Root cause, precisely diagnosed: this piece
+has `len(perimeter) = 142` (a ruffled/gathered edge with many small stored
+points) but `n_perimeter_a = 4` (only 4 real corners). The pre-fix code,
+using `len(perim)` for the snapshot count, read a **142-point snapshot2**
+spanning bytes **4644 to 6774** - running straight through the rest of the
+line table and into the trailer, incorrectly marking ~2130 bytes
+"identified" that have nothing to do with any snapshot. The fix correctly
+reads 4 points (2592-2652). Exactly the same root-cause pattern already
+established for the 3 `CAP-C*` regressions and `TASK6-CURVE` (bytes
+correctly reclassified from bug-inflated-identified to honest-unknown), at
+a scale that makes unmistakably clear why the fix was necessary on real,
+complex garment pieces, not just the small controlled probes.
+
+No further code fix applies here (unlike the marker1/2/3 and
+`unclassified_gap`-capture fixes in the two entries above): the freed
+territory is a mix of already-fixed `unclassified_gap` bytes and genuine,
+still-unexplained scattered trailer fields (FORMAT_SPEC.md already
+documents this trailer-field gap generally) - nothing here has a
+known value or bounded structure left to mark 'identified' without
+overclaiming.
+
+**Pre-existing, unrelated finding, not a regression**: all 5 pieces in
+`LADIES-BLOUSE TEST-2.zip` fail to decode any block at all - on BOTH the
+pre-fix and current code, identically (`decode()` returns zero blocks for
+each). Zero delta, so explicitly not something this session's fixes caused
+or could have caused; flagged here for visibility, not investigated
+further (out of scope for a regression check).
+
+**Final tally across the whole corpus**: 99 pieces checked, 0 regressions
+unaccounted for, 2 fully-explained non-bug coverage decreases (both
+documented above and in the two preceding changelog entries), 5 pieces
+with a pre-existing, unrelated decode gap. `selftest.py` SELFTEST PASS;
+`robustness/run.py` still 303/303; `dataset_test.py` still 36/36.
+
 ## v2.0 (2026-09-11, continued once more #2) - TASK6-CURVE and the 2303 production fixtures checked too
 
 User asked to extend the same old-vs-new `coverage()` check to `TASK6-CURVE`

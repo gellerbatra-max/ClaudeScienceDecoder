@@ -1,5 +1,22 @@
 # Changelog
 
+## v2.0 (2026-09-11, continued once more #10) - confirmed the other two small-corpus seam outliers share the exact same Region-C desync bug
+
+User asked to check `CAP-C31-SEAM-TAPER` and `TASK2-SEAM1CM` (the other
+two of the three small-corpus fixtures the previous entry's fix already
+covered) for the same runaway-snapshot bug found on `CAP-C30-SEAM-UNEVEN`.
+Confirmed directly rather than assumed: both desync at the identical
+first point (`id=512, x=65536`) and cascade into the same kind of
+impossible values, not a different failure mode - the only difference is
+blast radius (631 and 335 garbage bytes respectively, vs. `CAP-C30-SEAM-
+UNEVEN`'s 17,211), because `parse_point_snapshot` reads a fixed `n=4` on
+these plain rectangles rather than running unbounded. Both fixtures'
+`coverage()` output (95.35% and 94.99%) was already corrected by the
+previous commit's fix, since the per-point real-geometry gate doesn't
+depend on span size - no code change needed, this pass only confirmed and
+documented it. `selftest.py` SELFTEST PASS (no code touched).
+`FORMAT_SPEC.md` §11 gained a confirming paragraph.
+
 ## v2.0 (2026-09-11, continued once more #9) - audited section 12's gap list; found and fixed a real coverage() over-marking bug, much bigger in scope than it first looked
 
 User asked to check that FORMAT_SPEC.md section 12's "remaining gaps" list

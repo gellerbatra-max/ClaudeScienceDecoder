@@ -875,6 +875,24 @@ to complex pieces, or something else distinct is genuinely open **[?]** -
 a materially larger Phase-B item than previously scoped, not the narrow
 3-fixture footnote this section used to describe.
 
+**All three small-corpus outliers confirmed to share one identical
+signature [V, confirmed 2026-09-11]**, checked directly rather than
+assumed from `CAP-C30-SEAM-UNEVEN` alone: `CAP-C31-SEAM-TAPER` and
+`TASK2-SEAM1CM` both desync at the *exact* same first point - `id=512,
+x=65536` (`0x0200`/`0x00010000`, the same misaligned-by-a-couple-of-bytes
+shape on all three) - and both cascade into the same kind of impossible
+values by point 2 (`notch_type=93`, `y=-1325395968`, etc.), not a
+different failure mode. The blast radius differs only because
+`parse_point_snapshot` reads a fixed `n=4` points here (all three small-
+corpus outliers are 4-corner rectangles) rather than running unbounded:
+`CAP-C31-SEAM-TAPER`'s garbage spans 631 bytes and `TASK2-SEAM1CM`'s 335,
+both far short of `CAP-C30-SEAM-UNEVEN`'s 17,211-byte or the production
+corpus's 50,505-byte worst case, but the same bug. Both fixtures'
+`coverage()` output was already corrected by the same fix (95.35% and
+94.99% respectively, confirmed neither's garbage span leaked through as
+`identified`) - no separate fix was needed, since the per-point real-
+geometry gate added below doesn't depend on span size.
+
 **Consequence for `coverage()`, found and fixed the same day**: before
 this correction, `_block_ranges()` marked a snapshot's whole byte range
 `identified` unconditionally once computed, so a desynced/runaway

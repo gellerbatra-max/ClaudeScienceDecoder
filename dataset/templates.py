@@ -62,7 +62,13 @@ def load_template(name):
     rel, kind = TEMPLATE_SOURCES[name]
     data = _load_pattern_zip(rel) if kind == 'pattern' else _load_marker_zip_piece(rel)
     dec = ap.decode(data)
-    assert len(dec['blocks']) == 1, name
+    # a second block, when present, is the stale pre-edit duplicate
+    # (FORMAT_SPEC.md section 8: "Decode record 0 and ignore the rest") -
+    # dart7/CAP-C62-DART and notch8/CAP-C40-NOTCH-TYPES are genuinely
+    # 2-record pieces, which decode() now correctly reports (fixed
+    # 2026-09-11 - see CHANGELOG.md); block 0 is always the one that
+    # matters, matching every other caller in this codebase.
+    assert dec['blocks'], name
     block = dec['blocks'][0]
     s = ap.summarize(data)
     old_name = s['header_piece_name']

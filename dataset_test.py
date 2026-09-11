@@ -46,8 +46,15 @@ def check_panel(entry):
         dec = ap.decode_zip(path)
     except Exception as e:
         return False, '%s: %s' % (type(e).__name__, e)
-    if len(dec['blocks']) != 1:
-        return False, 'expected 1 block, got %d' % len(dec['blocks'])
+    if not dec['blocks']:
+        return False, 'expected at least 1 block, got 0'
+    # a second block, when present, is the stale pre-edit duplicate
+    # (FORMAT_SPEC.md section 8: "Decode record 0 and ignore the rest") -
+    # some templates (dart7/CAP-C62-DART, notch8/CAP-C40-NOTCH-TYPES) are
+    # genuinely 2-record pieces themselves, which decode() now correctly
+    # reports (fixed 2026-09-11: its block-finding loop used to undercount
+    # any multi-record piece - see CHANGELOG.md) - block 0 is always the
+    # one that matters, matching every other caller in this codebase.
     block = dec['blocks'][0]
 
     got = [(round(p['x']/1e4, 4), round(p['y']/1e4, 4)) for p in block['perimeter']]

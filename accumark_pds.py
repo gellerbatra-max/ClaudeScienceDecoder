@@ -566,8 +566,38 @@ def decode(data):
         # [V] start at the payload (0x80), not 0x60: the 2026-07 vintage's
         # header residue at 0x60-0x7f looks enough like a field block to
         # hijack the search on every one of its 122 pieces.
-        try: off = _find_field_block(data, (blocks[-1]['block_end'] if blocks else 0x80),
-                                     (blocks[-1]['block_end']+0x120 if blocks else 0x140))
+        #
+        # [V, corrected 2026-09-11] the second (and later) block's search
+        # anchor was `blocks[-1]['block_end']` - the PRE-tail end (perimeter
+        # + internal lines only, per decode_piece_block's own docstring) -
+        # with a fixed +0x120 (288-byte) window. That window never reaches
+        # past the previous block's own tail (pretable header + two Region-C
+        # snapshots + the line table, typically 700-1000+ bytes), so this
+        # loop has always undercounted piece_records on any file with more
+        # than one block - it silently stopped at block 0, never even
+        # attempting to search where block 1 actually starts. Undetected
+        # until now because summarize()'s own, separate, more expensive
+        # brute-force byte scan (used everywhere piece_records actually
+        # matters - verify_capture.facts, coverage()) has independently
+        # found every block correctly all along; nothing surfaced this
+        # gap in decode()'s own documented "one or more piece blocks"
+        # contract until investigating what looked like unexplained bytes
+        # right after a single-block piece's line table turned out to
+        # be, on a two-block piece, block 1's own field block starting
+        # a few bytes later (found on CAP-C10-PENT: tail_end=1400, block 1's
+        # real field_off=1408 - 992 bytes past the old search window's
+        # reach). Anchor from the previous block's tail_end when its tail
+        # parsed cleanly (skipping over the tail's own bytes rather than
+        # risking a spurious in-tail match) and fall back to block_end
+        # otherwise, exactly as before.
+        if blocks:
+            prev_tail = blocks[-1].get('tail')
+            search_from = (prev_tail['tail_end'] if prev_tail and 'error' not in prev_tail
+                           else blocks[-1]['block_end'])
+        else:
+            search_from = 0x80
+        try: off = _find_field_block(data, search_from,
+                                     (search_from+0x120 if blocks else 0x140))
         except ValueError: break   # normal loop termination: no further field block
         try: b = decode_piece_block(data, off)
         except Exception as e:

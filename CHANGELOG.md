@@ -1,5 +1,81 @@
 # Changelog
 
+## v2.0 (2026-09-11, continued once more #5) - the trailer field gap wasn't trailer content: a real decode() bug found and fixed
+
+User asked to check the "trailer field gap" `FORMAT_SPEC.md` §12 listed as
+unexplained ("a handful of small ints at the very start of the trailer...
+none yet tied to a control or value in the UI").
+
+**It wasn't trailer content on most of the corpus at all.** Gathered the
+28 bytes right after every block's own line-table end (`tail_end`) across
+every fixture and cross-referenced against known piece properties - the
+same methodology already used elsewhere in this project to crack
+`n_perimeter_a` and the seam-edge counts. Two distinct things were hiding
+inside what looked like one mystery:
+
+1. **A genuine, universal 8-byte constant** - `00 06 00 00 01 00 00 00` -
+   confirmed byte-for-byte identical after every block's line table on
+   every corpus fixture checked (single- or multi-record, 4- to 34-point,
+   notched/seamed/plain). Its own meaning is still open, but it is now
+   confirmed as a fixed marker, not per-piece data.
+2. **A real bug in `accumark_pds.decode()`'s multi-block loop**, found by
+   noticing that on 2-record pieces, what came right after that 8-byte
+   marker looked nothing like trailer content - it was block 1's own
+   metadata field block, which `decode()` was silently never finding.
+   Root cause: the loop searched for the next block starting from the
+   *previous* block's `block_end` (the pre-tail position, per
+   `decode_piece_block`'s own docstring) with a fixed 288-byte window -
+   never wide enough to reach past that block's own tail (pretable header
+   + two Region-C snapshots + the line table, typically 700-1000+ bytes).
+   So `decode()` has *always* silently stopped at block 0 on every multi-
+   record piece in the corpus - undetected because `summarize()`'s
+   separate, more expensive, independent brute-force byte scan (used
+   everywhere `piece_records` actually matters: `verify_capture.facts`,
+   `coverage()`) already found every block correctly, so nothing in the
+   existing, passing test suite ever exercised `decode()`'s own multi-
+   block completeness.
+
+**Fixed**: the next block's search now anchors from the previous block's
+`tail_end` (skipping past its tail rather than searching inside it) when
+that tail parsed cleanly, falling back to `block_end` otherwise (unchanged
+for the 2 production piece captures whose tail doesn't parse at all - a
+separate, deeper, pre-existing gap, not touched here). Verified against
+`summarize()`'s independently-computed block counts on all 28 parseable
+corpus fixtures: `decode()` now finds exactly the same count everywhere a
+tail parses.
+
+**With that fixed, one more field resolved cleanly**: the *last* block's
+own trailer-opening 20 bytes contain a u32 at a fixed +12 offset that
+equals `n_blocks - 1` - 0 on every 1-record fixture, 1 on every 2-record
+fixture, confirmed on all 26 non-outlier fixtures with a valid tail. This
+is the first byte-level, fixed-position confirmation of `piece_records`
+stored in the file itself, rather than only inferrable by brute-force
+scanning. `CAP-C62-DART` isn't a counter-example - it's the same already-
+documented 106-byte trailer insertion (its 2 extra dart points), which
+shifts this whole region by exactly 106 bytes for that one fixture.
+
+**Found and fixed along the way**: `dataset/templates.py` and
+`dataset_test.py` both asserted `len(blocks) == 1` for generated pieces -
+harmless before this fix (since `decode()` used to undercount anyway) but
+now correctly fails on the two dataset templates that are genuinely
+2-record pieces (`dart7`/`CAP-C62-DART`, `notch8`/`CAP-C40-NOTCH-TYPES`).
+Both now accept any block count and always use block 0, matching the
+"decode record 0, ignore the rest" convention `FORMAT_SPEC.md` section 8
+already documents and every other caller in this codebase already follows.
+`dataset/build.py` regenerated; every generated piece's actual bytes are
+confirmed byte-identical to before (only zip-container metadata differs) -
+this fix only changes how many blocks `decode()` *reports*, not which
+bytes `retarget()` patches.
+
+**Confirmed no coverage_pct/unknown_bytes change anywhere** (spot-checked
+directly, since `coverage()` was already established to use `summarize()`'s
+block list, never `decode()`'s) - this fix is purely additive to
+`decode()`'s own completeness.
+
+`FORMAT_SPEC.md` sections 8 and 12 updated to match. `selftest.py`
+SELFTEST PASS. `robustness/run.py` still 303/303. `dataset_test.py` still
+36/36 (against the regenerated dataset).
+
 ## v2.0 (2026-09-11, continued once more #4) - LADIES-BLOUSE decode failure investigated: not a bug, plus a real error-message fix found along the way
 
 User asked to investigate why all 5 pieces in `LADIES-BLOUSE TEST-2.zip`

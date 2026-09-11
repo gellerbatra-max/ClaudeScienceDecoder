@@ -453,6 +453,14 @@ storage position (23.3994, 13.2026) in, and never carrying the edit that
 distinguishes its file (no notches, no seam, no grade refs) **[V]**. Decode
 record 0 and ignore the rest.
 
+**`accumark_pds.decode()` now actually finds record 1, not just record 0
+[V, corrected 2026-09-11]** - previously it silently stopped after the
+first block on every multi-record file (a real bug in its block-finding
+loop's search window, fixed; see §12). This changes nothing about the
+guidance above - record 1 is still stale, still ignored by every caller -
+but `decode()`'s own `blocks` list, and its `block_errors`, are now
+complete rather than truncated to just the current geometry.
+
 Round 2 refines the trigger: `CAP-C00-BASE` (fresh rectangle, Save As, never
 pasted) has **one** record; `CAP-C50-DRILL1` — the same piece with a drill point
 added and Save-As'd under a new name, still never pasted — has **two**. The
@@ -872,9 +880,45 @@ account for:
 - A handful of small (1–8 byte) scalar fields scattered around fixed
   positions — right after the file header and before the metadata field
   block (e.g. `CAP-C00-BASE` +0x60, +0x70–0x83), at the internal-line list's
-  own terminator boundary, and a handful of small ints at the very start of
-  the trailer (`06 00 00 01 00 00 00 …` immediately after the line table) —
-  none yet tied to a control or value in the UI **[?]**.
+  own terminator boundary **[?]**.
+- **The bytes right after each block's line table, previously logged here
+  as unexplained trailer ints, turned out to be two different things
+  [V, corrected 2026-09-11]:**
+  - A **fixed, universal 8-byte marker** — `00 06 00 00 01 00 00 00`,
+    byte-for-byte identical after *every* block's own line table on every
+    corpus fixture checked, single- or multi-record, 4- to 34-point,
+    notched/seamed/plain alike. Confirmed as a genuine constant, not
+    per-piece data; its own semantic meaning (why `0x0600` specifically)
+    remains open **[?]**.
+  - **What follows that 8-byte marker is either the *next* block's own
+    metadata field block, or - only for the *last* block - the shared
+    file trailer's own opening**, and a real parser bug was hiding this
+    distinction: `accumark_pds.decode()`'s block-finding loop searched for
+    the next block starting from the *previous* block's `block_end` (the
+    pre-tail position) with a fixed 288-byte window - never wide enough to
+    reach past that block's own tail (typically 700-1000+ bytes), so
+    `decode()` silently stopped at block 0 on **every** multi-record piece
+    in the corpus. Undetected until now because `summarize()`'s own,
+    separate, more expensive brute-force scan (used everywhere
+    `piece_records` actually matters) already found every block correctly.
+    Fixed: the next block's search now anchors from the previous block's
+    `tail_end` instead. Confirmed correct against `summarize()`'s
+    independently-verified block counts on all 28 parseable corpus
+    fixtures (`decode()` now finds exactly the same block count as
+    `summarize()` everywhere a tail parses at all).
+  - With that fixed, the **last** block's trailer-opening 20 bytes
+    (`01 00 00 00 <flag> 00 00 00 00 0d 00 00 00 10 00 00 00`) resolve one
+    more field cleanly: **`<flag>` (a u32 at the marker's own +12) equals
+    `n_blocks - 1`** - 0 on every 1-record fixture, 1 on every 2-record
+    fixture, confirmed on all 26 non-outlier corpus fixtures with a valid
+    tail. This is the first byte-level, position-fixed confirmation of
+    `piece_records` stored in the file itself, rather than only inferrable
+    by brute-force block scanning. `CAP-C62-DART` is *not* a counter-
+    example - it's the same already-documented 106-byte trailer insertion
+    two paragraphs above, which shifts this whole region by exactly 106
+    bytes for that one fixture; reading its *un-shifted* position naturally
+    lands on unrelated bytes. The `01 00 00 00`/`0d 00 00 00 10 00 00 00`
+    values bracketing the flag remain unexplained **[?]**.
 - §10.3's notch-attribute payload, table-point `b`/`c` fields, and `0f 0a`
   triples.
 - §10.1's uneven/tapered cut-line miter point at `CAP-C30-SEAM-UNEVEN`

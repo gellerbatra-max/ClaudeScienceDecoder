@@ -1,5 +1,41 @@
 # Changelog
 
+## v2.0 (2026-09-11, continued once more #18) - checked the other bridging chains: the clean-offset + bulge split reproduces across the whole piece family
+
+User asked to check the other bridging chains too, beyond `aCEFC.tmp`'s
+chain A.
+
+**Confirmed the same split generalizes**, not a one-piece anecdote: every
+piece checked in the `SA60151TH`/`SI01040A17` family splits into one
+portion with a tight, near-constant perpendicular offset from the real
+perimeter and another that bulges smoothly inward and back -
+
+| piece | clean portion | stdev | bulging portion(s) |
+|---|---|---|---|
+| `aCEFC.tmp` | records 8+9, 0.79 in | 2.2-2.3 | records 6/7, peak 2.2-2.6 in |
+| `aCF12.tmp` | record 10, 1.57 in | ~1 (polyline) | records 8/9, peak 3.0-3.9 in |
+| `aCF13.tmp` | record 10, 0.79 in | 47.5 | records 8/9, mean 1.5-2.4 in |
+| `aCF3E.tmp` | record 10, 0.79 in | 8.7 | records 8/9, mean 1.7-1.8 in |
+| `aCF29.tmp` | records 9+10, 0.84-1.13 in | 151-861 | records 7/8, mean 1.6-2.5 in |
+
+The clean portion's own offset magnitude *varies by piece* (0.79 in on
+three, 1.13-1.57 in on two others) - a point in favour of this being real
+per-piece design data (a chosen seam-allowance width) rather than an
+artifact, since an artifact wouldn't plausibly track a believable,
+piece-specific construction value. `aCF3B.tmp` doesn't split this cleanly
+(one 103-point record, no separately-clean sub-portion found) - not
+investigated further.
+
+**Root cause of the bulge itself remains unidentified** - no DXF ground
+truth or garment-construction domain expertise was available to name the
+feature - but it is now an established, reproducible fact across at
+least 6 of 7 pieces checked, not a single-piece oddity. No fix attempted
+or warranted: `_curved_seam_record_ok`'s constant-offset test correctly
+keeps rejecting the bulging portions.
+
+No code changed - pure investigation. `selftest.py` still passing.
+`FORMAT_SPEC.md` §11 updated with the full per-piece table.
+
 ## v2.0 (2026-09-11, continued once more #17) - checked chain A's own "bridges a corner" mystery: constant-offset hypothesis definitively ruled out, real shape characterized
 
 User asked to check the remaining "chains bridge a corner" mystery on

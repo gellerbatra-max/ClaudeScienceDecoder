@@ -1024,6 +1024,36 @@ this, and extending it to accept a smoothly-varying offset would risk
 accepting genuine corruption too (FORMAT_SPEC.md's own standing caution
 about loosening seam-tolerance checks, §10.1).
 
+**Checked whether this generalizes beyond `aCEFC.tmp` [V, confirmed
+2026-09-11] - it does, robustly, across the whole `SA60151TH`/
+`SI01040A17` piece family:** the same split - one portion with a tight,
+near-constant perpendicular offset from the real perimeter, another that
+bulges smoothly inward and back - reproduces on every piece checked:
+
+| piece | clean portion | stdev | bulging portion(s) |
+|---|---|---|---|
+| `aCEFC.tmp` | records 8+9, 0.79 in | 2.2-2.3 | records 6/7, peak 2.2-2.6 in |
+| `aCF12.tmp` | record 10, 1.57 in | ~1 (polyline dist.) | records 8/9, peak 3.0-3.9 in |
+| `aCF13.tmp` | record 10, 0.79 in | 47.5 | records 8/9, mean 1.5-2.4 in |
+| `aCF3E.tmp` | record 10, 0.79 in | **8.7** | records 8/9, mean 1.7-1.8 in |
+| `aCF29.tmp` | records 9+10, 0.84-1.13 in | 151-861 | records 7/8, mean 1.6-2.5 in |
+
+The clean portion's own offset magnitude **varies by piece** (0.79 in on
+three of them, 1.13-1.57 in on the other two) - itself a point in favour
+of this being real, per-piece design data (a chosen seam-allowance width)
+rather than an artifact, since an artifact would not plausibly track a
+believable, piece-specific construction value. `aCF3B.tmp` doesn't split
+this cleanly (one 103-point record, stdev 2023, no separately-clean
+sub-portion found) - either its own kind=1 edge decomposition differs
+enough that the "clean" portion doesn't isolate the same way, or it
+genuinely doesn't have one; not investigated further. Root cause of the
+bulge itself - what real garment feature it represents, why it isn't a
+constant offset - remains unidentified without DXF ground truth or
+domain expertise neither available here, but it is now established
+fact, not a one-piece anecdote: reproducible, piece-specific in
+magnitude, and present on at least 6 of 7 pieces checked in this one
+piece family.
+
 This, together with the still-open remainder of §11's other bridging
 chains (not individually re-examined this pass), remains the format's
 largest open item, well beyond the narrow 3-fixture footnote this

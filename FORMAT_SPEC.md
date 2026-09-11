@@ -853,27 +853,52 @@ point in the snapshot by those same few bytes. `accumark_pds.
 check_region_c()` cross-validates both snapshots against the real perimeter
 (the `region_c_consistent` fact in `verify_capture.py`).
 
-**[V, scope corrected 2026-09-11]**: on the small, hand-captured `CAP-*`/
-`TASK*` corpus (35 blocks) it passes on all but the same 3 seam-allowanced
-pieces (`CAP-C30-SEAM-UNEVEN`/`CAP-C31-SEAM-TAPER`/`TASK2-SEAM1CM`) §11's
-own `check_line_table` discussion below already flags as a known gap - the
-basis for the "passes on every fixture except three" claim this section
-carried before. **That claim does not hold on real, complex production
-data.** Checked directly across every embedded piece object in `markers/`
-(156 blocks: the 2303 wing/cup/fold pieces, `AD1234 TEST 134`, `CLAUDE-
-QTY-TEST`, `CLAUDE-GRADE-MARKER`): **150 of 156 fail**, not 3. The 6 that
-pass are exactly the pieces with the simplest geometry (plain 4-point
-rectangles, one large-but-unnotched 142-point piece) - every genuinely
-graded/notched/multi-size production piece checked fails. Root cause not
-characterized beyond what §11 already shows for the small-corpus cases
-(snapshot parsing desyncs partway through, in the worst observed case
-computing one point's byte `size` as large as 50,505 - itself larger than
-the 29,195-byte file it's supposedly inside, an unambiguous parser bug,
-not a legitimate geometry mismatch); whether it is the same seam-style
-desync at much larger scale, an `n_perimeter_a`-counting edge case unique
-to complex pieces, or something else distinct is genuinely open **[?]** -
-a materially larger Phase-B item than previously scoped, not the narrow
-3-fixture footnote this section used to describe.
+**[V, scope corrected 2026-09-11, then corrected again the same day]**: on
+the small, hand-captured `CAP-*`/`TASK*` corpus (35 blocks) it passes on
+all but the same 3 seam-allowanced pieces (`CAP-C30-SEAM-UNEVEN`/`CAP-C31-
+SEAM-TAPER`/`TASK2-SEAM1CM`) §11's own `check_line_table` discussion below
+already flags as a known gap - the basis for the "passes on every fixture
+except three" claim this section carried before. **That claim does not
+hold on real, complex production data** - but the first attempt at
+re-measuring it here conflated two unrelated problems, corrected below
+once the two were actually told apart.
+
+Checked directly across every embedded piece object in `markers/` (156
+blocks): **150 of 156 fail `check_region_c`**, not 3 - but only **18** of
+those 150 show the small-corpus fixtures' own runaway-snapshot signature
+(same `id=512, x=65536` desync, same cascade into impossible values). The
+other **132** failed for a completely unrelated reason: `_locate_tail()`'s
+line-table search used a fixed 0x600 (1536-byte) window - plenty for the
+small corpus, but production pieces regularly need up to 8098 bytes past
+`block_end` before the real line table starts, so `tail` parsing was
+failing *before ever reaching Region C at all* on 132 of 156 blocks (108
+of 126 pieces' own primary record) - `check_region_c` was reporting
+"fail" by its own documented convention for "no region_c to check," not
+because Region C was actually corrupt. **Fixed** (`_locate_tail` now
+searches to the end of the buffer, not a fixed window - same class of fix
+as the already-documented `decode()` next-block-search bug, §8/§12).
+Confirmed the fix finds the *correct* location, not a spurious match:
+every one of these blocks' kind=1 (perimeter-edge) line-table records now
+match the block's own real geometry 100%, everywhere checked.
+
+**That fix immediately surfaced a third, separate, still-unexplained
+problem** - genuinely new, not yet understood, and not the runaway-
+snapshot bug: even with the line table correctly located, most of these
+same production blocks' **kind=2 records** still don't coincide with the
+block's own decoded perimeter/internal-line/closing geometry. Unlike the
+runaway bug, these points are individually well-formed (sane ids, sane
+sizes, no impossible values) - they just describe geometry that isn't in
+`real`, by large (thousands of coordinate units), non-uniform deltas that
+don't fit the already-documented seam-offset shape at all. Real production
+pieces are genuinely multi-size graded, unlike every fixture this checker
+was built and proven against; the live, unconfirmed hypothesis is that
+some kind=2 records store another size's geometry rather than the
+decoded block's own - not verified, a genuinely open Phase-B/C item, and
+one that also affects `check_line_table` (not just `check_region_c`),
+so it isn't a Region-C-specific problem either. Root cause not
+characterized further; this is now the format's largest remaining open
+item by a wide margin, well beyond the narrow 3-fixture footnote this
+section used to describe.
 
 **All three small-corpus outliers confirmed to share one identical
 signature [V, confirmed 2026-09-11]**, checked directly rather than
@@ -959,20 +984,45 @@ the base corner set," not that it's specific to darts.
 Remaining `unknown` bytes, roughly in order of how much of the file they
 account for:
 
-- **Region C's snapshot desync on `CAP-C30-SEAM-UNEVEN`/`CAP-C31-SEAM-
-  TAPER`/`TASK2-SEAM1CM`, and - far more significantly - on nearly every
-  genuinely complex production piece [V, found 2026-09-11]**: now the
-  single largest unknown-byte contributor on every fixture it hits,
-  because `coverage()` no longer papers over it (see §11's fuller writeup
-  of the same finding). `check_region_c()` fails on 150 of 156 piece
-  blocks embedded in `markers/`'s production/test marker zips - not just
-  the 3 small-corpus outliers this section previously implied were the
-  whole story. Where it fails, one or both Region C snapshots are true
-  `unknown` bytes now (previously mis-marked `identified` by a coverage()
-  bug fixed the same session - see below), typically hundreds to tens of
-  thousands of bytes depending on the piece's own size. Root cause open
-  **[?]** - large enough in scope that it is now the format's biggest
-  remaining gap, not a minor footnote.
+- **The real Region-C runaway-snapshot bug: `CAP-C30-SEAM-UNEVEN`/`CAP-
+  C31-SEAM-TAPER`/`TASK2-SEAM1CM`, plus 18 of 156 production blocks show
+  the identical signature [V, found 2026-09-11]**: `id=512, x=65536` at
+  the first desynced point, cascading into impossible coordinates. Where
+  it hits, one or both Region C snapshots are true `unknown` bytes now
+  (previously mis-marked `identified` by a coverage() bug fixed the same
+  session - see below), typically hundreds to tens of thousands of bytes.
+  Root cause open **[?]**.
+- **`_locate_tail()`'s fixed search window, found and fixed the same
+  pass [V, found and fixed 2026-09-11]**: 132 of 156 production blocks
+  (108 of 126 pieces' own primary record) were failing to find `tail` -
+  and so all of Region B/C/D - at all, not because anything was corrupt
+  but because the line-table search used a fixed 1536-byte window that
+  production pieces regularly exceed (observed up to 8098 bytes). Fixed
+  by searching to the end of the buffer; confirmed the newly-found
+  location is correct (not spurious) via 100% match on kind=1 records.
+  This alone raised `coverage_pct` on affected production pieces
+  substantially (one example: 2303-BD137-PLACED's `aCEFC.tmp`, unmeasured
+  before since `tail` failed outright, now 66.28%) since Region B's
+  pretable header and the line table's own well-formed byte structure are
+  now reachable and marked `identified` for the first time.
+- **A third, still-unexplained problem the fix above immediately
+  surfaced - now the format's largest remaining open item by a wide
+  margin [V, found 2026-09-11, still open]**: even with the line table
+  correctly located, most production blocks' `kind=2` line-table records
+  still don't coincide with the block's own perimeter/internal-line/
+  closing geometry - unlike the runaway bug, these points are individually
+  well-formed, just describing geometry `real` doesn't contain, by large
+  non-uniform deltas that don't fit the seam-offset shape. The unconfirmed
+  hypothesis is that these are another graded size's geometry, since real
+  production pieces are multi-size and every fixture this project's
+  checks were built against is not. `_block_ranges()` still marks these
+  bytes `identified` regardless (the byte *structure* - tags, lengths,
+  point format - genuinely is understood; it's specific point *values*
+  that don't cross-validate, the same "structure known, content role open"
+  distinction this document draws elsewhere, e.g. Region B's own unnamed
+  constants) - so this does not currently cost `coverage_pct` the way the
+  runaway-snapshot bug did, but it is a bigger, deeper open question about
+  what the line table actually stores at production scale. **[?]**
 - **`_block_ranges()`'s Region-C marking bug, fixed [V, found and fixed
   2026-09-11]**: before this fix, a snapshot's byte range was marked
   `identified` as soon as it was computed, with no check that the

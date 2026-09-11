@@ -278,12 +278,46 @@ def find_point_table(d, after, window=64):
 PRETABLE_HEADER_SIZE = 52
 SNAPSHOT_MARKER = 10000            # the two `10 27 00 00` bracketing markers
 
-def _locate_tail(d, block_end, search_window=0x600):
+def _locate_tail(d, block_end, search_window=None):
     """Re-find the position right after the block's *last* `Lnn` label
     (Region B's start) and the line table's first record header, independent
     of decode_piece_block's own `block_end` (which stops one step short of
-    the label, for backward compatibility with existing callers)."""
-    end = min(block_end+search_window, len(d))
+    the label, for backward compatibility with existing callers).
+
+    [V, found and fixed 2026-09-11] `search_window` used to default to a
+    fixed 0x600 (1536) bytes - fine for the small CAP-*/TASK* corpus (whose
+    largest real gap is nowhere near that), but on real production pieces
+    the gap between block_end and the line table's own first record scales
+    with piece complexity (Region A's per-edge Lnn records, then Region B/
+    C) and regularly exceeds it: found while investigating why
+    check_region_c() was failing on so much of the production corpus - 132
+    of 156 embedded production piece blocks (108 of 126 pieces' own primary
+    record) turned out to have no `tail` at all, not a Region-C-specific
+    problem, because this search was silently giving up before ever
+    reaching the real line table (observed gaps up to 8098 bytes on
+    `2303-BD137-PLACED`'s own pieces - more than 5x the old window). Same
+    class of bug as the already-fixed decode() next-block search (FORMAT_
+    SPEC.md SS8/SS12) - a fixed window sized to the small hand-captured
+    corpus, silently wrong at production scale. Now searches to the end of
+    the buffer by default; `search_window` stays available for a caller
+    that wants to bound the cost.
+
+    The match location itself is confirmed correct, not spurious: every
+    previously-failing block's newly-found line table's kind=1 (perimeter-
+    edge) records match the block's own real geometry point-for-point,
+    100%, everywhere checked. What this fix does NOT resolve - found
+    immediately after fixing it, genuinely open, not yet understood -
+    is that most of these same blocks' kind=2 records still fail
+    check_line_table(): their points are well-formed (sane ids, sane
+    sizes, no runaway) but simply don't coincide with the block's own
+    perimeter/internal-line/closing geometry, by large (thousands of
+    units), non-uniform deltas that don't fit the already-documented
+    seam-offset shape. Real production pieces are genuinely multi-size
+    graded, unlike the small single-size test corpus this checker was
+    built and proven against - one live hypothesis is that some kind=2
+    records store another size's geometry rather than the decoded block's
+    own, but that is unconfirmed. See FORMAT_SPEC.md SS11/SS12."""
+    end = len(d) if search_window is None else min(block_end+search_window, len(d))
     tm = re.search(rb'\x0a\x00[\x01-\x40]\x00\x00\x00[\x01\x02]\x00[\x01-\x40]\x00\x03\x00', d[block_end:end])
     if not tm: raise ValueError('line table not found after block_end %#x' % block_end)
     table_start = block_end + tm.start()

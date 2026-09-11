@@ -1,5 +1,52 @@
 # Changelog
 
+## v2.0 (2026-09-11, continued once more #11) - checked production 2303 pieces for the seam-fixture signature; found the "150/156 fail check_region_c" figure was mostly a different, now-fixed bug, and surfaced a bigger new one
+
+User asked to check the production 2303 pieces for the same runaway
+snapshot signature (`id=512, x=65536`) found on the three small-corpus
+seam fixtures. Answer: only 18 of the 150 production blocks that fail
+`check_region_c` actually show it. The other 132 were a separate,
+unrelated bug this pass found and fixed.
+
+**Root cause of the other 132**: `_locate_tail()`'s line-table search
+used a fixed 0x600 (1536-byte) window after `block_end` - plenty for the
+small `CAP-*`/`TASK*` corpus, but production pieces regularly need up to
+8098 bytes before the real line table starts, so `tail` parsing (and
+therefore Region B/C/D entirely) was failing outright on 132 of 156
+production blocks (108 of 126 pieces' own primary record) before ever
+reaching Region C. `check_region_c` was correctly reporting "fail" by its
+own documented convention for "nothing to check," not because Region C
+itself was corrupt - the earlier entry (#9/#10) had conflated the two.
+
+**Fixed**: `_locate_tail` now searches to the end of the buffer instead of
+a fixed window - same class of bug as the already-documented `decode()`
+next-block-search fix (§8/§12), a window sized to the small hand-captured
+corpus that silently broke at production scale. Confirmed the newly-found
+location is correct, not a spurious match: every affected block's kind=1
+(perimeter-edge) line-table records now match real geometry 100%.
+`selftest.py` SELFTEST PASS (small corpus numbers unchanged, as expected -
+the old window was never too small there); `dataset_test.py` 36/36;
+`robustness/run.py` (full) 303/303.
+
+**That fix immediately surfaced a third, separate, still-unexplained
+problem**, found by checking rather than assuming the fix was a full
+resolution: even with the line table correctly located, most production
+blocks' `kind=2` records still don't coincide with the block's own
+decoded geometry - individually well-formed points (unlike the runaway
+bug), just describing something `real` doesn't contain, by large,
+non-uniform deltas that don't fit the seam-offset shape. Unconfirmed
+hypothesis: another graded size's geometry, since real production pieces
+are multi-size and nothing this project's checks were built against is.
+This is now the format's largest open item, well past the original
+3-fixture seam-allowance footnote.
+
+`FORMAT_SPEC.md` §11 and §12 rewritten to separate all three findings
+(the genuine 18-block runaway bug, the now-fixed 132-block window bug,
+and the new still-open kind=2/multi-size mismatch) instead of the
+previous entry's conflated framing; `_locate_tail`'s docstring updated to
+match, including retracting an unverified claim it originally shipped
+with.
+
 ## v2.0 (2026-09-11, continued once more #10) - confirmed the other two small-corpus seam outliers share the exact same Region-C desync bug
 
 User asked to check `CAP-C31-SEAM-TAPER` and `TASK2-SEAM1CM` (the other

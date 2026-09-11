@@ -1,5 +1,36 @@
 # Changelog
 
+## v2.0 (2026-09-11, continued once more #21) - checked the other bulging chains (SI01040A17 lining side) for the same shape nuance: it holds, even more starkly, plus a striking SA/SI seam-allowance ratio
+
+User asked to check the other bulging chains for the same shape nuance
+found on the `SA60151TH` (shell) side.
+
+**The nuance holds on the `SI01040A17` (lining) side too, even more
+starkly.** `aCEFF.tmp` and `aCF15.tmp` (the 32B/32C-tier lining
+counterparts of `aCF10.tmp`/`aCF26.tmp`, which showed a milder
+"moderate uniform offset, no dip" version of the pattern) have **zero**
+unmatched kind=2 records - `check_line_table()` returns **True** for
+both, every one of their 10 kind=2 records captured as a genuine
+`internal_lines` segment by the internal-line-list walker fix. Not a
+milder version of the shape nuance, its complete absence - consistent
+with these two smaller cup sizes' lining pieces genuinely not needing
+whatever structural feature (wire channel, molding seam) produces the
+bulge on larger sizes.
+
+**A second, unplanned finding surfaced by checking the other 5 lining
+pieces**: their clean-offset value is almost exactly **double** the
+matching shell piece's - `aCEFC.tmp` 0.787in -> `aCEFD.tmp` 1.575in;
+`aCF13.tmp` 0.787 -> `aCF12.tmp` 1.575; `aCF29.tmp` 0.787 -> `aCF28.tmp`
+1.575; `aCF3E.tmp` 0.787 -> `aCF3D.tmp` 1.575 (four of five land on the
+*identical* 1.575in, not just close); `aCF3B.tmp` 1.181 -> `aCF2B.tmp`
+1.969 is the one imperfect case (1.67x). Landing exactly on the same
+value for 4 of 5 pieces is a believable, real construction relationship
+(lining seam allowance built to roughly double the shell's), not
+coincidence.
+
+No code changed - pure investigation. `selftest.py` still passing.
+`FORMAT_SPEC.md` §11 updated with both findings.
+
 ## v2.0 (2026-09-11, continued once more #20) - checked whether the bulge magnitude correlates with cup size: it doesn't, but the split's own shape does
 
 User asked to check whether the bulge's peak magnitude correlates with

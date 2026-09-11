@@ -1097,7 +1097,35 @@ exceptions" either - the shape itself changes with size (two smaller
 cup tiers show one moderate, near-uniform offset; the smallest tier and
 the three largest tiers show the sharp two-regime split) even though the
 bulge's own peak *value* doesn't correlate. Root cause of either pattern
-remains unidentified; not pursued further this pass.
+remains unidentified.
+
+**Checked the `SI01040A17` (lining) side's own equivalents of these two
+"exception" pieces [V, checked 2026-09-11] - the shape nuance holds
+there too, even more starkly.** `aCEFF.tmp` and `aCF15.tmp` (the SI-side
+32B- and 32C-tier counterparts of `aCF10.tmp`/`aCF26.tmp`) have **zero**
+unmatched kind=2 records at all - `check_line_table()` returns **True**
+for both, the line table's own internal-line-list walker (now fixed,
+§12) captures all 10 of their kind=2 records as genuine `internal_lines`
+segments with nothing left over. Not a milder version of the pattern,
+its complete absence: these two size tiers' lining pieces have no extra,
+unexplained curve whatsoever, consistent with a real construction
+difference (e.g. these two smaller cup sizes not needing the structural
+feature - wire channel, molding seam - that produces the bulge on larger
+sizes) rather than a decode gap, since every byte of their own line
+table is now honestly accounted for.
+
+The other 5 `SI01040A17` pieces (`aCEFD.tmp`/`aCF12.tmp`/`aCF2B.tmp`/
+`aCF28.tmp`/`aCF3D.tmp`) DO show the same sharp clean+bulge split their
+`SA60151TH` counterparts do, and with a striking, consistent numeric
+relationship: the SI (lining) side's own clean-offset value is almost
+exactly **double** the matching SA (shell) side's - `aCEFC.tmp` 0.787 in
+-> `aCEFD.tmp` 1.575 in; `aCF13.tmp` 0.787 -> `aCF12.tmp` 1.575;
+`aCF29.tmp` 0.787 -> `aCF28.tmp` 1.575; `aCF3E.tmp` 0.787 -> `aCF3D.tmp`
+1.575 (four of five pieces land on the *identical* 1.575 in value, not
+just "close"); `aCF3B.tmp` 1.181 -> `aCF2B.tmp` 1.969 is the one
+imperfect case (ratio 1.67x, not 2x). A believable, real construction
+relationship (lining seam allowance built to roughly double the shell's)
+rather than coincidence, given how exactly it lands for 4 of 5 pieces.
 
 This, together with the still-open remainder of §11's other bridging
 chains (not individually re-examined this pass), remains the format's

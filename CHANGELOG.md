@@ -1,5 +1,45 @@
 # Changelog
 
+## v2.0 (2026-09-11, continued once more #27) - live AccuMark V17 import validation of the generated dataset (decoder v2 plan's last outstanding verification step)
+
+User asked to run the live AccuMark validation: the one verification step
+from the decoder v2 plan that was never non-circular, since every other
+check (Oracle 1 by construction, Oracle 2 metamorphic, Oracle 3
+corruption detection, `dataset_test.py`) runs through this project's own
+decoder and writer, so a shared wrong assumption between them could pass
+silently. Only importing a generated piece back into AccuMark's own GUI,
+completely outside this codebase, can catch that.
+
+**Method**: used `AccuMark Explorer`'s native `Import Zip` (Windows-MCP
+desktop control, per this project's standing practice), targeting three
+`dataset/generated/` pieces chosen to cover the three structurally
+distinct templates: `SKIRT-FRONT` (rect4g, 4 points, no notches),
+`BLAZER-BACK` (notch8, 8 points, 4 notches), `SHIRT-SLEEVE-L` (curve34,
+34 points, a curved sleeve cap - the template most directly relevant to
+this session's curved-seam investigation). Imported into `DATA90`, the
+scratch storage area already used for every other live-AccuMark test
+fixture in this project (never production data, per the standing rule).
+
+**Result: all three passed, independently of this project's own code.**
+AccuMark's own `Import Zip` dialog recognized each as a valid `Piece`
+object by name/type/size before the import was even confirmed - the
+first independent parse. After import, `AccuMark Explorer`'s built-in
+piece preview and `Pattern Design`'s canvas rendered each shape
+correctly with no crash or corruption warning: `SKIRT-FRONT` as a clean
+4-corner rectangle (13.5in x 22in, matching the drafted aspect ratio);
+`BLAZER-BACK` as a rectangle with exactly 4 evenly-spaced notch ticks
+along one edge, matching the manifest's `notch_indices` count; and
+`SHIRT-SLEEVE-L` as a smooth, continuous curved outline with all 34
+points and grade markers placed around it - AccuMark's own curve
+rendering, entirely independent of this project's `_nearest_polyline`/
+`_seg_path_ok` logic, agreeing that the generated curve data is
+coherent.
+
+This closes the last standing item in the decoder v2 plan's Verification
+section (item 6, "import 2-3 generated zips back into AccuMark V17
+through the GUI"). No code changed this entry - this was a verification
+pass, not a fix.
+
 ## v2.0 (2026-09-11, continued once more #26) - implemented the interior-window search; found+fixed a second real limit (SEAM_OFFSET_MAX) along the way
 
 User asked to implement the interior-window search flagged as a concrete

@@ -464,12 +464,15 @@ SEAM_OFFSET_MAX = 20000            # generous bound (2 in) for a cutline miter/o
 # check_line_table: how much a seam/cutline record's per-point distances to
 # its matched perimeter edge may vary (population stdev, in 1e-4in units)
 # and still count as "one consistent offset", not coincidence. Confirmed
-# curved seams on real production pieces measure 2-59 units of stdev
+# curved seams on real production pieces measure 2-44 units of stdev
 # (aCEFC.tmp record 8 vs edge 2: 2.2; record 9 vs edge 3: 2.31; aCF12.tmp
-# record 10 vs edge 1: 44.0; record 13 vs edge 2: 58.6); the closest
-# rejected case measured 459.7, and everything else in the corpus that
-# doesn't match a single edge measures in the thousands. 200 sits with
-# margin above the confirmed cases and well below the ambiguous ones.
+# record 10 vs edge 1: 44.0 - see check_line_table's docstring for a
+# correction: an earlier pass also cited a 2-point record here, which
+# len(pts)>=4 below already excludes on its own, not a real second
+# example); the closest rejected case measured 459.7, and everything else
+# in the corpus that doesn't match a single edge measures in the
+# thousands. 200 sits with margin above the confirmed cases and well
+# below the ambiguous ones.
 CURVED_SEAM_STDEV_MAX = 200
 TABLE_POINT_TAG = 0x10
 
@@ -960,17 +963,55 @@ def check_line_table(b):
     `2303-BD137-PLACED`'s `aCEFC.tmp`, kind=2 record 8's 23 points sit a
     near-constant 7877 units (0.79in) from perimeter edge record 2 (stdev
     2.2 units); record 9 matches edge 3 the same way (stdev 2.31). A
-    second, different piece (`aCF12.tmp`) shows the identical shape at
-    1576-1581 units (stdev 44-59). `_curved_seam_record_ok` below accepts
-    a seam/cutline record as a WHOLE - never point-by-point - when every
-    one of its points sits within SEAM_OFFSET_MAX of the SAME perimeter
-    edge with a tight, consistent stdev (CURVED_SEAM_STDEV_MAX): a real
-    curved seam keeps that consistency across every point; an unrelated or
-    corrupted point breaks it immediately, which is what keeps this from
-    quietly widening what Oracle C can catch. Deliberately conservative -
-    most kind=2 records in the production corpus still don't match any
-    single edge this cleanly and are correctly left failing, not force-fit
-    into passing.
+    second, different piece (`aCF12.tmp`) shows the same shape at 15760
+    units (stdev 44.0). `_curved_seam_record_ok` below accepts a seam/
+    cutline record as a WHOLE - never point-by-point - when every one of
+    its points sits within SEAM_OFFSET_MAX of the SAME perimeter edge with
+    a tight, consistent stdev (CURVED_SEAM_STDEV_MAX): a real curved seam
+    keeps that consistency across every point; an unrelated or corrupted
+    point breaks it immediately, which is what keeps this from quietly
+    widening what Oracle C can catch. Deliberately conservative - most
+    kind=2 records in the production corpus still don't match any single
+    edge this cleanly and are correctly left failing, not force-fit into
+    passing.
+
+    [V, investigated 2026-09-11] Checked what the STILL-unmatched records
+    are, rather than leaving them as an undifferentiated "majority" - two
+    real, separate findings, not more of the same mystery:
+    (1) **They chain into one continuous curve via exact shared endpoint
+    coordinates** between consecutive records (confirmed on both example
+    pieces: `aCEFC.tmp`'s records 12/13/14 close into one 104-point loop;
+    8/7/6/9 close into another, 73-point loop that includes the two
+    already-matched records above as two of its four segments; `aCF12.tmp`'s
+    8/9/10 form one open 73-point chain). A record that only matches ONE
+    kind=1 edge cleanly is a sub-segment of a longer curve that bridges
+    across a corner - not a separate, unrelated mismatch.
+    (2) **At least one such chain (`aCEFC.tmp`'s 12/13/14) is a genuine,
+    separately-STORED internal feature** (a `cutout`-tagged internal-line-
+    list entry, `INTERNAL_TAGS[0x49]`) whose own raw header+points exist in
+    the file, confirmed byte-for-byte identical to record 12's own points
+    when walked directly - `decode_piece_block`'s internal-line-list loop
+    simply never reaches it (something sits between the grain line's own
+    chain and this one that isn't itself another internal-line header, so
+    the `while _is_internal_header(...)` loop correctly stops before it).
+    This is a real, fixable gap - `internal_lines`/`internal_kinds` should
+    have 4 entries for this piece, not 1 - but NOT fixed here: a near-
+    identical second copy of the same grain+cutout header sequence exists
+    again ~12KB further into the same file, well past this block's own
+    `tail_end`, and until that's understood (a stale pre-edit duplicate?
+    an undetected second block, echoing the decode() undercounting bug
+    fixed earlier this session?) touching the internal-line-list walker
+    risks conflating the two. Flagged as a concrete, well-scoped next step,
+    not attempted this pass.
+    One correction from an earlier pass, caught while re-checking rather
+    than reusing the old numbers: `aCF12.tmp`'s records 5/6/7 (also a
+    closed 3-segment loop) were previously miscounted among the "confirmed
+    curved subset" - they in fact already match `real` exactly (they ARE
+    `internal_lines`' own 3 correctly-decoded cutout segments on that
+    piece) and were never part of the mismatch to begin with; a separately
+    cited "record 13" match was a 2-point record, excluded by this
+    function's own `len(pts) >= 4` gate regardless, not a real second
+    example - both corrected in FORMAT_SPEC.md/CHANGELOG.md.
 
     Honest scope: confirmed via a corpus-wide diff, this fix does not flip
     `check_line_table`'s overall True/False result on any of the 156

@@ -895,23 +895,84 @@ garbage), and measuring every `kind=2` record against its nearest point
 on each `kind=1` perimeter edge finds a subset with a **near-perfectly
 constant offset** - `aCEFC.tmp` record 8 sits 7877 units (0.79 in) ± 2
 units from perimeter edge record 2, all 23 points; a second production
-piece (`aCF12.tmp`) shows the same pattern at 1576-1581 units ± 44-59.
-Genuine seam-allowance curves, at realistic magnitudes well inside the
-existing `SEAM_OFFSET_MAX` (2 in) - just far larger than the small test
-corpus's seam values and, critically, **curved** (the offset direction
-rotates along the edge) rather than the single axis-aligned/45°-diagonal
-offset `_is_seam_offset()` recognises, which is why distance alone
-doesn't save them. Only a minority of `kind=2` records show this clean a
-match, though (2 of 9 and 2-3 of 10 on the two pieces checked) - the rest
-match their best edge far more loosely, likely compound/corner-spanning
-seams or a distinct, still-unidentified feature. **The confirmed subset
-is now fixed** (`check_line_table`'s `_curved_seam_record_ok()`, §12's
-fuller writeup) - verified safe by a corpus-wide diff (doesn't flip any
-fixture's overall pass/fail, since every affected piece also has at least
-one other still-unexplained record) and by direct corruption-sensitivity
-testing. Root cause of the *remaining* majority not characterized
-further; that remainder is now the format's largest open item, well
-beyond the narrow 3-fixture footnote this section used to describe.
+piece (`aCF12.tmp`) shows the same pattern at 15760 units ± 44 (record
+10). Genuine seam-allowance curves, at realistic magnitudes well inside
+the existing `SEAM_OFFSET_MAX` (2 in) - just far larger than the small
+test corpus's seam values and, critically, **curved** (the offset
+direction rotates along the edge) rather than the single axis-aligned/
+45°-diagonal offset `_is_seam_offset()` recognises, which is why distance
+alone doesn't save them. Only a minority of `kind=2` records show this
+clean a match - the rest match their best single edge far more loosely.
+**The confirmed subset is now fixed** (`check_line_table`'s
+`_curved_seam_record_ok()`, §12's fuller writeup) - verified safe by a
+corpus-wide diff (doesn't flip any fixture's overall pass/fail, since
+every affected piece also has at least one other still-unexplained
+record) and by direct corruption-sensitivity testing.
+
+**Checked what the *rest* actually are [V, investigated 2026-09-11]**,
+rather than leaving "compound/corner-spanning seams or a distinct
+feature" as a guess - two concrete, separate findings, not more of the
+same mystery:
+1. **They chain into one continuous curve via exact shared endpoint
+   coordinates** between consecutive records. Confirmed on both example
+   pieces: `aCEFC.tmp`'s records 12/13/14 close into one 104-point loop
+   (`points[-1]` of each record equals `points[0]` of the next, exactly,
+   not approximately); records 8/7/6/9 close into a *second* 73-point
+   loop that includes the two already-fixed records above as two of its
+   four segments - the "confirmed subset" isn't separate from the
+   unmatched majority, it's literally part of the same closed curves.
+   `aCF12.tmp`'s records 8/9/10 form a third, open 73-point chain the
+   same way. A record that only matches one edge cleanly is a
+   *sub-segment* of a longer curve bridging across a corner, not an
+   independent mismatch.
+2. **At least one such chain is a genuine, separately-stored internal
+   feature that the decoder currently misses entirely.** `aCEFC.tmp`'s
+   104-point loop (records 12/13/14) has its own raw header+points in
+   the file - `ffff 4900 0024 0001 000000` (tag `0x49` = `cutout`,
+   count 36) at byte offset 2931, whose following 36 points are
+   byte-for-byte identical, in order, to record 12's own points, walked
+   directly with `parse_point`. `decode_piece_block`'s internal-line-list
+   loop never reaches it: something occupies the bytes between the grain
+   line's own chain (ending ~offset 1524) and this header (2931) that
+   isn't itself another recognised internal-line header, so the loop
+   correctly stops before getting there. This piece's real internal
+   feature count is 4 (grain + 3 cutout segments), not the 1 (`grain`
+   only) `internal_lines`/`internal_kinds` currently reports - a real,
+   concrete gap, confirmed at the byte level, not inferred.
+
+   **Not fixed this pass**: a near-identical second copy of the exact
+   same grain+cutout header sequence exists again ~12,000 bytes further
+   into the same file (offset ~14039), well past this block's own
+   `tail_end` (12737) - a stale pre-edit duplicate, an undetected second
+   `piece_records` block (the same *class* of gap `decode()`'s next-block
+   search had before §8/§12's fix, just not yet confirmed to be the same
+   thing), or something else entirely isn't known. Extending the
+   internal-line-list walker without first understanding this risks
+   conflating the current copy with the stale one. Flagged as a concrete,
+   well-scoped next step - not attempted this pass.
+
+3. **One correction to the previous entry's own numbers**, caught by
+   re-checking rather than reusing them: `aCF12.tmp`'s records 5/6/7 (also
+   a closed 3-segment loop) were miscounted among the confirmed subset in
+   an earlier pass - they in fact already match `real` exactly (they
+   *are* `internal_lines`' own 3 correctly-decoded `cutout` segments on
+   that piece, `[2, 34, 34, 34]` points) and were never part of the
+   mismatch. A separately cited "record 13" match was a 2-point record -
+   excluded by `_curved_seam_record_ok`'s own `len(pts) >= 4` gate
+   regardless of its stdev, not a real second confirmed example. Both
+   numbers corrected here and in `CHANGELOG.md`.
+
+Root cause of the compound/bridging chains themselves (why the seam
+allowance doesn't stay parallel to a single edge across a corner) is
+still not characterized. Together with finding 2 above (a real internal-
+feature-detection gap, confirmed but not yet fixed), this remains the
+format's largest open item, well beyond the narrow 3-fixture footnote
+this section used to describe.
+
+**All three small-corpus outliers confirmed to share one identical
+signature [V, confirmed 2026-09-11]**, checked directly rather than
+assumed from `CAP-C30-SEAM-UNEVEN` alone: `CAP-C31-SEAM-TAPER` and
+`TASK2-SEAM1CM` both desync at the *exact* same first point - `id=512,
 
 **All three small-corpus outliers confirmed to share one identical
 signature [V, confirmed 2026-09-11]**, checked directly rather than
@@ -1041,9 +1102,8 @@ account for:
   (0.79 in) ± 2 units** from perimeter edge record 2, all 23 points;
   record 9 matches edge record 3 the same way (± 2.3 units). On
   `SI01040A17`'s `aCF12.tmp`, record 10 (41 points) matches edge record 1
-  at 1576 units ± 44, and record 13 matches edge record 2 at 1581 units
-  ± 59. These are genuine, real **seam-allowance/cut-line curves** -
-  realistic magnitudes (0.79-1.99 in, well inside the existing
+  at 15760 units ± 44. These are genuine, real **seam-allowance/cut-line
+  curves** - realistic magnitudes (0.79-1.58 in, well inside the existing
   `SEAM_OFFSET_MAX` = 2 in tolerance), just far larger than the small
   `CAP-*`/`TASK2-SEAM1CM` test corpus's seam values and, critically,
   **curved** (the offset direction rotates continuously along the edge)
@@ -1056,13 +1116,22 @@ account for:
   them.
 
   **Not the whole story, though**: only a minority of `kind=2` records
-  (2 of 9 checked on `aCEFC.tmp`, 2-3 of 10 on `aCF12.tmp`) show this
-  clean single-edge match: 2-58 unit standard deviation. The rest match
-  their best `kind=1` edge with stdev in the hundreds to thousands -
-  likely records that span a compound edge crossing a corner (where a
-  single edge's own offset direction doesn't apply across the whole
-  record) or a genuinely different feature (facing, a second seam layer,
-  foam boundary) not yet identified.
+  show this clean single-edge match: 2-44 unit standard deviation. The
+  rest match their best `kind=1` edge with stdev in the hundreds to
+  thousands. **[V, investigated 2026-09-11] Checked what these actually
+  are, not just guessed at** - §11's fuller writeup: they chain into
+  continuous curves via exact shared endpoint coordinates (a record that
+  only matches one edge is a sub-segment of a longer curve bridging a
+  corner), and at least one such chain is a genuine, separately-stored
+  internal `cutout`-type feature whose own raw header+points exist in the
+  file but that `decode_piece_block`'s internal-line-list walker never
+  reaches - a real, byte-confirmed gap (this piece's real feature count is
+  4, not the 1 currently decoded), not yet fixed pending understanding of
+  a second, unexplained near-duplicate copy of the same header sequence
+  found ~12KB further into the same file. (An earlier pass also
+  miscounted `aCF12.tmp`'s records 5/6/7 among the confirmed subset - they
+  already matched `internal_lines` exactly and were never part of the
+  mismatch; corrected here.)
 
   **Fixed for the confirmed subset [V, fixed 2026-09-11]**:
   `check_line_table`'s new `_curved_seam_record_ok()` accepts a kind=2

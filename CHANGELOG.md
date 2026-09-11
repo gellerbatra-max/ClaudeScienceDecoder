@@ -1,5 +1,59 @@
 # Changelog
 
+## v2.0 (2026-09-11, continued once more #14) - checked the remaining kind=2 records for another pattern: they chain into continuous curves, one of which is a genuine internal feature the decoder currently misses
+
+User asked to check the still-unmatched `kind=2` records (the ones
+`_curved_seam_record_ok` correctly leaves failing) for another pattern,
+rather than leaving them as an undifferentiated majority.
+
+**Finding 1 - they chain together.** Consecutive kind=2 records share
+exact endpoint coordinates: `aCEFC.tmp`'s records 12/13/14 close into one
+104-point loop; records 8/7/6/9 close into a second, 73-point loop that
+includes the two already-fixed records (8, 9) as two of its four
+segments; `aCF12.tmp`'s records 8/9/10 form a third, open 73-point chain
+the same way. A record that only matches a single perimeter edge cleanly
+is a sub-segment of a longer curve that bridges across a corner - the
+"confirmed subset" from the previous entry was never separate from the
+unmatched majority, it's literally part of the same closed curves.
+
+**Finding 2 - at least one chain is a real internal feature the decoder
+never captures.** `aCEFC.tmp`'s 104-point loop has its own raw header in
+the file: `ffff 4900 0024 0001 000000` (`INTERNAL_TAGS[0x49]` = `cutout`,
+count 36) at byte offset 2931 - walked directly with `parse_point`, its
+36 points are byte-for-byte identical, in order, to record 12's own
+points. `decode_piece_block`'s internal-line-list loop never reaches it:
+something occupies the bytes between the grain line's own chain (ending
+~1524) and this header (2931) that isn't itself a recognised internal-
+line header, so the loop correctly stops before getting there. This
+piece's real internal-feature count is 4 (grain + 3 cutout segments), not
+the 1 `internal_lines`/`internal_kinds` currently reports - a concrete,
+byte-confirmed gap.
+
+**Not fixed this pass**: a near-identical second copy of the exact same
+grain+cutout header sequence exists again ~12,000 bytes further into the
+same file (offset ~14039), well past this block's own `tail_end`
+(12737) - a stale pre-edit duplicate, an undetected second
+`piece_records` block, or something else isn't known. Extending the
+internal-line-list walker without understanding this first risks
+conflating the current copy with the stale one, so it's flagged as a
+concrete, well-scoped next step rather than rushed.
+
+**One correction to the previous entry's own numbers**, caught by
+re-checking rather than reusing them: `aCF12.tmp`'s records 5/6/7 (also a
+closed 3-segment loop) were miscounted among the "confirmed curved
+subset" in the previous entry - they in fact already match `real`
+exactly (they *are* `internal_lines`' own 3 correctly-decoded `cutout`
+segments on that piece, `[2, 34, 34, 34]` points) and were never part of
+the mismatch. A separately cited "record 13" match was a 2-point record -
+excluded by `_curved_seam_record_ok`'s own `len(pts) >= 4` gate
+regardless of its stdev, not a real second example. Both corrected here,
+in `FORMAT_SPEC.md`, and in `_curved_seam_record_ok`'s own docstring/
+comment.
+
+No code changed - pure investigation, `selftest.py` still passing
+(nothing touched). `FORMAT_SPEC.md` §11/§12 updated with both findings
+and the correction.
+
 ## v2.0 (2026-09-11, continued once more #13) - implemented the curved seam-offset check for the confirmed subset
 
 User asked to implement the curved-seam check the previous entry found

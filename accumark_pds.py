@@ -135,8 +135,15 @@ def _internal_list_label(d, o):
     the label) or (None, o).  Terminator is 3 for an open list - grain,
     drill, and (CAP-C12-TWOINTLINES [V]) a plain 2-point internal line, all
     tag 0x49 or not - and 6 for a closed loop (CAP-C60-CUTOUT's circle,
-    also tag 0x49). Two independent samples now agree the terminator, not
-    the tag, is what signals open vs closed."""
+    also tag 0x49). The terminator, not the tag, is what signals open vs
+    closed [V, corrected 2026-09-11] - confirmed on all 30 corpus fixtures
+    with an internal line, directly against the stored geometry (the
+    list's first and last point coincide iff the terminator is 6; the one
+    apparent exception, CAP-C50-DRILL1's single-point drill "list", reads 3
+    despite trivially satisfying first==last, correctly - one point has no
+    path to close). decode_piece_block computes and exposes this per list
+    as `internal_closed`, from the terminator value directly rather than
+    re-deriving it from geometry here - see its own comment."""
     if o+4 > len(d) or i32(d,o) not in (3, 6): return None, o
     p = o+4
     while p < len(d) and d[p] == 0: p += 1
@@ -476,8 +483,18 @@ def decode_piece_block(d, field_off=None):
     closing = pts[-1] if pts and pts[-1]['id'] == -1 and pts[-1]['f1'] == 2 else None
     perim = pts[:-1] if closing else pts
     # internal lists: grain line first, then drill points (CAP-C50-DRILL1);
-    # each is header + points + u32 3 + zero padding + its 'Lnn' label
-    internal = []; internal_kinds = []; internal_labels = []; o = after
+    # each is header + points + u32 terminator + zero padding + its 'Lnn'
+    # label. [V] the terminator is 3 for an open list (grain, drill, or a
+    # multi-point internal line whose start and end differ) and 6 for a
+    # closed loop (a multi-point internal line whose first and last stored
+    # point coincide, e.g. CAP-C60-CUTOUT's 25-point circular cutout) -
+    # confirmed against the actual stored geometry (first==last), not just
+    # correlation, on all 30 corpus fixtures with an internal line. A
+    # single-point list (a lone drill point, CAP-C50-DRILL1) trivially
+    # satisfies "first==last" but reads terminator 3, not 6 - there's no
+    # path to close with only one point, so `closed` below requires >=2.
+    internal = []; internal_kinds = []; internal_labels = []; internal_closed = []
+    internal_terminator_offsets = []; o = after
     while _is_internal_header(d, o):
         kind = INTERNAL_TAGS[u16(d,o+2)]; cnt = u16(d,o+4); o += 10
         seg = []
@@ -494,11 +511,19 @@ def decode_piece_block(d, field_off=None):
             if o+14 > len(d): break
             r = parse_point(d,o); seg.append(r); o += r['size']
         internal.append(seg); internal_kinds.append(kind)
+        term_off = o
+        # the file's own signal is the terminator value itself (3 open, 6
+        # closed - see the loop's module comment above); geometry is only
+        # a cross-check, not the source of truth, matching how this module
+        # decodes every other field from raw bytes rather than inferring it.
+        term_val = i32(d, term_off) if term_off+4 <= len(d) else None
+        closed = term_val == 6
+        internal_closed.append(closed); internal_terminator_offsets.append(term_off)
         label, past = _internal_list_label(d, o)
         internal_labels.append(label)
         if label is not None and _is_internal_header(d, past):
             o = past; continue
-        break                      # block_end stays at the last list's u32 3
+        break                      # block_end stays at the last list's own terminator
     # tail: pretable header + two perimeter snapshots + the line table -
     # re-anchored independently of `block_end` above (which intentionally
     # stops one step short, at the last list's own terminator, so existing
@@ -531,7 +556,9 @@ def decode_piece_block(d, field_off=None):
         tail = dict(error=str(e))
     return dict(meta=m, objects=objs, points_offset=pstart, perimeter=perim,
                 closing=closing, internal_lines=internal, internal_kinds=internal_kinds,
-                internal_labels=internal_labels, block_end=o, tail=tail)
+                internal_labels=internal_labels, internal_closed=internal_closed,
+                internal_terminator_offsets=internal_terminator_offsets,
+                block_end=o, tail=tail)
 
 def decode(data):
     """Decode a full piece file; returns dict with one or more piece blocks."""
@@ -614,7 +641,7 @@ def decode(data):
                 block_errors=block_errors)
 
 # -------------------------------------------------------------- coverage
-def _block_ranges(d, m, objs, pstart, block_end, tail):
+def _block_ranges(d, m, objs, pstart, block_end, tail, internal_terminator_offsets=()):
     """Byte ranges 'identified' by one piece block, as (start,end) pairs.
     `block_end` is the pre-tail end (perimeter + internal lines, as computed
     by decode_piece_block - NOT the tail's own end) so that anything between
@@ -626,6 +653,15 @@ def _block_ranges(d, m, objs, pstart, block_end, tail):
     r = [(m['field_off'], m['end'])]                       # metadata + strings + size list
     if objs: r.append((objs[0]['offset'], objs[-1]['offset']+8+8*len(objs[0]['deltas'])))
     r.append((pstart, block_end))                          # perimeter + internal lines
+    # [V, corrected 2026-09-11] block_end stops exactly AT the last internal
+    # list's own u32 terminator (3 open / 6 closed - decode_piece_block's
+    # `internal_closed`), so (pstart, block_end) above never covers those 4
+    # bytes even though their value and meaning are both fully known. Mark
+    # every internal list's terminator explicitly, not just the last one -
+    # an interior list's terminator sits between two lists and was equally
+    # uncovered before.
+    for off in internal_terminator_offsets:
+        r.append((off, off+4))
     if tail and 'error' not in tail:
         pt = tail['pretable']; rc = tail['region_c']
         r.append((pt['offset']-3, pt['offset']))            # the last 'Lnn' label text itself
@@ -698,7 +734,8 @@ def coverage(data, summary=None):
     def _tail_end(b):
         return b['tail']['line_records'][-1]['end'] if b['tail'] and 'error' not in b['tail'] else b['block_end']
     for b in s['blocks']:
-        for a, e in _block_ranges(d, b['meta'], b['objects'], b['points_offset'], b['block_end'], b['tail']):
+        for a, e in _block_ranges(d, b['meta'], b['objects'], b['points_offset'], b['block_end'], b['tail'],
+                                   b.get('internal_terminator_offsets', ())):
             mark(a, e, 'identified')
     # Region A - the 'Lnn' line-attribute records (parse_segments, FORMAT_SPEC
     # §6) and, on seam-allowanced pieces, the derived-cut-line records

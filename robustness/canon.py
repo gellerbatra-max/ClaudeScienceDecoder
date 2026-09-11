@@ -102,6 +102,12 @@ def canon_decode(dec):
             n_notches=sum(1 for p in b['perimeter'] if p['is_notch']),
             sizes=[s['name'] for s in b['meta']['sizes']],
             name=b['meta']['name'],
+            # internal_closed (added 2026-09-11: the 3/6 open/closed loop
+            # terminator - see accumark_pds.decode_piece_block) wasn't
+            # captured by anything downstream of decode() before, so
+            # corrupting a terminator byte was invisible to this canon.
+            internal_kinds=b.get('internal_kinds'),
+            internal_closed=b.get('internal_closed'),
         ))
     return json.dumps(dict(blocks=blocks, block_errors=len(dec.get('block_errors') or [])),
                        sort_keys=True, default=str)

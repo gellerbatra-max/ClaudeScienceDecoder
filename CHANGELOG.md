@@ -1,5 +1,45 @@
 # Changelog
 
+## v2.0 (2026-09-11, continued once more #7) - the CAP-C60-CUTOUT block_end=6 outlier: fully explained, now real decoded data
+
+User asked to check the `CAP-C60-CUTOUT` `block_end`-value-6 outlier the
+previous entry left open ("doesn't obviously track point count, list
+count, or any other already-decoded field tried"). It was already
+explained - in `accumark_pds._internal_list_label`'s own docstring, which
+the previous investigation hadn't cross-referenced before writing up the
+finding as open: the value is each internal list's own terminator, **3
+for an open list, 6 for a closed loop**.
+
+**Confirmed directly against geometry, not just correlation**, on all 30
+corpus fixtures with an internal line: `CAP-C60-CUTOUT`'s 25-point cutout
+has `points[0] == points[-1]` exactly (`(468585, 253862)` both ends) and
+reads terminator 6; every other fixture's internal lines are open (first
+!= last) and read 3. The one apparent counter-example,
+`CAP-C50-DRILL1`'s single-point drill "list", trivially satisfies
+`first == last` (one point equals itself) but reads 3 - correctly, since
+a single point has no path to close; refining the rule to require >= 2
+points makes it 30/30 consistent.
+
+**Fixed properly rather than just documented**: this was previously
+computed only as an internal parser validation gate
+(`_internal_list_label` checks the terminator is 3 or 6 to recognise the
+boundary at all) and then discarded - never exposed as decoded
+information, and never wired into `coverage()`'s identified-marking
+(explaining why it read as `unknown` in the first place).
+`decode_piece_block` now returns `internal_closed` (a bool per internal
+list, parallel to `internal_kinds`/`internal_labels`) computed from the
+terminator value directly, plus `internal_terminator_offsets`;
+`coverage()` marks every terminator's 4 bytes `identified` using them.
+`robustness/canon.canon_decode` now includes `internal_closed`, closing a
+real Oracle C gap - corrupting a closed-loop terminator byte was
+previously invisible to any check; confirmed detected now by flipping
+`CAP-C60-CUTOUT`'s own terminator and checking the canon changes.
+
+`selftest.py` SELFTEST PASS; `robustness/run.py` still 303/303 (with the
+new corruption case exercised, not just theoretically fixed);
+`dataset_test.py` still 36/36. `FORMAT_SPEC.md` section 12 and
+`_internal_list_label`'s own docstring updated.
+
 ## v2.0 (2026-09-11, continued once more #6) - checked FORMAT_SPEC.md section 12's remaining [?] items
 
 User asked to check the still-open `[?]` items in section 12. Worked the

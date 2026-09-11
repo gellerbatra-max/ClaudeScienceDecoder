@@ -907,15 +907,33 @@ account for:
   - Net effect: `coverage()`'s identified rate rose across every fixture
     checked (e.g. `CAP-C00-BASE` 98.57% → 99.35%, `CAP-C30-SEAM-UNEVEN`
     99.54% → 99.88%).
-- **The internal-line list's own terminator boundary, narrowed but not
-  closed**: a u32 sitting exactly at `block_end` reads a constant **3** on
-  28 of the 29 corpus fixtures checked (every point count, every notch/
-  seam/drill/cutout combination, both 1- and 2-record pieces) - the one
-  exception, `CAP-C60-CUTOUT`, reads **6** and is also the one fixture
-  whose internal-line list is unusually large (a 25-point cutout loop,
-  vs. 2-4 points everywhere else). The doubling doesn't obviously track
-  point count, list count, or any other already-decoded field tried; left
-  open rather than force-fit **[?]**.
+- **The internal-line list's own terminator: fully explained
+  [V, corrected 2026-09-11]** - and it turns out this was already
+  documented in `accumark_pds._internal_list_label`'s own docstring
+  (found *after* the byte investigation, not before - a reminder to check
+  existing code comments before re-deriving from scratch). Each internal
+  list's own u32 terminator (right after its points, right before its
+  `Lnn` label) is **3 for an open list and 6 for a closed loop** - grain
+  lines and drill points are always open (3); an internal line whose
+  first and last *stored* point coincide is a closed loop (6), confirmed
+  directly against the actual geometry (not just correlation) on all 30
+  corpus fixtures with an internal line: `CAP-C60-CUTOUT`'s 25-point
+  cutout has `points[0] == points[-1]` exactly and reads 6; every other
+  fixture's internal lines (all open) read 3. The one apparent exception,
+  `CAP-C50-DRILL1`'s single-point drill "list", trivially satisfies
+  `first == last` (one point equals itself) but reads 3 - correctly, since
+  there is no path to close with only one point; the rule needs >= 2
+  points to mean anything, and refined that way it is 30/30 consistent.
+  **Now exposed as real decoded data**, not just an internal parser
+  validation detail: `decode_piece_block` returns a new `internal_closed`
+  list (parallel to `internal_kinds`/`internal_labels`) and
+  `internal_terminator_offsets`, and `coverage()` marks every terminator's
+  4 bytes `identified` (previously only the *interior* ones were, by
+  accident, since `block_end` stops exactly at the *last* list's own
+  terminator and excluded it). `robustness/canon.canon_decode` now
+  includes `internal_closed`, so corrupting a terminator byte is
+  detectable by Oracle C - confirmed directly (flipping `CAP-C60-CUTOUT`'s
+  closed-loop terminator to 3 changes the canon).
 - **The bytes right after each block's line table, previously logged here
   as unexplained trailer ints, turned out to be two different things
   [V, corrected 2026-09-11]:**

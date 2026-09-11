@@ -1,5 +1,36 @@
 # Changelog
 
+## v2.0 (2026-09-11, continued once more #19) - aCF3B.tmp checked for a different edge grouping: same clean+bulge split, just packaged as one merged record
+
+User asked to check whether `aCF3B.tmp` (the one piece that didn't split
+cleanly in the previous entry) splits with a different edge grouping.
+
+**It does - the split was there all along, hidden inside one record.**
+The previous pass only computed a single stdev for `aCF3B.tmp`'s whole
+103-point closed-loop record 6 (2023 - looked uniformly bad) instead of
+plotting its own per-point distance profile. Doing that finds a 32-point
+plateau (indices 49-80) at a near-perfect constant 11811 units (1.181 in)
+from `kind1` edge 0 - stdev **1.3**, the tightest of any clean segment
+found in this whole investigation - with the record's other ~71 points
+bulging up to 1.9 in away, the same shape as every other piece checked.
+
+**Why it looked different**: topology, not a missing pattern. This
+piece's own `kind1` edge decomposition merges what other pieces split
+into several edges into one large 57-point edge 0 (edge sizes here are
+`[57,2,32,13,2]`, not the more even 5-edge split other pieces have), and
+AccuMark's own derived seam/cutline computation followed suit, emitting
+one combined kind=2 record for the whole loop instead of one per
+corner-to-corner transition.
+
+**Net result: 7 of 7 pieces checked in this family now show the split**,
+not 6 of 7 - `aCF3B.tmp` just required looking inside a single record
+instead of across several separate ones. Root cause of the bulge itself
+still unidentified, same as before.
+
+No code changed - pure investigation. `selftest.py` still passing.
+`FORMAT_SPEC.md` §11's comparison table and summary corrected from "6 of
+7" to "7 of 7".
+
 ## v2.0 (2026-09-11, continued once more #18) - checked the other bridging chains: the clean-offset + bulge split reproduces across the whole piece family
 
 User asked to check the other bridging chains too, beyond `aCEFC.tmp`'s

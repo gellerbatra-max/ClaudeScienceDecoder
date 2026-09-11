@@ -1,5 +1,54 @@
 # Changelog
 
+## v2.0 (2026-09-11, continued once more #22) - surveyed the rest of the corpus for more bridging chains: found two new, genuinely different manifestations of the same phenomenon
+
+User asked to keep surveying the corpus for more bridging chains beyond
+the `SA60151TH`/`SI01040A17` bra piece family.
+
+**Inventoried every distinct piece name across every marker zip in the
+repo.** `CLAUDE-GRADE-TEST` and `RUFFLE` already have `check_line_table()
+== True` - nothing to chase. Two others do have mismatched kind=2
+records, and both are genuinely new, distinct manifestations:
+
+**`OUCF`** (a fold-half piece, 4 size-cluster objects, 8-9 perimeter
+points - the small end of the corpus): the *same* clean+bulge shape as
+the bra cups, just far smaller and strikingly size-invariant. All 4
+objects land on the identical clean plateau (0.197in) and bulge peak
+(0.237in) to the unit, and - unlike every bra-cup case - touch the real
+perimeter (distance exactly 0) at *both* ends of the chain, not just
+one. Consistent with a small, fixed-width construction detail (a facing
+or binding) that doesn't scale with size, independent evidence for the
+"real per-piece construction parameter" reading from the previous entry.
+
+**`BACK`/`FRONT`** (`AD1234 TEST 134`, sizes XS-XL - a different garment
+and order entirely): a different manifestation, not another bulging
+curve. Their extra records sit at multiple discrete, exactly round
+offsets - 10000, 3750, 2500 units (1.000in, 0.375in, 0.250in to the
+unit, standard fractional seam-allowance widths) - each held essentially
+constant across an 11-point run, connected by short records that
+visibly transition between neighbouring values. Much closer in
+character to the small corpus's own already-documented "uneven/tapered
+seam" item (`CAP-C30-SEAM-UNEVEN`/`CAP-C31-SEAM-TAPER`) than to the bra
+cup's smooth single bulge - multiple constant-but-different per-edge
+seam values joined by corner miters, confirmed at production scale with
+round, standard-width values. Checked directly, not assumed: even the
+individually-clean 3750-unit run doesn't pass `_curved_seam_record_ok`
+(its per-single-edge stdev is too high), meaning it isn't parallel to
+any one stored edge either, same as the bra cup's own bridging segments.
+
+**Net picture**: the "clean-offset-plus-transition" shape now shows up
+on every real, non-trivial piece with a mismatched line table checked so
+far, across three unrelated pieces/garments and several different
+magnitude scales - strong evidence this is one systematic AccuMark
+computation (a per-edge seam/facing allowance with corner miters,
+generalizing the small corpus's own narrower "uneven seam" item), not a
+decode artifact or coincidence specific to one piece family. Not fixed,
+same reasoning as before: loosening the corruption-sensitive check to
+accept these would risk accepting genuine corruption too.
+
+No code changed - pure investigation. `selftest.py` still passing.
+`FORMAT_SPEC.md` §11 updated with both new pieces' findings.
+
 ## v2.0 (2026-09-11, continued once more #21) - checked the other bulging chains (SI01040A17 lining side) for the same shape nuance: it holds, even more starkly, plus a striking SA/SI seam-allowance ratio
 
 User asked to check the other bulging chains for the same shape nuance

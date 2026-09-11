@@ -1127,6 +1127,61 @@ imperfect case (ratio 1.67x, not 2x). A believable, real construction
 relationship (lining seam allowance built to roughly double the shell's)
 rather than coincidence, given how exactly it lands for 4 of 5 pieces.
 
+**Surveyed the rest of the corpus for more bridging chains beyond this
+one piece family [V, surveyed 2026-09-11]** - every distinct piece name
+across every marker zip in the repo (`SA60151TH`/`SI01040A17` covered
+above; `OUCF`, `CLAUDE-GRADE-TEST`, `BACK`, `FRONT`, `RUFFLE` are the
+rest). `CLAUDE-GRADE-TEST` and `RUFFLE` already have `check_line_table()
+== True` - no chains to check. Two genuinely new, distinct pieces do:
+
+- **`OUCF`** (a fold-half piece, 4 distinct size-cluster objects,
+  8-9 perimeter points each - the small end of the corpus): the *exact
+  same* clean+bulge shape as the bra cups, just far smaller and
+  strikingly size-invariant. All 4 objects show the identical values to
+  the unit: a clean plateau at 0.197 in (1968-1970 units) and a peak of
+  0.237 in (2364-2371 units), touching the real perimeter (distance
+  *exactly* 0) at **both** ends of the chain, not just one - unlike every
+  bra-cup case, which only touched down at one end. Consistent with a
+  small, fixed-width construction detail (a facing or binding, not a
+  molded/graded feature) that doesn't scale with size the way the cup's
+  own seam does - a second, independent piece of evidence for the "real,
+  per-piece construction parameter, not an artifact" reading.
+- **`BACK`/`FRONT`** (`AD1234 TEST 134`, sizes XS-XL - a different
+  garment and order entirely, nothing to do with 2303): a *different*
+  manifestation of the same underlying phenomenon, not another bulging
+  curve. Their extra `kind=2` records sit at multiple **discrete, exactly
+  round** offsets - 10000, 3750, and 2500 units (1.000 in, 0.375 in,
+  0.250 in *to the unit* - standard fractional seam-allowance widths, not
+  arbitrary values), each held essentially constant across an 11-point
+  run (`BACK`'s record 9: 3749.9-3750.9, effectively zero variance),
+  connected by short 3-6 point records that visibly transition between
+  the two neighbouring values (record 8 runs 10624 down through 3750;
+  record 10 runs 3750 up through 5118 back down to 3831). This is much
+  closer in character to the small corpus's own already-documented
+  "uneven/tapered seam" open item (`CAP-C30-SEAM-UNEVEN`/`CAP-C31-SEAM-
+  TAPER`, §10.1/§11) than to the bra cup's smooth single bulge: *multiple*
+  constant-but-different per-edge seam values joined by corner miters,
+  just confirmed here at production scale with round, standard-width
+  values rather than the small corpus's own idiosyncratic ones. None of
+  the individual clean segments pass `_curved_seam_record_ok` even though
+  they look tight when measured against the whole perimeter polyline -
+  checked directly, not assumed: `record 9`'s own per-*single-kind1-edge*
+  stdev is too high to trigger it, meaning (like the bra cup's bridging
+  segments) it isn't parallel to any one stored edge either. Not fixed -
+  same reasoning as everywhere else in this investigation: the check
+  exists to catch corruption, and loosening it to accept a value this
+  case-specific would risk exactly that.
+
+Net picture after the full survey: the "clean-offset-plus-transition"
+shape shows up on every real, non-trivial piece with a mismatched line
+table checked so far (bra cups at two lining/shell-specific magnitudes,
+a small fold piece at a third, and a completely unrelated garment's
+edges at yet other, standard-fraction values) - strong evidence this is
+a single, systematic AccuMark computation (almost certainly a per-edge
+seam/facing allowance with corner miters, generalizing the small
+corpus's own already-known but narrower "uneven seam" item), not a
+decode artifact, corruption, or coincidence specific to one piece family.
+
 This, together with the still-open remainder of §11's other bridging
 chains (not individually re-examined this pass), remains the format's
 largest open item, well beyond the narrow 3-fixture footnote this

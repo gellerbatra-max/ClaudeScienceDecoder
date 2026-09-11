@@ -673,6 +673,27 @@ def coverage(data, summary=None):
     mark(0, 0x48, 'identified')            # magic + export name slot (§1)
     mark(0x48, 0x4b, 'residue')            # [V] the 3-byte noise floor
     mark(0x4b, 0x60, 'identified')
+    # [V, corrected 2026-09-11] four more header fields whose position and
+    # value are already fully known elsewhere in this codebase (read_object's
+    # own fields) but were never wired into coverage()'s identified-marking,
+    # so they read as 'unknown' despite being understood - found while
+    # checking FORMAT_SPEC.md section 12's open items.
+    mark(0x60, 0x64, 'identified')         # u32 object-type copy (accumark_marker.read_object)
+    mark(0x78, 0x7a, 'identified')         # [V] u16, constant 0x59ba on every corpus fixture
+                                            # (piece AND the structurally-different CAP-C63-MODEL
+                                            # alike) - confirmed universal, role still unknown [?]
+    mark(0x7a, 0x7c, 'identified')         # u16 object type (accumark_marker.read_object / decode())
+    mark(0x70, 0x78, 'residue')            # [V] pointer-shaped, clusters by CAPTURE SESSION not
+                                            # by piece content - byte-identical between CAP-C00-BASE
+                                            # and its 2-minutes-later reexport CAP-C01-REEXPORT (same
+                                            # process instance), but differs across the corpus's
+                                            # ~4 distinct capture sessions - the same heap/stack
+                                            # residue category as the 3-byte noise floor above, a
+                                            # second instance of it, not per-piece data
+    mark(0x7e, 0x82, 'identified')         # u32 payload length (accumark_marker.read_object's `plen`)
+    mark(0x82, 0x83, 'identified')         # [V] u8, constant 0x90 on every corpus fixture including
+                                            # the structurally-different CAP-C63-MODEL - confirmed
+                                            # universal, role still unknown [?]
     s = summary if summary is not None else summarize(d)
     def _tail_end(b):
         return b['tail']['line_records'][-1]['end'] if b['tail'] and 'error' not in b['tail'] else b['block_end']

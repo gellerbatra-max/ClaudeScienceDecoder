@@ -1,5 +1,57 @@
 # Changelog
 
+## v2.0 (2026-09-11, continued once more #6) - checked FORMAT_SPEC.md section 12's remaining [?] items
+
+User asked to check the still-open `[?]` items in section 12. Worked the
+two concrete ones named there (the header-residue scalars at +0x60/+0x70-
++0x83, and the internal-line list's own terminator boundary) with the
+same methodology used throughout this session: gather the bytes across
+the whole corpus, test for reexport stability and cross-piece constancy,
+correlate against already-known fields.
+
+**Header residue (+0x60-+0x83): four fields resolved, one new gap
+narrowed.**
+
+- `+0x60` (u32) and `+0x7a` (u16) turned out to be the object-type fields
+  `accumark_marker.read_object` already documents ("u32 copy at 0x60" /
+  "u16 at 0x7a") - fully known, just never wired into `accumark_pds.
+  coverage()`'s identified-marking. Same for `+0x7e` (u32), `read_object`'s
+  own `plen` (payload length) field. All three now marked `identified`.
+- `+0x78` (u16, `0x59ba`) and `+0x82` (u8, `0x90`) are **newly confirmed
+  universal constants** - byte-identical across every corpus fixture
+  checked, including the structurally-different `CAP-C63-MODEL` (a
+  manifest format, not a real piece). Not residue (residue varies
+  between exports; these never do, anywhere in the corpus). Marked
+  `identified` on the same "known position + value, role still open"
+  basis Region B's own unnamed constants already carry.
+- `+0x70`-`+0x77` (8 bytes, pointer-shaped) is confirmed genuine
+  **heap/stack residue** - byte-identical between `CAP-C00-BASE` and its
+  2-minutes-later, unedited reexport `CAP-C01-REEXPORT` (same process
+  instance), but differing across the corpus's several distinct capture
+  sessions. A second instance of the same category already documented at
+  the 3-byte noise floor (+0x48); now marked `residue` instead of
+  `unknown` to match.
+- Net result: `coverage()`'s identified rate rose on every fixture
+  checked - e.g. `CAP-C00-BASE` 98.57% -> **99.35%**,
+  `CAP-C30-SEAM-UNEVEN` 99.54% -> **99.88%**.
+
+**Internal-line list terminator: narrowed, not closed.** A u32 sitting
+exactly at `block_end` reads a constant `3` on 28 of 29 corpus fixtures
+(every point count, every notch/seam/drill/cutout combination, 1- and
+2-record pieces alike) - the one exception, `CAP-C60-CUTOUT`, reads `6`
+and is also the one fixture with an unusually large internal-line list (a
+25-point cutout loop, vs. 2-4 points everywhere else). The doubling
+doesn't obviously track point count, list count, or any other already-
+decoded field tried against it. Left open rather than force-fit - a real,
+narrower, more precisely bounded mystery than "an unexplained scalar
+near the terminator" was before.
+
+**Confirmed purely additive - impossible to regress anything**: every
+change in this pass adds `identified`/`residue` marks to bytes previously
+`unknown`; none narrows or removes an existing mark. `selftest.py`
+SELFTEST PASS; `robustness/run.py` still 303/303; `dataset_test.py` still
+36/36. `FORMAT_SPEC.md` section 12 updated with the full writeup above.
+
 ## v2.0 (2026-09-11, continued once more #5) - the trailer field gap wasn't trailer content: a real decode() bug found and fixed
 
 User asked to check the "trailer field gap" `FORMAT_SPEC.md` §12 listed as

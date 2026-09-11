@@ -877,10 +877,45 @@ the base corner set," not that it's specific to darts.
 Remaining `unknown` bytes, roughly in order of how much of the file they
 account for:
 
-- A handful of small (1–8 byte) scalar fields scattered around fixed
-  positions — right after the file header and before the metadata field
-  block (e.g. `CAP-C00-BASE` +0x60, +0x70–0x83), at the internal-line list's
-  own terminator boundary **[?]**.
+- **The header-residue region (+0x60–+0x83, between the file header and
+  the metadata field block) resolved further [V, corrected 2026-09-11]** -
+  checked by gathering these bytes across the whole corpus and testing
+  each sub-field for (a) reexport stability (`CAP-C00-BASE` vs its
+  2-minutes-later, unedited reexport `CAP-C01-REEXPORT`) and (b)
+  cross-piece constancy:
+  - `+0x60` (u32) and `+0x7a` (u16) are the **already-documented** object-
+    type fields (`accumark_marker.read_object`'s "u32 copy at 0x60" /
+    "u16 at 0x7a") - known, just not previously wired into `coverage()`'s
+    identified-marking. Now are.
+  - `+0x7e` (u32) is the **already-documented** payload length
+    (`read_object`'s `plen`) - same fix.
+  - `+0x78` (u16, value `0x59ba`) and `+0x82` (u8, value `0x90`) are
+    **newly confirmed universal constants** - byte-identical across every
+    corpus fixture checked, including the structurally-different
+    `CAP-C63-MODEL`. Not residue (residue varies; these never do). Marked
+    `identified` on the same basis Region B's own unnamed constants
+    already are (known position + value, role still open) - their
+    specific meaning remains **[?]**.
+  - `+0x70`–`+0x77` (8 bytes, pointer-shaped) is genuine **heap/stack
+    residue, confirmed** - byte-identical between `CAP-C00-BASE` and
+    `CAP-C01-REEXPORT` (same process instance, no restart between
+    exports), but differing across the corpus's several distinct capture
+    sessions. A second instance of the same category as the 3-byte noise
+    floor at +0x48 (§1), now marked `residue` rather than `unknown`
+    accordingly - not per-piece data, and not expected to ever resolve to
+    one.
+  - Net effect: `coverage()`'s identified rate rose across every fixture
+    checked (e.g. `CAP-C00-BASE` 98.57% → 99.35%, `CAP-C30-SEAM-UNEVEN`
+    99.54% → 99.88%).
+- **The internal-line list's own terminator boundary, narrowed but not
+  closed**: a u32 sitting exactly at `block_end` reads a constant **3** on
+  28 of the 29 corpus fixtures checked (every point count, every notch/
+  seam/drill/cutout combination, both 1- and 2-record pieces) - the one
+  exception, `CAP-C60-CUTOUT`, reads **6** and is also the one fixture
+  whose internal-line list is unusually large (a 25-point cutout loop,
+  vs. 2-4 points everywhere else). The doubling doesn't obviously track
+  point count, list count, or any other already-decoded field tried; left
+  open rather than force-fit **[?]**.
 - **The bytes right after each block's line table, previously logged here
   as unexplained trailer ints, turned out to be two different things
   [V, corrected 2026-09-11]:**

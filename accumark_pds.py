@@ -460,6 +460,17 @@ def parse_region_c(d, o, n_perimeter, category_name, table_start=None):
                 name_echo_offset=name_at, end=end), end
 
 SEAM_OFFSET_MAX = 20000            # generous bound (2 in) for a cutline miter/offset - see check_line_table
+# [V, added 2026-09-11] tolerance for the curved-seam whole-record check in
+# check_line_table: how much a seam/cutline record's per-point distances to
+# its matched perimeter edge may vary (population stdev, in 1e-4in units)
+# and still count as "one consistent offset", not coincidence. Confirmed
+# curved seams on real production pieces measure 2-59 units of stdev
+# (aCEFC.tmp record 8 vs edge 2: 2.2; record 9 vs edge 3: 2.31; aCF12.tmp
+# record 10 vs edge 1: 44.0; record 13 vs edge 2: 58.6); the closest
+# rejected case measured 459.7, and everything else in the corpus that
+# doesn't match a single edge measures in the thousands. 200 sits with
+# margin above the confirmed cases and well below the ambiguous ones.
+CURVED_SEAM_STDEV_MAX = 200
 TABLE_POINT_TAG = 0x10
 
 def parse_table_point(d, o):
@@ -936,7 +947,40 @@ def check_line_table(b):
     plausible seam miter on a piece that was never seamed. The leniency is
     now scoped to points that actually carry a numbered id, matching what
     real seam/cutline records structurally look like; an internal-line echo
-    point must now coincide exactly, like everything else."""
+    point must now coincide exactly, like everything else.
+
+    [V, added 2026-09-11] `_is_seam_offset` only ever recognised a single
+    per-corner axis-aligned or 45-degree-diagonal offset - correct for the
+    small CAP-C30/C31/TASK2-SEAM1CM test rectangles, but real production
+    pieces (bra cups, curved garment panels) have CURVED edges whose own
+    seam allowance is a constant PERPENDICULAR offset that rotates
+    continuously along the curve, so it (almost) never lands on one of
+    those two directions no matter how small the actual distance is.
+    Confirmed directly (FORMAT_SPEC.md SS11/SS12, not force-fit): on
+    `2303-BD137-PLACED`'s `aCEFC.tmp`, kind=2 record 8's 23 points sit a
+    near-constant 7877 units (0.79in) from perimeter edge record 2 (stdev
+    2.2 units); record 9 matches edge 3 the same way (stdev 2.31). A
+    second, different piece (`aCF12.tmp`) shows the identical shape at
+    1576-1581 units (stdev 44-59). `_curved_seam_record_ok` below accepts
+    a seam/cutline record as a WHOLE - never point-by-point - when every
+    one of its points sits within SEAM_OFFSET_MAX of the SAME perimeter
+    edge with a tight, consistent stdev (CURVED_SEAM_STDEV_MAX): a real
+    curved seam keeps that consistency across every point; an unrelated or
+    corrupted point breaks it immediately, which is what keeps this from
+    quietly widening what Oracle C can catch. Deliberately conservative -
+    most kind=2 records in the production corpus still don't match any
+    single edge this cleanly and are correctly left failing, not force-fit
+    into passing.
+
+    Honest scope: confirmed via a corpus-wide diff, this fix does not flip
+    `check_line_table`'s overall True/False result on any of the 156
+    production blocks or 35 small-corpus blocks checked - every piece that
+    has a genuine curved-seam record also has at least one OTHER kind=2
+    record that still doesn't match anything (FORMAT_SPEC.md SS12's own
+    open item). What this does confirm and fix is the per-record logic
+    itself: the specific records this fix targets (e.g. `aCEFC.tmp`
+    records 8/9) now correctly validate instead of failing for a reason
+    that was never really about them being wrong."""
     tail = b.get('tail')
     if not tail or 'error' in tail or not tail.get('line_records'): return False
     real = {(p['x'], p['y']) for p in b['perimeter']}
@@ -953,16 +997,57 @@ def check_line_table(b):
             if max(abs(dx), abs(dy)) > SEAM_OFFSET_MAX: continue
             if dx == 0 or dy == 0 or abs(dx) == abs(dy): return True
         return False
+    edge_records = [rec['points'] for rec in tail['line_records'] if rec['kind'] == 1 and rec['points']]
+    def _curved_seam_record_ok(pts):
+        coords = [(tp['x'], tp['y']) for tp in pts]
+        for edge_pts in edge_records:
+            edge_coords = [(tp['x'], tp['y']) for tp in edge_pts]
+            dists = []
+            for x, y in coords:
+                dmin = min((x-ex)**2 + (y-ey)**2 for ex, ey in edge_coords) ** 0.5
+                if dmin > SEAM_OFFSET_MAX: dists = None; break
+                dists.append(dmin)
+            if not dists or len(dists) < 2: continue
+            mean = sum(dists) / len(dists)
+            stdev = (sum((v-mean)**2 for v in dists) / len(dists)) ** 0.5
+            if stdev <= CURVED_SEAM_STDEV_MAX: return True
+        return False
     for rec in tail['line_records']:
         pts = rec['points']
         if not pts: return False
+        # the ORIGINAL per-point axis/diagonal leniency stays scoped to
+        # numbered points only (kind=2 records are homogeneous - confirmed
+        # above - so the first point decides it for the whole record).
+        # [V, added 2026-09-11] the curved-seam fallback is NOT scoped the
+        # same way: every confirmed curved-seam record found in the
+        # production corpus is UNNUMBERED (a == 65535), unlike the small
+        # rectangle corpus's numbered mitered-corner points - these are
+        # edge-interior offset points, not corner-derived, so they were
+        # never going to inherit a real corner's id. Gating this fallback
+        # on record size instead (>=4 points) is what keeps it from
+        # reopening the Oracle-C gap the numbered/unnumbered split was
+        # originally added to close: a genuinely corrupted 1-2 point
+        # internal-line echo (a lone drill point, a 2-point grain line)
+        # can't satisfy a same-edge, tight-stdev match across >=4 points by
+        # coincidence, and a larger echo (e.g. CAP-C60-CUTOUT's 25-point
+        # closed cutout) has a shape unrelated to any straight/curved
+        # perimeter edge, so it doesn't pass this test either - confirmed
+        # empirically (selftest.py/robustness suite below), not assumed.
+        is_numbered_seam = rec['kind'] == 2 and pts[0]['a'] != 65535
+        curved_eligible = rec['kind'] == 2 and len(pts) >= 4
+        curved_ok = None                    # computed lazily, at most once
         for tp in pts:
             pt = (tp['x'], tp['y'])
-            # the seam-offset leniency only applies to a genuine seam/
-            # cutline point (a real numbered corner id) - an internal-line
-            # echo point (a == 65535, unnumbered) must coincide exactly.
-            is_seam_candidate = rec['kind'] == 2 and tp['a'] != 65535
-            if pt not in real and not (is_seam_candidate and _is_seam_offset(pt)):
+            if pt in real:
+                pass
+            elif is_numbered_seam and _is_seam_offset(pt):
+                pass
+            elif curved_eligible:
+                if curved_ok is None:
+                    curved_ok = _curved_seam_record_ok(pts)
+                if not curved_ok:
+                    return False
+            else:
                 return False
             has_notch_tag = any(tag == 0x07 for tag, _ in tp['children'])
             if has_notch_tag and pt in notch_type_by_xy and tp['c'] != notch_type_by_xy[pt]:

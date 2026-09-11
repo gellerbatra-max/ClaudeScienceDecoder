@@ -904,12 +904,14 @@ offset `_is_seam_offset()` recognises, which is why distance alone
 doesn't save them. Only a minority of `kind=2` records show this clean a
 match, though (2 of 9 and 2-3 of 10 on the two pieces checked) - the rest
 match their best edge far more loosely, likely compound/corner-spanning
-seams or a distinct, still-unidentified feature. See §12's fuller
-writeup for what would be needed to fix this safely, not attempted this
-pass. Root cause of the *remaining* majority not characterized further;
-together with the confirmed-but-curved subset, this is now the format's
-largest remaining open item by a wide margin, well beyond the narrow
-3-fixture footnote this section used to describe.
+seams or a distinct, still-unidentified feature. **The confirmed subset
+is now fixed** (`check_line_table`'s `_curved_seam_record_ok()`, §12's
+fuller writeup) - verified safe by a corpus-wide diff (doesn't flip any
+fixture's overall pass/fail, since every affected piece also has at least
+one other still-unexplained record) and by direct corruption-sensitivity
+testing. Root cause of the *remaining* majority not characterized
+further; that remainder is now the format's largest open item, well
+beyond the narrow 3-fixture footnote this section used to describe.
 
 **All three small-corpus outliers confirmed to share one identical
 signature [V, confirmed 2026-09-11]**, checked directly rather than
@@ -1060,16 +1062,39 @@ account for:
   likely records that span a compound edge crossing a corner (where a
   single edge's own offset direction doesn't apply across the whole
   record) or a genuinely different feature (facing, a second seam layer,
-  foam boundary) not yet identified. **Not fixed this pass**: generalising
-  `_is_seam_offset` to accept a curved, any-direction offset is a
-  real, tractable next step for the confirmed subset, but doing it safely
-  needs a per-record consistency requirement (not just a looser per-point
-  distance check) to avoid weakening Oracle C's corruption detection on
-  these exact production fixtures, and it would not resolve the remaining
-  majority of records anyway - left open rather than shipped half-solved.
-  `_block_ranges()` still marks these bytes `identified` regardless (byte
-  *structure* - tags, lengths, point format - is understood; it's specific
-  point *values* that don't yet cross-validate, the same "structure known,
+  foam boundary) not yet identified.
+
+  **Fixed for the confirmed subset [V, fixed 2026-09-11]**:
+  `check_line_table`'s new `_curved_seam_record_ok()` accepts a kind=2
+  record as a whole - never point-by-point - when every one of its points
+  sits within `SEAM_OFFSET_MAX` of the *same* perimeter edge with a tight,
+  consistent standard deviation (`CURVED_SEAM_STDEV_MAX = 200` units,
+  comfortably above the confirmed cases' 2-59 and well below the
+  ambiguous/unrelated ones' hundreds-to-thousands), gated to records of
+  at least 4 points so a 1-2 point internal-line echo (a lone drill point,
+  a 2-point grain line) can never satisfy "consistency" by coincidence.
+  Unlike the small rectangle corpus's seam points, every confirmed curved-
+  seam record is **unnumbered** (`a == 65535`, like an internal-line echo,
+  not like a mitered corner) - it's an edge-interior offset point, not
+  corner-derived - so this fallback is scoped by record size, not the
+  numbered/unnumbered split the existing per-point leniency uses.
+  Confirmed both correct and safe by a corpus-wide diff against the
+  pre-fix code (156 production blocks + the 35-block small corpus): **it
+  does not flip `check_line_table`'s overall True/False result on a
+  single fixture** - every piece with a genuine curved-seam record also
+  has at least one other, still-unexplained `kind=2` record, so the block
+  as a whole correctly keeps failing. What changed is narrower and
+  verified directly: the specific targeted records (`aCEFC.tmp`'s 8/9,
+  `aCF12.tmp`'s 10/13) now validate for the right reason instead of
+  failing for a reason that was never really about them. Corruption
+  sensitivity checked directly, not assumed: shifting one confirmed
+  record's point by 5000 units (0.5 in) breaks the fit and is rejected;
+  `robustness/run.py`'s full Oracle C suite (which already exercises
+  `2303-BD137-PLACED` specifically) stayed 303/303, no new corruption
+  slipping through. `_block_ranges()` still marks these bytes `identified`
+  regardless of any of this (byte *structure* - tags, lengths, point
+  format - is understood; it's specific point *values* that don't yet
+  fully cross-validate on the remaining majority, the same "structure known,
   content role open" distinction this document draws elsewhere) - so none
   of this costs `coverage_pct` the way the runaway-snapshot bug did. **[?]**
 - **`_block_ranges()`'s Region-C marking bug, fixed [V, found and fixed

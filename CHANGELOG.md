@@ -1,5 +1,47 @@
 # Changelog
 
+## v2.0 (2026-09-11, continued once more #13) - implemented the curved seam-offset check for the confirmed subset
+
+User asked to implement the curved-seam check the previous entry found
+but deliberately left unshipped.
+
+**Added `check_line_table._curved_seam_record_ok()`**: accepts a kind=2
+record as a whole - never point-by-point - when every one of its points
+sits within `SEAM_OFFSET_MAX` (2in) of the *same* `kind=1` perimeter edge
+record with a tight, consistent standard deviation
+(`CURVED_SEAM_STDEV_MAX = 200` units, comfortably above the confirmed
+cases' 2-59 unit stdev and well below the ambiguous/unrelated records'
+hundreds-to-thousands). Gated to records of at least 4 points, so a 1-2
+point internal-line echo (a lone drill point, a 2-point grain line)
+can't satisfy "consistency" by coincidence.
+
+**One correction made along the way**: the confirmed curved-seam records
+turned out to be **unnumbered** (`a == 65535`), not numbered like the
+small rectangle corpus's mitered-corner seam points - they're edge-
+interior offset points, not corner-derived. The fallback is scoped by
+record size instead of the existing numbered/unnumbered split, which
+would otherwise have excluded exactly the records this fix targets.
+
+**Verified safe and correct, not just wider**: a corpus-wide diff against
+the pre-fix code (156 production blocks, 35 small-corpus blocks) shows
+**zero fixtures flip their overall `check_line_table` result** - every
+piece with a genuine curved-seam record also has at least one other,
+still-unexplained `kind=2` record, so the block as a whole correctly
+keeps failing. What changed, confirmed directly: the specific targeted
+records (`aCEFC.tmp`'s 8/9, `aCF12.tmp`'s 10/13) now validate for the
+right reason instead of failing for a reason that was never about them.
+Corruption sensitivity checked directly: shifting one confirmed record's
+point by 5000 units (0.5in) breaks the fit and is correctly rejected (a
+50-500 unit shift is not caught, comparable to the existing per-point
+seam-offset check's own coarse tolerance - not a new category of
+weakness). `robustness/run.py`'s full Oracle C suite (which already
+exercises `2303-BD137-PLACED` specifically) stayed 303/303.
+
+`selftest.py` SELFTEST PASS; `dataset_test.py` 36/36; `robustness/run.py`
+(full) 303/303. `FORMAT_SPEC.md` §11/§12 updated to record the fix and
+its honestly-scoped result (narrower than "these pieces now decode",
+exactly "these specific records now validate correctly").
+
 ## v2.0 (2026-09-11, continued once more #12) - investigated the kind=2 multi-size mismatch hypothesis: refuted, replaced with a confirmed curved seam-allowance finding
 
 User asked to investigate the "kind=2 records might store another

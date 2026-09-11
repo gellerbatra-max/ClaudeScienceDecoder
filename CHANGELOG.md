@@ -1,5 +1,65 @@
 # Changelog
 
+## v2.0 (2026-09-11, continued once more #9) - audited section 12's gap list; found and fixed a real coverage() over-marking bug, much bigger in scope than it first looked
+
+User asked to check that FORMAT_SPEC.md section 12's "remaining gaps" list
+is fully up to date. Found three real issues, not just stale wording.
+
+**Stale claim fixed**: section 12's bullet on `unclassified_gap` said
+Region C's `n_perimeter` mismatches, `CAP-C61-MIRROR`'s virtual 4th
+corner, "are now explained" - but §10.2 itself is titled "located, not
+fully explained" (which of two equally-fitting derivations produced that
+corner's value is still open) and §11 still calls the raw gap bytes
+"not yet understood". Rewritten to separate what's actually resolved
+(the `n_perimeter_a` count, the corner's *location*) from what remains
+open (its derivation, and the gap bytes themselves).
+
+**New, previously uncatalogued trailer field found**: a `u32 = 5`
+immediately after one zero-padded `u32` right after the trailer's own
+repeated timestamp pair (§7), before the `MSI` author-name echo. Confirmed
+byte-identical on 20 of 21 `CAP-*`/`TASK*` fixtures (the one exception is
+explained below, not a counter-example). Wired into `coverage()` as
+`identified` (position+value known, role open - same basis as Region B's
+own unnamed constants).
+
+**Much bigger finding, while gathering evidence for the above**: checking
+`CAP-C30-SEAM-UNEVEN`'s own unknown-byte runs turned up a snapshot2 "point"
+with a computed `.size` of 17,211 bytes inside a 3,444-byte file - `_block_
+ranges()` was marking Region C's snapshot ranges `identified` as soon as
+they were computed, with no sanity check, so a desynced/runaway snapshot
+(`parse_point`'s `f2` attr-byte-count field has no bound) got silently
+counted as "understood." This alone had inflated `CAP-C30-SEAM-UNEVEN`'s
+`coverage_pct` from an honest 94.69% to a reported 99.91% - which section
+12, until this fix, cited as the corpus's *best* result. Checking the
+production corpus (`markers/`, 156 piece blocks) for the same issue found
+it's **not** limited to the 3 small-corpus seam outliers `check_region_c`
+already documented as a known gap: **150 of 156 production blocks fail
+`check_region_c`**, and on every one of them the same over-marking bug was
+inflating `coverage_pct`, in the worst case observed by tens of thousands
+of bytes (one snapshot point's `.size` computed as 50,505 - itself larger
+than the 29,195-byte file it's inside). FORMAT_SPEC.md §11's "passes on
+every fixture except three" claim did not hold at all for real production
+data; corrected.
+
+**Fixed properly**: `_block_ranges()` now takes the block's own real
+geometry (`real`, the same set `check_region_c` builds) and marks each
+snapshot's range - and the name-echo range downstream of where snapshot2
+ends - only when every one of that snapshot's own points coincides with
+real geometry. Verified by a corpus-wide diff against the pre-fix code:
+only the fixtures `check_region_c` already flags bad show a coverage
+*decrease* (the correct outcome - garbage no longer counted as identified);
+every other fixture's `unknown_bytes` only decreases by one field (the new
+trailer constant above). `selftest.py` SELFTEST PASS; `dataset_test.py`
+36/36; `robustness/run.py` (full) 303/303 - none of this touches geometry,
+grading, or notch decoding, only the informational coverage metric.
+
+Section 12's corpus-wide coverage range corrected to **94.69-99.49%**
+(worst case now honestly `CAP-C30-SEAM-UNEVEN`, not falsely its best
+case); §11 rewritten with the corrected `check_region_c` pass-rate finding
+and the coverage-marking bug fix; section 12 gained two new bullets (the
+now-much-larger-in-scope Region-C desync gap, and the fix itself) plus the
+new trailer-constant bullet.
+
 ## v2.0 (2026-09-11, continued once more #8) - §10.3's remaining notch-attribute-payload items checked
 
 User asked to check the remaining §10.3 "Still open" items: the `07 2d`

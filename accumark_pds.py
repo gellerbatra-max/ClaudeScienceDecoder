@@ -641,7 +641,7 @@ def decode(data):
                 block_errors=block_errors)
 
 # -------------------------------------------------------------- coverage
-def _block_ranges(d, m, objs, pstart, block_end, tail, internal_terminator_offsets=()):
+def _block_ranges(d, m, objs, pstart, block_end, tail, internal_terminator_offsets=(), real=None):
     """Byte ranges 'identified' by one piece block, as (start,end) pairs.
     `block_end` is the pre-tail end (perimeter + internal lines, as computed
     by decode_piece_block - NOT the tail's own end) so that anything between
@@ -649,7 +649,24 @@ def _block_ranges(d, m, objs, pstart, block_end, tail, internal_terminator_offse
     pretable header, Region C's `unclassified_gap`, any inter-record padding
     in the line table) is left 'unknown' rather than swallowed by a single
     wide range. Keep this narrow - coverage() is only honest if every marked
-    byte is one this module actually assigns a meaning to."""
+    byte is one this module actually assigns a meaning to.
+
+    [V, found 2026-09-11] `real` (the set of (x,y) real-geometry coordinates
+    check_region_c already builds) gates whether Region C's own snapshot1/
+    snapshot2 ranges get marked at all - found while auditing FORMAT_SPEC.md
+    section 12's coverage claims, not by design. On the three seam-
+    allowanced fixtures already known to fail check_region_c (CAP-C30-SEAM-
+    UNEVEN, CAP-C31-SEAM-TAPER, TASK2-SEAM1CM - FORMAT_SPEC.md SS11), the
+    same misalignment that fails the check also, on CAP-C30-SEAM-UNEVEN,
+    makes one snapshot2 point read a garbage f2 (attr-byte count) of 17197 -
+    parse_point has no bound on f2, so that single 'point' swallows the
+    entire rest of the file (17211 bytes) into its own `size`, and the old
+    unconditional r.append() then marked all of it 'identified', silently
+    inflating that fixture's coverage_pct on data nothing here actually
+    understood. Each snapshot is now validated independently (matching
+    check_region_c's own per-snapshot loop) before its range is trusted -
+    snapshot1 still marks correctly on this exact fixture (it matches real
+    geometry) while snapshot2 is correctly left 'unknown'."""
     r = [(m['field_off'], m['end'])]                       # metadata + strings + size list
     if objs: r.append((objs[0]['offset'], objs[-1]['offset']+8+8*len(objs[0]['deltas'])))
     r.append((pstart, block_end))                          # perimeter + internal lines
@@ -671,8 +688,12 @@ def _block_ranges(d, m, objs, pstart, block_end, tail, internal_terminator_offse
         # +15 here under-covers coverage() by however many bytes the last point's
         # real size exceeds 15, whenever that point isn't a single-trailer-byte
         # 'plain turn' record).
-        r.append((rc['snapshot1'][0]['offset'], rc['snapshot1'][-1]['offset']+rc['snapshot1'][-1]['size']))
-        r.append((rc['snapshot2'][0]['offset'], rc['snapshot2'][-1]['offset']+rc['snapshot2'][-1]['size']))
+        def _snapshot_ok(snap):
+            return real is None or all((p['x'], p['y']) in real for p in snap)
+        if rc['snapshot1'] and _snapshot_ok(rc['snapshot1']):
+            r.append((rc['snapshot1'][0]['offset'], rc['snapshot1'][-1]['offset']+rc['snapshot1'][-1]['size']))
+        if rc['snapshot2'] and _snapshot_ok(rc['snapshot2']):
+            r.append((rc['snapshot2'][0]['offset'], rc['snapshot2'][-1]['offset']+rc['snapshot2'][-1]['size']))
         # the three marker fields between the two snapshots: known position
         # and value, role still unexplained ([?], FORMAT_SPEC.md §11) - the
         # same "identified but not yet understood" status already given to
@@ -684,7 +705,10 @@ def _block_ranges(d, m, objs, pstart, block_end, tail, internal_terminator_offse
         r.append((rc['marker1_offset'], rc['marker1_offset']+4))
         r.append((rc['marker2_offset'], rc['marker2_offset']+4))
         r.append((rc['marker3_offset'], rc['marker3_offset']+rc['marker3_size']))
-        if rc['name_echo_offset'] != -1:
+        # rc['end'] is computed from wherever snapshot2 parsing actually
+        # stopped, so it inherits the same runaway risk snapshot2 itself
+        # does - gated the same way.
+        if rc['name_echo_offset'] != -1 and _snapshot_ok(rc['snapshot2']):
             r.append((rc['name_echo_offset'], rc['end']))
         for rec in tail['line_records']:
             r.append((rec['offset'], rec['end']))
@@ -734,8 +758,12 @@ def coverage(data, summary=None):
     def _tail_end(b):
         return b['tail']['line_records'][-1]['end'] if b['tail'] and 'error' not in b['tail'] else b['block_end']
     for b in s['blocks']:
+        real = {(p['x'], p['y']) for p in b['perimeter']}
+        if b.get('closing'): real.add((b['closing']['x'], b['closing']['y']))
+        for seg in b['internal_lines']:
+            for p in seg: real.add((p['x'], p['y']))
         for a, e in _block_ranges(d, b['meta'], b['objects'], b['points_offset'], b['block_end'], b['tail'],
-                                   b.get('internal_terminator_offsets', ())):
+                                   b.get('internal_terminator_offsets', ()), real=real):
             mark(a, e, 'identified')
     # Region A - the 'Lnn' line-attribute records (parse_segments, FORMAT_SPEC
     # §6) and, on seam-allowanced pieces, the derived-cut-line records
@@ -759,8 +787,25 @@ def coverage(data, summary=None):
         mark(last_end+m.start(), last_end+m.end(), 'identified')
     for m in re.finditer(rb'MSI', d[last_end:]):            # [?] hardcoded author string
         mark(last_end+m.start(), last_end+m.end(), 'identified')
+    last_ts_end = None
     for o in range(last_end, len(d)-4):
-        if 1_500_000_000 < i32(d,o) < 2_200_000_000: mark(o, o+4, 'identified')
+        if 1_500_000_000 < i32(d,o) < 2_200_000_000:
+            mark(o, o+4, 'identified')
+            last_ts_end = o+4
+    # [V, found 2026-09-11] immediately after the timestamp pair's own last
+    # occurrence, one zero-padded u32 then a constant u32 = 5 - confirmed
+    # byte-identical (value 5, exactly 4 bytes after the zero pad) on 20 of
+    # 21 corpus fixtures (1-, 2-block, every trailer length 306-440 seen);
+    # the one exception, CAP-C30-SEAM-UNEVEN, is one of the three already-
+    # documented check_region_c/check_line_table seam-allowance outliers
+    # (FORMAT_SPEC.md SS11) and reads the same shape one block earlier, not a
+    # genuine counter-example. Not per-piece data - found while auditing
+    # section 12's coverage claims for staleness, not previously catalogued
+    # anywhere in FORMAT_SPEC.md. Marked identified on the same "known
+    # position + value, role still open" basis as Region B's own unnamed
+    # constants; its specific meaning remains unexplored.
+    if last_ts_end is not None and i32(d, last_ts_end+4) == 5:
+        mark(last_ts_end+4, last_ts_end+8, 'identified')
     for i,c in enumerate(cls):
         if c == 'unknown' and d[i] == 0: cls[i] = 'zero_pad'
     counts = {}

@@ -851,14 +851,47 @@ treats the gap after `marker2` as one more 4-byte value consumes half of
 snapshot2's own first point's id/x field along with it, misaligning every
 point in the snapshot by those same few bytes. `accumark_pds.
 check_region_c()` cross-validates both snapshots against the real perimeter
-(the `region_c_consistent` fact in `verify_capture.py`) and passes on every
-corpus fixture except the same three seam-allowanced pieces §11's own
-`check_line_table` discussion below already flags as a known gap. Two
-snapshots of the same geometry bracketed by a repeated 100.00%-shaped
-constant is consistent with these being PDS's *Bookmark → Restore Original
-/ Restore Defined* geometry cache, but that is unconfirmed pending
-`CAP-C80-BOOKMARK` (Phase C of the decode plan); `marker3`'s role is
-similarly unconfirmed **[?]**.
+(the `region_c_consistent` fact in `verify_capture.py`).
+
+**[V, scope corrected 2026-09-11]**: on the small, hand-captured `CAP-*`/
+`TASK*` corpus (35 blocks) it passes on all but the same 3 seam-allowanced
+pieces (`CAP-C30-SEAM-UNEVEN`/`CAP-C31-SEAM-TAPER`/`TASK2-SEAM1CM`) §11's
+own `check_line_table` discussion below already flags as a known gap - the
+basis for the "passes on every fixture except three" claim this section
+carried before. **That claim does not hold on real, complex production
+data.** Checked directly across every embedded piece object in `markers/`
+(156 blocks: the 2303 wing/cup/fold pieces, `AD1234 TEST 134`, `CLAUDE-
+QTY-TEST`, `CLAUDE-GRADE-MARKER`): **150 of 156 fail**, not 3. The 6 that
+pass are exactly the pieces with the simplest geometry (plain 4-point
+rectangles, one large-but-unnotched 142-point piece) - every genuinely
+graded/notched/multi-size production piece checked fails. Root cause not
+characterized beyond what §11 already shows for the small-corpus cases
+(snapshot parsing desyncs partway through, in the worst observed case
+computing one point's byte `size` as large as 50,505 - itself larger than
+the 29,195-byte file it's supposedly inside, an unambiguous parser bug,
+not a legitimate geometry mismatch); whether it is the same seam-style
+desync at much larger scale, an `n_perimeter_a`-counting edge case unique
+to complex pieces, or something else distinct is genuinely open **[?]** -
+a materially larger Phase-B item than previously scoped, not the narrow
+3-fixture footnote this section used to describe.
+
+**Consequence for `coverage()`, found and fixed the same day**: before
+this correction, `_block_ranges()` marked a snapshot's whole byte range
+`identified` unconditionally once computed, so a desynced/runaway
+snapshot's garbage span (up to tens of thousands of bytes, sometimes
+extending past the file's own end and getting silently clamped) was
+counted as understood. On `CAP-C30-SEAM-UNEVEN` this alone inflated
+`coverage_pct` from an honest 94.69% to a reported 99.91% - the same
+fixture section 12 had, until this fix, cited as the corpus's *best*
+result. Each snapshot (and the name-echo range that depends on where
+snapshot2 ends) is now marked only when every one of its own points
+coincides with real perimeter/internal-line/closing geometry - the same
+per-point test `check_region_c` already used, just applied to gate
+marking instead of only to the pass/fail fact. Two snapshots of the same
+geometry bracketed by a repeated 100.00%-shaped constant is consistent
+with these being PDS's *Bookmark → Restore Original / Restore Defined*
+geometry cache, but that is unconfirmed pending `CAP-C80-BOOKMARK` (Phase C
+of the decode plan); `marker3`'s role is similarly unconfirmed **[?]**.
 
 Immediately after snapshot2, on a piece with more than one piece record
 (`piece_records > 1`, i.e. it has been edited at least once, §8) an
@@ -876,8 +909,16 @@ are captured as `unclassified_gap` and are not yet understood **[?]**.
 export-noise floor), or `unknown`, and is the acceptance metric for "is this
 format fully decoded" (`CAPTURE_PLAN.md`'s Phase 1). Across the full
 corpus (every `CAP-*`/`TASK*` capture except `CAP-C63-MODEL`, a distinct
-manifest format with no piece blocks at all, §8): **93–99.5% identified**,
-zero decoder exceptions on any block of any file. The trailer (§7), whose
+manifest format with no piece blocks at all, §8): **94.69–99.49% identified
+[V, reverified 2026-09-11]** (worst case `CAP-C30-SEAM-UNEVEN`, best case
+`CAP-C13-LONGNAME`; the range was previously reported as 93-99.5% before
+this session's header-residue and internal-line-terminator fixes each
+lifted every fixture's own floor, then briefly, wrongly, reported as
+97.06-99.91% before the Region-C snapshot-marking bug below was found -
+that intermediate number had `CAP-C30-SEAM-UNEVEN` inflated to a false
+99.91%, its own snapshot2 parse having silently run away past the file's
+own end and gotten counted as "identified"), zero decoder exceptions on
+any block of any file. The trailer (§7), whose
 size was previously only estimated at "~160 bytes", measures out as a
 consistent **306 bytes** for a 1-block file and **334 bytes** for almost
 every 2-block file; `CAP-C62-DART`'s **440-byte** trailer is the one
@@ -900,6 +941,51 @@ the base corner set," not that it's specific to darts.
 Remaining `unknown` bytes, roughly in order of how much of the file they
 account for:
 
+- **Region C's snapshot desync on `CAP-C30-SEAM-UNEVEN`/`CAP-C31-SEAM-
+  TAPER`/`TASK2-SEAM1CM`, and - far more significantly - on nearly every
+  genuinely complex production piece [V, found 2026-09-11]**: now the
+  single largest unknown-byte contributor on every fixture it hits,
+  because `coverage()` no longer papers over it (see §11's fuller writeup
+  of the same finding). `check_region_c()` fails on 150 of 156 piece
+  blocks embedded in `markers/`'s production/test marker zips - not just
+  the 3 small-corpus outliers this section previously implied were the
+  whole story. Where it fails, one or both Region C snapshots are true
+  `unknown` bytes now (previously mis-marked `identified` by a coverage()
+  bug fixed the same session - see below), typically hundreds to tens of
+  thousands of bytes depending on the piece's own size. Root cause open
+  **[?]** - large enough in scope that it is now the format's biggest
+  remaining gap, not a minor footnote.
+- **`_block_ranges()`'s Region-C marking bug, fixed [V, found and fixed
+  2026-09-11]**: before this fix, a snapshot's byte range was marked
+  `identified` as soon as it was computed, with no check that the
+  computation itself was sane - so a desynced snapshot's runaway span
+  (parse_point has no bound on its `f2` attr-byte-count field, so one
+  misread point can claim tens of thousands of bytes as its own `size`,
+  in the worst production case observed 50,505 bytes for a supposed
+  4-point snapshot inside a 29,195-byte file, i.e. past the file's own
+  end) was silently counted as understood. Found while re-auditing this
+  section's own coverage-percentage claims for staleness - not something
+  any prior pass had reason to suspect, since the only visible symptom
+  was an ordinary-looking `coverage_pct` number. Fixed: each snapshot (and
+  the name-echo range downstream of where snapshot2 ends) is now marked
+  only when every one of its own points coincides with real perimeter/
+  internal-line/closing geometry - the same per-point test
+  `check_region_c()` already used for its own pass/fail fact, now also
+  gating what `coverage()` is willing to claim. Confirmed by a corpus-wide
+  diff against the pre-fix code: the only fixtures whose `unknown_bytes`
+  count *rose* are exactly the ones `check_region_c()` already flagged
+  bad (a legitimate correction, not a regression); every other fixture's
+  count only *fell* by one field (the new trailer constant below).
+- **A small, previously uncatalogued trailer constant, found the same
+  pass [V, found 2026-09-11]**: a `u32 = 5`, sitting immediately after one
+  zero-padded `u32` right after the trailer's own repeated-timestamp pair
+  (§7) and before the `MSI`-style author name. Confirmed byte-identical on
+  20 of the 21 `CAP-*`/`TASK*` fixtures (1- and 2-block, every trailer
+  length 306-440 bytes observed); the one exception, `CAP-C30-SEAM-
+  UNEVEN`, is one of the three fixtures above and shows the same value one
+  block earlier, not a counter-example. Marked `identified` on the same
+  "known position + value, role open" basis as Region B's own unnamed
+  constants; its specific meaning is unexplored **[?]**.
 - **The header-residue region (+0x60–+0x83, between the file header and
   the metadata field block) resolved further [V, corrected 2026-09-11]** -
   checked by gathering these bytes across the whole corpus and testing
@@ -1003,9 +1089,18 @@ account for:
   corner 2 (two of the seam's three corners are now explained as plain
   single-edge offsets; this one resists both that model and a naive
   two-line intersection).
-- §11's `unclassified_gap` bytes (Region C's `n_perimeter` mismatches on
-  `CAP-C14-ANNOT`/`CAP-C62-DART`/notch pieces, and `CAP-C61-MIRROR`'s
-  virtual 4th corner, are now explained — §10.2, §11).
+- **§11's `unclassified_gap` bytes themselves remain unidentified [?]** —
+  the raw zero-padded region between Region C's snapshot2 and the name
+  echo/line table (§11) is still not marked `identified` by `coverage()`
+  and still not understood byte-for-byte. Two related items that used to
+  be catalogued alongside it are resolved and no longer open: Region C's
+  `n_perimeter` mismatch on `CAP-C14-ANNOT`/`CAP-C62-DART`/notch pieces
+  (explained by `n_perimeter_a`, the "corners minus notches/dart-apex"
+  count, §11), and the *location* of `CAP-C61-MIRROR`'s virtual 4th
+  corner (§10.2). §10.2 itself is **not** fully closed, though — which of
+  two equally-fitting derivations (reflect across the fold line vs.
+  complete the bounding rectangle) produced that corner's value is still
+  open, unresolvable on this axis-aligned sample **[?]**.
 
 None of these affect geometry, seam, notch, grade-rule, or grain/drill/
 cut-out decoding, all of which are validated to 0.000000 in DXF residual

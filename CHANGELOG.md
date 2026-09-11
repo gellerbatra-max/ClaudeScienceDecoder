@@ -1,5 +1,40 @@
 # Changelog
 
+## v2.0 (2026-09-11, continued once more #24) - checked whether the smaller shifts could be caught too: tightened CURVED_SEAM_STDEV_MAX for a ~3x sensitivity improvement
+
+User asked to check whether the 500/5000-unit shifts left undetected by
+the previous entry's segment-path fix could be caught too.
+
+**The segment-path check can't help here**: a shift of a few thousand
+units stays within the same locally-coherent segment neighbourhood as
+its genuine neighbours (checked directly - a 500-unit shift still
+nearest-matches the expected segment), so `_seg_path_ok` was never going
+to catch it; only the distance stdev moves for shifts this size.
+
+**Tightened `CURVED_SEAM_STDEV_MAX` from 200 to 60 instead.** Gathering
+every confirmed curved-seam stdev found across this whole investigation
+(0.3-47.5 units, across six different pieces) showed the original
+200-unit threshold had far more headroom than any genuine case actually
+needed. A 500-unit (0.05in) shift on `BACK`'s own record 9 now shows
+stdev 10.9 (still passes - genuinely indistinguishable from real
+sub-tolerance variance), but a 3000-unit (0.3in) shift shows 64.5 and is
+now correctly rejected - the old 200-unit threshold let anything under
+~8000 units (0.8in) through, so this is roughly a 3x sensitivity
+improvement.
+
+**Verified via corpus-wide diff (191 blocks: 156 production + 35
+small-corpus)**: zero `check_line_table` results changed anywhere -
+every genuine confirmed match in the corpus stays comfortably under the
+new threshold. Shifts below roughly 2500-3000 units remain genuinely
+undetectable - not a gap a tighter threshold alone can close without
+risking false rejection of real data, since the tightest confirmed
+genuine match already measures 47.5.
+
+`selftest.py` SELFTEST PASS; `dataset_test.py` 36/36; `robustness/
+run.py` (full) 303/303. `FORMAT_SPEC.md` §11 and `CURVED_SEAM_STDEV_
+MAX`'s own comment updated with the full stdev range and the tightening
+rationale.
+
 ## v2.0 (2026-09-11, continued once more #23) - implemented the corner-miter check for BACK/FRONT's seam values, and found+fixed a real corruption-detection gap in the process
 
 User asked to implement the corner-miter check for `AD1234 TEST 134`'s

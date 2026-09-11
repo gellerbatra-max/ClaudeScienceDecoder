@@ -1196,12 +1196,39 @@ rest). `CLAUDE-GRADE-TEST` and `RUFFLE` already have `check_line_table()
   adjacent segments in order; the 20000-unit corruption jumps 3 segments
   against the flow of its own neighbours and is now rejected. Smaller,
   more localized shifts (500 and 5000 units, checked directly) still slip
-  through - the same coarse-tolerance limitation every seam-offset check
-  in this function already has, not a new category of weakness.
+  through the segment-path check - the same coarse-tolerance limitation
+  every seam-offset check in this function already has, not a new
+  category of weakness.
+
+  **Checked whether the smaller shifts could be caught too [V, fixed
+  2026-09-11] - most of them now are, by tightening `CURVED_SEAM_STDEV_
+  MAX` itself rather than adding more logic.** The segment-path check
+  doesn't help here: a shift of a few thousand units stays within the
+  SAME locally-coherent segment neighbourhood as its genuine neighbours
+  (checked directly - a 500-unit shift still nearest-matches the expected
+  segment), so `_seg_path_ok` alone was never going to catch it; only the
+  DISTANCE stdev moves. Gathering every confirmed curved-seam stdev found
+  across this whole investigation (0.3-47.5 units - see `CURVED_SEAM_
+  STDEV_MAX`'s own comment for the full list) showed the original 200-unit
+  threshold had far more headroom than any genuine case actually needed.
+  Tightened to **60** (comfortable margin over the confirmed 47.5
+  ceiling): a 500-unit (0.05 in) shift on `BACK`'s own record 9 now shows
+  stdev 10.9 (still passes - genuinely below the noise floor a tight
+  threshold can separate from real data), but a 3000-unit (0.3 in) shift
+  shows 64.5 and is now correctly rejected, where the old 200-unit
+  threshold let anything under ~8000 units (0.8 in) through. Roughly a
+  3x sensitivity improvement, verified safe the same way as everything
+  else in this investigation - corpus-wide diff (191 blocks): zero
+  `check_line_table` results changed anywhere. Shifts below roughly
+  2500-3000 units remain genuinely undetectable this way - not a gap a
+  tighter threshold alone can close without also risking false rejection
+  of real data, since the tightest CONFIRMED genuine match already
+  measures 47.5.
 
   Verified via corpus-wide diff (191 blocks: 156 production + 35 small-
-  corpus, both before AND after the corruption-detection fix): zero
-  `check_line_table` results changed anywhere - the fix is additive at
+  corpus, before AND after BOTH the corruption-detection fix and the
+  threshold tightening): zero `check_line_table` results changed
+  anywhere - both fixes are additive at
   the per-point level without flipping any fixture's own overall pass/
   fail, same honest scope as every extension in this investigation.
   `selftest.py` SELFTEST PASS, `dataset_test.py` 36/36, `robustness/

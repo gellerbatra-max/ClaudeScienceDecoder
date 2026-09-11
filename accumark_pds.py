@@ -521,20 +521,40 @@ def parse_region_c(d, o, n_perimeter, category_name, table_start=None):
                 name_echo_offset=name_at, end=end), end
 
 SEAM_OFFSET_MAX = 20000            # generous bound (2 in) for a cutline miter/offset - see check_line_table
-# [V, added 2026-09-11] tolerance for the curved-seam whole-record check in
-# check_line_table: how much a seam/cutline record's per-point distances to
-# its matched perimeter edge may vary (population stdev, in 1e-4in units)
-# and still count as "one consistent offset", not coincidence. Confirmed
-# curved seams on real production pieces measure 2-44 units of stdev
-# (aCEFC.tmp record 8 vs edge 2: 2.2; record 9 vs edge 3: 2.31; aCF12.tmp
-# record 10 vs edge 1: 44.0 - see check_line_table's docstring for a
-# correction: an earlier pass also cited a 2-point record here, which
-# len(pts)>=4 below already excludes on its own, not a real second
-# example); the closest rejected case measured 459.7, and everything else
-# in the corpus that doesn't match a single edge measures in the
-# thousands. 200 sits with margin above the confirmed cases and well
-# below the ambiguous ones.
-CURVED_SEAM_STDEV_MAX = 200
+# [V, added 2026-09-11, tightened the same day] tolerance for the curved-
+# seam checks in check_line_table: how much a seam/cutline record's (or
+# trimmed sub-range's) per-point distances to its matched edge/perimeter
+# may vary (population stdev, in 1e-4in units) and still count as "one
+# consistent offset", not coincidence. Every confirmed curved seam found
+# across this whole investigation measures 0.3-47.5 units of stdev
+# (`AD1234 TEST 134`'s BACK record 9, trimmed: 0.3; `aCF3B.tmp`'s plateau:
+# 1.3; `aCEFC.tmp` records 8/9: 2.2/2.31; `aCF3E.tmp` record 10: 8.7;
+# `aCF12.tmp` record 10: 44.0; `aCF13.tmp` record 10: 47.5 - see check_
+# line_table's docstring for a correction: an earlier pass also cited a
+# 2-point record here, which len(pts)>=4 below already excludes on its
+# own, not a real second example); the closest rejected case measured
+# 459.7, and everything else in the corpus that doesn't match a single
+# edge/the perimeter measures in the thousands.
+#
+# Originally set to 200 (comfortable margin over the then-known 2-44
+# range). Tightened to 60 the same day, once the full 0.3-47.5 range was
+# known, specifically to narrow the corruption-detection blind spot the
+# polyline candidate's own segment-path check (_seg_path_ok) doesn't
+# cover: a single point shifted by a few thousand units (a few tenths of
+# an inch) stays within the SAME locally-coherent segment neighbourhood
+# as its genuine neighbours (so _seg_path_ok alone doesn't catch it) but
+# still produces a measurable stdev increase - checked directly on `AD1234
+# TEST 134`'s own BACK record 9 (the same fixture the segment-path gap was
+# found on): a 500-unit (0.05in) shift now shows stdev 10.9, a 3000-unit
+# (0.3in) shift shows 64.5 - both now correctly rejected at 60 where they
+# would have passed at 200. Confirmed safe via the same corpus-wide diff
+# as every other change in this investigation (191 blocks): zero
+# check_line_table results changed. Smaller shifts still measure below 60
+# (a 100-unit/0.01in shift is 2.3) and remain undetected - a fundamentally
+# different, much harder problem (indistinguishable from genuine
+# sub-tolerance data variance without an independent ground truth), not
+# something a tighter stdev threshold alone can solve.
+CURVED_SEAM_STDEV_MAX = 60
 TABLE_POINT_TAG = 0x10
 
 def parse_table_point(d, o):

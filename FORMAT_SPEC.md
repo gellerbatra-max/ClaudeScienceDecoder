@@ -999,12 +999,37 @@ same mystery:
    regardless of its stdev, not a real second confirmed example. Both
    numbers corrected here and in `CHANGELOG.md`.
 
-Root cause of the compound/bridging chains themselves (why the seam
-allowance doesn't stay parallel to a single edge across a corner) is
-still not characterized. Together with finding 2 above (a real internal-
-feature-detection gap, confirmed but not yet fixed), this remains the
-format's largest open item, well beyond the narrow 3-fixture footnote
-this section used to describe.
+**Chain A's own bridging segments investigated further [V, investigated
+2026-09-11] - the constant-offset hypothesis is now definitively ruled
+out for them, not just unconfirmed.** Measured `aCEFC.tmp`'s records 6/7
+against the *entire* real perimeter as a connected polyline (point-to-
+line-segment distance, not just nearest stored point - ruling out a
+point-density artifact as the explanation) and got the same result:
+record 6's distance profile rises smoothly from 14019 to a peak of 25929
+units (2.59 in) around its midpoint, then falls back to 7077 at its far
+end; record 7 rises from 6777 to a peak of 21835 (2.18 in) and falls back
+to 14019 - exactly matching record 6's own start, confirming the
+connection point. This is not noise and not a mismatch - it is a smooth,
+coherent, closed curve that runs close to the piece's own edge only near
+the edge2/edge3 corner (where records 8/9's confirmed ~0.79 in offset
+sits) and bulges inward by up to 2.6 in through the rest of its path.
+Structurally consistent with a real, distinct construction feature (on a
+bra cup piece, plausibly a molded-cup seam or underwire-channel line that
+hugs the lower edge but curves away through the cup's own shaping) rather
+than a seam allowance at all - **not confirmed as that**, since nothing
+here can name the feature with certainty, only rule out what it is not.
+Left genuinely open: no fix was attempted, and none should be -
+`_curved_seam_record_ok`'s constant-offset test correctly keeps rejecting
+this, and extending it to accept a smoothly-varying offset would risk
+accepting genuine corruption too (FORMAT_SPEC.md's own standing caution
+about loosening seam-tolerance checks, §10.1).
+
+This, together with the still-open remainder of §11's other bridging
+chains (not individually re-examined this pass), remains the format's
+largest open item, well beyond the narrow 3-fixture footnote this
+section used to describe. The internal-feature-detection gap (finding 2
+above) is no longer part of it - fixed the same day (`_next_internal_
+header`, below).
 
 **All three small-corpus outliers confirmed to share one identical
 signature [V, confirmed 2026-09-11]**, checked directly rather than

@@ -1,5 +1,42 @@
 # Changelog
 
+## v2.0 (2026-09-11, continued once more #17) - checked chain A's own "bridges a corner" mystery: constant-offset hypothesis definitively ruled out, real shape characterized
+
+User asked to check the remaining "chains bridge a corner" mystery on
+`aCEFC.tmp`'s chain A (records 8/7/6/9), left open when the curved-seam
+check was implemented.
+
+**Ruled out the point-density explanation directly**: re-measured
+records 6/7 against the *entire* real perimeter as a connected polyline
+(point-to-line-segment distance, not just nearest stored point) rather
+than assuming sparse points were hiding a real match. Same result as
+before: not a constant offset by any measure.
+
+**What the shape actually is**: record 6's distance from the perimeter
+rises smoothly from 14019 to a peak of 25929 units (2.59 in) near its
+midpoint, then falls back to 7077 at its far end; record 7 rises from
+6777 to a peak of 21835 (2.18 in) and falls back to 14019 - exactly
+matching record 6's own start, confirming the connection point rather
+than coincidence. This is a smooth, coherent, closed curve - not noise,
+not a mismatch - that runs close to the piece's own edge only near the
+edge2/edge3 corner (where records 8/9's confirmed ~0.79 in offset sits)
+and bulges inward by up to 2.6 in through the rest of its path.
+Structurally consistent with a real, distinct construction feature (on
+this bra cup piece, plausibly a molded-cup seam or underwire-channel
+line) rather than a seam allowance at all - not confirmed as that
+specifically, only ruled out as a constant offset.
+
+**Deliberately not fixed, and correctly so**: `_curved_seam_record_ok`'s
+constant-offset test correctly keeps rejecting this. Extending it to
+accept a smoothly-varying offset would risk accepting genuine corruption
+too - the same standing caution FORMAT_SPEC.md already documents around
+loosening seam-tolerance checks (§10.1's uneven-seam item).
+
+No code changed - pure investigation. `selftest.py` still passing.
+`FORMAT_SPEC.md` §11/§12 updated; also corrected a stale note there that
+still described the internal-feature-detection gap as "not yet fixed" -
+it was fixed in the previous entry.
+
 ## v2.0 (2026-09-11, continued once more #16) - implemented the internal-line-list walker fix with the IMPORT stop
 
 User asked to implement the fix the previous entry scoped: bridge the

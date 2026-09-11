@@ -1,5 +1,55 @@
 # Changelog
 
+## v2.0 (2026-09-11, continued once more #2) - TASK6-CURVE and the 2303 production fixtures checked too
+
+User asked to extend the same old-vs-new `coverage()` check to `TASK6-CURVE`
+(the 34-point graded curve piece - not a `CAP-C*` fixture, so outside the
+previous sweep) and the 2303 production marker zips' embedded pieces (the
+only real, non-synthetic multi-piece corpus data: `2303-BD137-PLACED`,
+`2303-BD137-UNLAID`, `2303-CP150-JULY` - 80 pieces total including the
+`CAP-C*` set, extracted via `accumark_marker.list_zip`).
+
+**2303 production pieces: zero regressions.** All 59 embedded pieces across
+the three marker zips either improved or held steady; two pieces
+(`2303-B1-INMO-2-SP24`, `2303-B1-INMO-4-SP24`, both appearing in all three
+zips) jumped from ~75% to **99.9%+** coverage - the Region-C fix's benefit
+scales to real, complex production geometry, not just the small controlled
+`CAP-C*` probes.
+
+**TASK6-CURVE: one real regression, fully explained, not a bug.**
+25 -> 33 unknown bytes (99.54% -> 99.39%). Diffing the exact unknown byte-
+runs (same method as the three `CAP-C*` regressions above) placed all 8 new
+bytes inside `unclassified_gap` - the zero-padded region between Region C's
+snapshot2 and the line table that `FORMAT_SPEC.md` already documents as
+"not yet understood [?]". Confirmed by content, not just position: the new
+bytes are the first ~20 of an 96-byte run (`5e 00...00 05 00 00 00 01...`)
+byte-identical in shape to `TASK6-CURVE`'s own already-known, already-
+captured `unclassified_gap` on its OTHER piece block. Same root cause as
+the three `CAP-C*` regressions: the pre-fix bug's over-long snapshot2
+accidentally swallowed some of this territory as "identified"; the fix
+correctly stops at the real boundary, so these bytes now honestly read as
+unknown. Unlike marker1/2/3 (fixed in the previous entry), there is no
+known value to mark 'identified' here - the content genuinely isn't
+understood yet, so leaving it 'unknown' is the correct, un-overclaiming
+result, not a defect to paper over.
+
+**Found and fixed along the way**: `parse_region_c` was silently dropping
+`unclassified_gap` entirely (returning it empty, `d[p:p]`) whenever no name
+echo was found - which turns out to be exactly `TASK6-CURVE`'s second
+block (a stale pre-edit block, `decode_piece_block`'s own docstring already
+anticipates these predate some feature and can lack an echo). The ~96
+bytes of real, present file content in that gap were invisible to the
+returned dict even though `coverage()` correctly treated them as unknown
+either way. `parse_region_c` now accepts the caller's already-known
+`table_start` and, when there's no name echo, bounds `unclassified_gap` by
+it instead of discarding the region - a data-completeness fix (accurate
+introspection for future investigation), not a coverage-classification
+change: `coverage_pct` is unaffected (confirmed unchanged, 33/99.39%
+before and after this specific fix).
+
+`selftest.py` SELFTEST PASS; `robustness/run.py` still 303/303;
+`dataset_test.py` still 36/36 throughout.
+
 ## v2.0 (2026-09-11, continued once more) - three coverage regressions found and fixed
 
 User asked to check `unknown_bytes`/`coverage_pct` for regressions across

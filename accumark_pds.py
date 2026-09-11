@@ -346,7 +346,7 @@ def parse_point_snapshot(d, o, n):
         r = parse_point(d, p); pts.append(r); p = r['offset'] + r['size']
     return pts, p
 
-def parse_region_c(d, o, n_perimeter, category_name):
+def parse_region_c(d, o, n_perimeter, category_name, table_start=None):
     """Region C: snapshot1, a SNAPSHOT_MARKER pair around a zero gap, a
     third tag - **a single u16, value 1 on every sample checked so far
     (CAP-C00-BASE, CAP-C10-PENT [V]; not the same width as marker1/marker2,
@@ -392,7 +392,19 @@ def parse_region_c(d, o, n_perimeter, category_name):
     snap2, p = parse_point_snapshot(d, p, n_perimeter)
     name_bytes = category_name.encode('latin1')
     name_at = d.find(name_bytes, p, p+400)
-    unclassified_gap = d[p:name_at] if name_at != -1 else d[p:p]
+    if name_at != -1:
+        unclassified_gap = d[p:name_at]
+    elif table_start is not None and table_start > p:
+        # [V, corrected] no name echo (e.g. a stale pre-edit block, per
+        # decode_piece_block's own "predating some feature" note) - the
+        # gap between snapshot2 and the line table still genuinely exists
+        # in the file (confirmed byte-identical in shape to the name-echo
+        # case's own unclassified_gap on TASK6-CURVE's second block) and
+        # was previously silently dropped as d[p:p] (empty), hiding real
+        # content from this field rather than just leaving it unexplained.
+        unclassified_gap = d[p:table_start]
+    else:
+        unclassified_gap = d[p:p]
     end = name_at + len(name_bytes) if name_at != -1 else p
     return dict(snapshot1=snap1, marker1=marker1, snapshot2=snap2, marker2=marker2,
                 marker3=marker3,
@@ -511,7 +523,7 @@ def decode_piece_block(d, field_off=None):
         n_snap = pretable['n_perimeter_a']
         if not (0 < n_snap <= len(perim)): n_snap = len(perim)
         region_c, region_c_end = parse_region_c(
-            d, pretable_off+PRETABLE_HEADER_SIZE, n_snap, m['name'])
+            d, pretable_off+PRETABLE_HEADER_SIZE, n_snap, m['name'], table_start)
         line_records, tail_end = parse_line_table(d, table_start)
         tail = dict(pretable=pretable, region_c=region_c, table_start=table_start,
                     line_records=line_records, tail_end=tail_end)

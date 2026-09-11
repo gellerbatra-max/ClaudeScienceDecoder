@@ -1,5 +1,42 @@
 # Changelog
 
+## v2.0 (2026-09-11, continued once more #25) - checked the remaining kind=2 records across the rest of the corpus: quantified how much the shipped checks recover, found a mechanical gap and 4 unchecked size tiers
+
+User asked to check the remaining kind=2 records across the rest of the
+corpus, rather than the handful of example pieces checked so far.
+
+**Quantified recovery corpus-wide, not just spot-checked**: across every
+embedded piece with a tail, 7226 kind=2 points still don't match `real`
+directly; the corner-miter + polyline + segment-path checks now validate
+1958 of them (27%), leaving 5268 genuinely unresolved.
+
+**The unresolved majority splits into two distinct causes**:
+1. Genuine multi-edge bulges (the already-characterized shape) -
+   structurally correct to leave open.
+2. **A mechanical gap in the shipped checks, not a geometric mystery**:
+   `_curved_seam_trimmed_indices` only trims one point from each END of
+   a record, modelling a corner miter - it doesn't search for a clean
+   window buried in the INTERIOR of a large merged record. `aCF3B.tmp`'s
+   own 103-point record has exactly this shape (a genuine plateau at
+   indices 49-80 boundary-trimming can never reach), and it isn't alone:
+   a previously-unchecked `SI01040A17` object (`aE769.tmp`) has an
+   identical 123-point record hiding an 8-point plateau at stdev 0.39.
+   Extending the trim to search an interior window is a concrete next
+   step - not attempted this pass, since it's a meaningfully larger,
+   riskier change (higher false-positive surface than trimming one
+   boundary point) needing its own careful design and verification.
+
+**Also found while running this survey**: the `SA60151TH`/`SI01040A17`
+family has 11 distinct size-cluster objects per side, not the 7 the
+earlier cup-size-correlation check was run against - 4 larger tiers at
+the top of the range were never in the original inventory. The one
+newly-checked example fits the established pattern rather than
+contradicting it, but the full 11-tier correlation has not been re-run.
+
+No code changed - pure investigation. `selftest.py` still passing.
+`FORMAT_SPEC.md` §11 updated with the recovery numbers, the mechanical
+gap, and the corrected size-tier count.
+
 ## v2.0 (2026-09-11, continued once more #24) - checked whether the smaller shifts could be caught too: tightened CURVED_SEAM_STDEV_MAX for a ~3x sensitivity improvement
 
 User asked to check whether the 500/5000-unit shifts left undetected by

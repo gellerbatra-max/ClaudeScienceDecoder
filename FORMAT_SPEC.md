@@ -1244,6 +1244,45 @@ seam/facing allowance with corner miters, generalizing the small
 corpus's own already-known but narrower "uneven seam" item), not a
 decode artifact, corruption, or coincidence specific to one piece family.
 
+**Quantified how much of this the shipped checks now actually recover,
+corpus-wide [V, measured 2026-09-11]**, rather than leaving the picture
+at "some pieces pass, some don't": across every embedded piece with a
+tail, **7226 kind=2 points still don't match `real` directly; the
+corner-miter + polyline + segment-path checks (§12) now validate 1958 of
+them (27%)**, leaving 5268 genuinely unresolved. The unresolved majority
+splits into two distinct causes, not one:
+
+1. **Genuine multi-edge bulges** (the already-characterized bra-cup/
+   `BACK`/`FRONT`/`OUCF` shape) - structurally correct to leave open;
+   nothing in this investigation explains what they are.
+2. **A mechanical gap in the shipped checks, not a geometric mystery**:
+   `_curved_seam_trimmed_indices` only trims a single point from EACH
+   END of a record (deliberately, to model a corner miter, §12) - it
+   does not search for a clean window buried in the INTERIOR of a large
+   merged record. `aCF3B.tmp`'s own 103-point record (§11's earlier
+   write-up) has exactly this shape - a genuine, tight 32-point plateau
+   at indices 49-80 that boundary-only trimming can never reach - and
+   it is not the only one: the same survey found a previously-unchecked
+   `SI01040A17` object (`aE769.tmp`, sizes `42DD`/`40E`) with an
+   identical 123-point single record hiding an 8-point plateau at stdev
+   0.39. Extending the trim to search an interior window, not just the
+   two ends, is a concrete, well-scoped next step - not attempted this
+   pass, since it is a meaningfully larger and riskier change (an
+   unconstrained interior search has a higher false-positive surface
+   than trimming one boundary point) than anything shipped so far in
+   this investigation and needs its own careful design and corpus-wide
+   verification.
+
+**Also found while running this survey**: the `SA60151TH`/`SI01040A17`
+family has **11 distinct size-cluster objects per side, not the 7**
+follow-up #21's cup-size-correlation check was run against - `36E`/
+`38DD`/`40D`/`42C`, `38E`/`40DD`/`42D`, and two more (`42DD`/`40E` and a
+solo `42E`) at the very top of the range were never in the original
+inventory sweep. The one newly-checked example (`aE769.tmp`) fits the
+established pattern (a hidden clean plateau, same as `aCF3B.tmp`) rather
+than contradicting it, but the full 11-tier set - and a corrected cup-
+size correlation against all 11, not 7 - has not been re-run.
+
 This, together with the still-open remainder of §11's other bridging
 chains (not individually re-examined this pass), remains the format's
 largest open item, well beyond the narrow 3-fixture footnote this

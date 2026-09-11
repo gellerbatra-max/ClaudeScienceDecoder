@@ -1,5 +1,49 @@
 # Changelog
 
+## v2.0 (2026-09-11, continued once more #8) - §10.3's remaining notch-attribute-payload items checked
+
+User asked to check the remaining §10.3 "Still open" items: the `07 2d`
+notch-attribute payload's byte 0/byte 44 discrepancy, the table-point
+struct's `b`/`c` fields, and the `0f 0a` triples.
+
+**Table-point `c` resolved: a third independent copy of Notch Type.**
+Every table point carrying a tag-`07` (notch attribute) child also has its
+own `c` field set to the Notch Type number (1-30) - confirmed on all 10
+notch-carrying table points in the corpus (`CAP-C40-NOTCH-TYPES`'s 4
+distinct types 2/4/5/1, `CAP-C41`/`CAP-C42`'s 6 Type-1 notches). This
+matters for the byte-44 question left open by a previous entry: on
+`CAP-C40-NOTCH-TYPES`'s one disputed notch, the 45-byte payload's byte 0
+and byte 44 disagree (5 vs 8) while the perimeter point's `f1` high byte
+reads 5. `c` also reads 5, matching `f1`/byte0. With two of three
+independent fields agreeing, byte 44 is the outlier, not a second
+reliable copy as previously hypothesized - that hypothesis is retracted.
+`why` byte 44 diverges (capture-time UI mis-click vs genuine distinct
+semantics) remains open without a controlled re-capture.
+
+**Fixed properly, not just documented**: `accumark_pds.check_line_table()`
+now cross-checks `c` against the perimeter's own decoded Notch Type for
+every notch-carrying table point, turning this from a passive observation
+into a live consistency gate - verified to actually catch corruption by
+flipping a `c` byte on `CAP-C40-NOTCH-TYPES` and confirming
+`check_line_table` flips `True -> False`.
+
+**`0f 0a` triples reverified, still genuinely open.** Re-scanned every
+piece object in the corpus exhaustively (262 piece objects, matched by
+object type rather than file extension so nothing is missed) for
+non-placeholder `0f 0a` payloads: zero found, matching the existing
+documented claim. A raw byte-level scan of the whole repo tree does turn
+up a few `0f 0a` byte pairs inside the production marker files
+(`2303-CP150-JULY`), but those sit inside an unrelated object type
+(marker, type 9, not piece, type 20) with no TLV-tag meaning there - a
+false lead, not a counterexample. No capture yet has a real one to decode
+against.
+
+`selftest.py` SELFTEST PASS; `dataset_test.py` 36/36; `robustness/run.py`
+(full, not quick) 303/303. `FORMAT_SPEC.md` §10.2 (`b`/`c` field
+description), §10.3 (all three "Still open" bullets), and its section-12
+summary list of remaining gaps updated; `accumark_pds.check_line_table`'s
+docstring updated with the full discovery writeup.
+
 ## v2.0 (2026-09-11, continued once more #7) - the CAP-C60-CUTOUT block_end=6 outlier: fully explained, now real decoded data
 
 User asked to check the `CAP-C60-CUTOUT` `block_end`-value-6 outlier the

@@ -820,6 +820,21 @@ def check_line_table(b):
     seam_begin/seam_end values threaded through to re-derive properly, which
     is Phase B work, not a parser bug.
 
+    [V, added 2026-09-11] a table point carrying a tag-0x07 child (a notch
+    attribute block, §10.3) has its own `c` field set to the Notch Type
+    number (1-30) - a THIRD independent copy, alongside the perimeter
+    point's own `f1` high byte (§4) and the tag-0x07 payload's own byte 0
+    and byte 44. Confirmed on all 10 notch-carrying table points in the
+    corpus (CAP-C40-NOTCH-TYPES's 4 distinct types 2/4/5/1, CAP-C41/
+    CAP-C42's 6 Type-1 notches): `c` matches `f1` exactly, every time,
+    including the one case where the 45-byte payload's own byte 44
+    disagreed with everything else (CAP-C40's third notch: `f1`=5, `c`=5,
+    payload byte0=5, payload byte44=8 alone reads 8) - two of three
+    independent fields agreeing is why FORMAT_SPEC.md no longer treats
+    byte 44 as a plausible second reliable copy. Checked here as a genuine
+    consistency invariant, not just documented: `c` must equal the
+    perimeter's own decoded Notch Type for the same coordinate.
+
     [V, corrected 2026-09-11] kind=2 is NOT specific to seam allowance - it
     is the line table's echo record for EVERY internal line (grain, drill,
     cutout; §10's `internal_kinds`), one kind=2 record per internal-line
@@ -849,6 +864,8 @@ def check_line_table(b):
     if b.get('closing'): real.add((b['closing']['x'], b['closing']['y']))
     for seg in b['internal_lines']:
         for p in seg: real.add((p['x'], p['y']))
+    notch_type_by_xy = {(p['x'], p['y']): p['notch_type'] for p in b['perimeter']
+                         if p['notch_type'] is not None}
     def _is_seam_offset(pt):
         x, y = pt
         for rx, ry in real:
@@ -867,6 +884,9 @@ def check_line_table(b):
             # echo point (a == 65535, unnumbered) must coincide exactly.
             is_seam_candidate = rec['kind'] == 2 and tp['a'] != 65535
             if pt not in real and not (is_seam_candidate and _is_seam_offset(pt)):
+                return False
+            has_notch_tag = any(tag == 0x07 for tag, _ in tp['children'])
+            if has_notch_tag and pt in notch_type_by_xy and tp['c'] != notch_type_by_xy[pt]:
                 return False
     return True
 

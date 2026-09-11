@@ -571,8 +571,15 @@ fixed 16-byte struct, itself followed by that point's own child TLVs:
 signed `id`** — an unnumbered point (notch, grain/drill/cut-out point, or a
 plain corner that never got a sequential id, see below) reads `a = 0xFFFF`
 here, the same bit pattern as `id == -1` there. `e` is the number of child
-TLVs immediately following this point (0 for a plain point). `b`/`c` are
-unidentified so far **[?]** (constant across every sample seen).
+TLVs immediately following this point (0 for a plain point). `b` is
+unidentified so far **[?]** (constant across every sample seen). **`c`
+[V, added 2026-09-11]**: on any point carrying a tag-`07` child (a notch
+attribute block, below), `c` is that notch's Notch Type (1-30) — a THIRD
+independent copy of the same value, alongside the perimeter point's own
+`f1` high byte (§4) and the tag-`07` payload's own byte 0. Confirmed on
+all 10 notch-carrying table points in the corpus and checked as a live
+consistency invariant by `accumark_pds.check_line_table()`. On a point
+with no tag-`07` child, `c` is constant/unidentified like `b`.
 
 Per-point child tags, any combination of:
 
@@ -720,20 +727,36 @@ Keep capture (Phase C, not yet done).
   Only bytes 0 and 44 vary across the four notches; every other byte is
   identical. **Byte 0 exactly matches `f1`'s already-decoded Notch Type
   (§4)** on all four (2, 4, 5, 1). **Byte 44 matches on three of four but
-  reads `8` where byte 0/`f1` read `5`.** Since the capture log for this exact
-  piece independently records uncertainty about whether the UI's Type
-  dropdown (which re-scrolls its list on reopen) actually applied the
-  intended selection every time, byte 44 disagreeing with `f1` on exactly
-  the one notch is a plausible sign that byte 44 is a *second, independent*
-  copy of the Notch Type — possibly the more reliable one — rather than
-  noise; not confirmed without a controlled re-capture **[?]**. The `b`/`c`
-  fields of the table-point struct remain confirmed presence-only, no
-  decoded semantics **[?]**.
+  reads `8` where byte 0/`f1` read `5`.**
+
+  **[V, resolved 2026-09-11]**: a third independent copy of Notch Type was
+  found — the table-point struct's own `c` field (§10.2), confirmed on all
+  10 notch-carrying table points in the corpus. On the one disputed notch,
+  `c` reads `5`, agreeing with byte 0/`f1` against byte 44. With two of
+  three independent fields agreeing, byte 44 is the outlier, not a second
+  reliable copy — the earlier "possibly more reliable" hypothesis is
+  retracted. This is now enforced as a live consistency check in
+  `accumark_pds.check_line_table()`, not just documented. What remains
+  open is *why* byte 44 diverges on this one notch: the capture log's own
+  note about the Type dropdown re-scrolling on reopen (and one attempted
+  selection landing on Type 4 instead of Type 3, per `CAPTURE_LOG.md`)
+  means a mis-click during capture is plausible, but nothing short of a
+  controlled re-capture can distinguish "byte 44 is a UI-order artifact"
+  from "byte 44 has real, distinct semantics that happened to read `8`
+  here" **[?]**.
 - **`0f 0a` triples**: every occurrence in the entire corpus (all graded
   points, all blocks) is the same `ff ff 00 00 ff ff 00 00 00 00`
   placeholder, including `TASK6-CURVE`'s anomalous `10002…10011` rule
   references — ruling that file out as a source of a non-placeholder
-  sample. No capture yet has one to decode against **[?]**.
+  sample. **[V, reverified 2026-09-11]**: re-checked exhaustively across
+  every piece object in the corpus (262 piece objects, all `.tmp` members
+  of every `.zip`/`.ZIP` under the repo, matched by object type rather than
+  file extension) — zero non-placeholder occurrences. A raw byte-level
+  scan of the whole tree turns up a handful of `0f 0a` byte pairs inside
+  the production **marker** files (`2303-CP150-JULY`), but those are
+  coincidental matches inside an unrelated object type (marker, type 9,
+  not piece, type 20) with no TLV-tag meaning there — not a counterexample.
+  No capture yet has a real one to decode against **[?]**.
 
 ## 11. Pre-table header and geometry snapshots
 
@@ -972,8 +995,10 @@ account for:
     bytes for that one fixture; reading its *un-shifted* position naturally
     lands on unrelated bytes. The `01 00 00 00`/`0d 00 00 00 10 00 00 00`
     values bracketing the flag remain unexplained **[?]**.
-- §10.3's notch-attribute payload, table-point `b`/`c` fields, and `0f 0a`
-  triples.
+- §10.3's notch-attribute payload byte 44 (why it diverges on the one
+  disputed `CAP-C40-NOTCH-TYPES` notch — table-point `c` resolved 2026-09-11
+  as a third Notch Type copy, no longer open), the table-point `b` field,
+  and `0f 0a` triples.
 - §10.1's uneven/tapered cut-line miter point at `CAP-C30-SEAM-UNEVEN`
   corner 2 (two of the seam's three corners are now explained as plain
   single-edge offsets; this one resists both that model and a naive

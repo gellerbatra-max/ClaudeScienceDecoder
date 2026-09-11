@@ -1070,6 +1070,35 @@ fact, not a one-piece anecdote: reproducible, piece-specific in
 magnitude, and present on **7 of 7** pieces checked in this one piece
 family.
 
+**Checked whether the bulge's peak magnitude correlates with cup size
+[V, checked 2026-09-11] - it does not, measurably.** All 7 `SA60151TH`
+size-cluster objects (`aCEFC.tmp`/`aCF10.tmp`/`aCF26.tmp`/`aCF13.tmp`/
+`aCF3B.tmp`/`aCF29.tmp`/`aCF3E.tmp`) were ordered by their own "sister
+size" cup-volume tier (32A < 32B < 32C < 32D < 32DD < 32E < 34E, the
+standard bra-sizing convention where a piece's declared size *list* -
+e.g. `['36B','38A','32D','34C']` - names several nominally-different
+band/cup labels sharing one physical cup volume) and their bulge's own
+peak distance from the real perimeter measured the same way as the
+per-piece table above: 2.593, 1.753, 2.540, 3.095, 1.898, 3.139, 2.519 in,
+respectively. **Pearson r = 0.277** against the 7-point tier ordering -
+weak and not meaningfully different from no correlation at this sample
+size (n=7). The peak magnitude does not track cup size in any simple way.
+
+**A different, genuine nuance found along the way, not the correlation
+itself**: `aCF10.tmp` (32B tier) and `aCF26.tmp` (32C tier) don't show
+the sharp tight-offset/big-bulge *split* the other 5 pieces do at all -
+their own extra curve stays at a single, moderately-elevated, gently-
+oscillating distance the whole way (1.60-1.75 in for `aCF10.tmp`,
+2.39-2.54 in for `aCF26.tmp`, best-8-point-window stdev ~100 - tighter
+than a genuine bulge region but far looser than the <2-unit-stdev true
+clean segments elsewhere), never dipping down to the ~0.79-1.18 in
+baseline the other 5 pieces share. So it isn't simply "5 clean+bulge, 2
+exceptions" either - the shape itself changes with size (two smaller
+cup tiers show one moderate, near-uniform offset; the smallest tier and
+the three largest tiers show the sharp two-regime split) even though the
+bulge's own peak *value* doesn't correlate. Root cause of either pattern
+remains unidentified; not pursued further this pass.
+
 This, together with the still-open remainder of §11's other bridging
 chains (not individually re-examined this pass), remains the format's
 largest open item, well beyond the narrow 3-fixture footnote this

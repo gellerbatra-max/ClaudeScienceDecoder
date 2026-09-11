@@ -1,5 +1,35 @@
 # Changelog
 
+## v2.0 (2026-09-11, continued once more #20) - checked whether the bulge magnitude correlates with cup size: it doesn't, but the split's own shape does
+
+User asked to check whether the bulge's peak magnitude correlates with
+cup size across the `SA60151TH` piece family.
+
+**No measurable correlation.** Ordered all 7 size-cluster objects by
+their own "sister size" cup-volume tier (32A < 32B < 32C < 32D < 32DD <
+32E < 34E - the standard bra-sizing convention behind each piece's own
+multi-label size list, e.g. `['36B','38A','32D','34C']` all sharing one
+physical cup volume) and measured each piece's bulge peak the same way
+as the earlier per-piece table: 2.593, 1.753, 2.540, 3.095, 1.898, 3.139,
+2.519 in. **Pearson r = 0.277** against the tier ordering - weak, not
+meaningfully different from no correlation at n=7.
+
+**A different, genuine nuance found while gathering the data, not the
+correlation itself**: `aCF10.tmp` (32B) and `aCF26.tmp` (32C) don't show
+the sharp tight-offset/big-bulge split the other 5 pieces do at all -
+their own extra curve sits at one moderately-elevated, gently-oscillating
+distance the whole way (1.60-1.75in / 2.39-2.54in respectively), never
+dipping to the ~0.79-1.18in baseline the other 5 pieces share. So the
+picture isn't "5 clean+bulge, 2 exceptions" either - the *shape* changes
+with size (two middle cup tiers show one moderate near-uniform offset;
+the smallest tier and the three largest show the sharp two-regime split)
+even though the bulge's own peak value doesn't correlate with size in any
+simple way. Root cause of either pattern remains unidentified.
+
+No code changed - pure investigation. `selftest.py` still passing.
+`FORMAT_SPEC.md` §11 updated with the correlation result and the
+aCF10/aCF26 nuance.
+
 ## v2.0 (2026-09-11, continued once more #19) - aCF3B.tmp checked for a different edge grouping: same clean+bulge split, just packaged as one merged record
 
 User asked to check whether `aCF3B.tmp` (the one piece that didn't split

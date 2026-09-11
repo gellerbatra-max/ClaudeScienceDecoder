@@ -1,5 +1,53 @@
 # Changelog
 
+## v2.0 (2026-09-11, continued once more #12) - investigated the kind=2 multi-size mismatch hypothesis: refuted, replaced with a confirmed curved seam-allowance finding
+
+User asked to investigate the "kind=2 records might store another
+graded size's geometry" hypothesis the previous entry left open.
+
+**Refuted, not just unconfirmed**: `2303-BD137-PLACED`'s `aCEFC.tmp`
+(piece `SA60151TH`) has exactly one size (`32A`) in its own size table,
+so `graded_outline()` to another size isn't possible from this object at
+all - and its mismatched points don't match any of the zip's other
+`SA60151TH`-named piece objects either (AccuMark splits this bra piece
+across several independently-stored size-cluster objects; checked all
+five others directly, zero point matches).
+
+**What the points actually are, found by checking rather than continuing
+to speculate**: plotting one mismatched `kind=2` record's points in order
+shows a smooth, continuously-connected curve (small, consistent step
+distances, one clear direction) - not corrupted data. Measuring every
+`kind=2` record against its nearest point on each `kind=1` perimeter edge
+record finds a subset with a near-perfectly constant offset: `aCEFC.tmp`
+record 8 sits 7877 units (0.79 in) +/- 2 units from perimeter edge record
+2, across all 23 points; a second, different production piece
+(`SI01040A17`'s `aCF12.tmp`) shows the same shape at 1576-1581 units +/-
+44-59. These are genuine seam-allowance/cut-line curves, at realistic
+magnitudes well inside the existing `SEAM_OFFSET_MAX` (2 in) tolerance -
+just far larger than the small `CAP-*`/`TASK2-SEAM1CM` test corpus's seam
+values, and critically **curved** (the offset direction rotates
+continuously along the edge) rather than the single axis-aligned/45°-
+diagonal per-corner offset `check_line_table`'s `_is_seam_offset()` was
+built and proven against. That function only accepts `dx==0 or dy==0 or
+abs(dx)==abs(dy)`, so a curved perpendicular offset is rejected no matter
+how small the actual distance is - explaining why `SEAM_OFFSET_MAX`
+alone didn't already cover it.
+
+**Not the whole story**: only a minority of `kind=2` records show this
+clean a single-edge match (2 of 9 on `aCEFC.tmp`, 2-3 of 10 on
+`aCF12.tmp`, both with 2-59 unit standard deviation); the rest match
+their best edge far more loosely (hundreds to thousands of units stdev) -
+likely compound/corner-spanning seams or a distinct, still-unidentified
+feature. **Not fixed this pass**: generalising `_is_seam_offset` to
+accept a curved, any-direction offset is a real, tractable next step for
+the confirmed subset, but doing it safely needs a per-record consistency
+requirement (not just a looser per-point distance check) to avoid
+weakening Oracle C's corruption detection on these exact production
+fixtures - and it wouldn't resolve the remaining majority anyway, so left
+open rather than shipped half-solved. No code changed this pass, pure
+investigation; `FORMAT_SPEC.md` §11 and §12 rewritten to replace the
+retracted multi-size hypothesis with this evidence-based finding.
+
 ## v2.0 (2026-09-11, continued once more #11) - checked production 2303 pieces for the seam-fixture signature; found the "150/156 fail check_region_c" figure was mostly a different, now-fixed bug, and surfaced a bigger new one
 
 User asked to check the production 2303 pieces for the same runaway

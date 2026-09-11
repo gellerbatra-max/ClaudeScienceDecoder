@@ -881,24 +881,35 @@ Confirmed the fix finds the *correct* location, not a spurious match:
 every one of these blocks' kind=1 (perimeter-edge) line-table records now
 match the block's own real geometry 100%, everywhere checked.
 
-**That fix immediately surfaced a third, separate, still-unexplained
-problem** - genuinely new, not yet understood, and not the runaway-
-snapshot bug: even with the line table correctly located, most of these
-same production blocks' **kind=2 records** still don't coincide with the
-block's own decoded perimeter/internal-line/closing geometry. Unlike the
-runaway bug, these points are individually well-formed (sane ids, sane
-sizes, no impossible values) - they just describe geometry that isn't in
-`real`, by large (thousands of coordinate units), non-uniform deltas that
-don't fit the already-documented seam-offset shape at all. Real production
-pieces are genuinely multi-size graded, unlike every fixture this checker
-was built and proven against; the live, unconfirmed hypothesis is that
-some kind=2 records store another size's geometry rather than the
-decoded block's own - not verified, a genuinely open Phase-B/C item, and
-one that also affects `check_line_table` (not just `check_region_c`),
-so it isn't a Region-C-specific problem either. Root cause not
-characterized further; this is now the format's largest remaining open
-item by a wide margin, well beyond the narrow 3-fixture footnote this
-section used to describe.
+**That fix immediately surfaced a third problem, investigated the same
+day [V, investigated 2026-09-11] - multi-size grading turned out to be
+the wrong hypothesis, but a real, curved seam-allowance signal was
+underneath it.** `aCEFC.tmp` (`SA60151TH`) has exactly one size (`32A`)
+in its own table, and its mismatched points don't match any of the zip's
+other `SA60151TH`-named piece objects either (AccuMark splits this bra
+piece across several size-cluster objects; none of the other 5 clusters'
+own geometry contains these points) - multi-size grading is refuted, not
+merely unconfirmed. What the points actually are: plotting one mismatched
+`kind=2` record shows a smooth, continuously-connected curve (not
+garbage), and measuring every `kind=2` record against its nearest point
+on each `kind=1` perimeter edge finds a subset with a **near-perfectly
+constant offset** - `aCEFC.tmp` record 8 sits 7877 units (0.79 in) ± 2
+units from perimeter edge record 2, all 23 points; a second production
+piece (`aCF12.tmp`) shows the same pattern at 1576-1581 units ± 44-59.
+Genuine seam-allowance curves, at realistic magnitudes well inside the
+existing `SEAM_OFFSET_MAX` (2 in) - just far larger than the small test
+corpus's seam values and, critically, **curved** (the offset direction
+rotates along the edge) rather than the single axis-aligned/45°-diagonal
+offset `_is_seam_offset()` recognises, which is why distance alone
+doesn't save them. Only a minority of `kind=2` records show this clean a
+match, though (2 of 9 and 2-3 of 10 on the two pieces checked) - the rest
+match their best edge far more loosely, likely compound/corner-spanning
+seams or a distinct, still-unidentified feature. See §12's fuller
+writeup for what would be needed to fix this safely, not attempted this
+pass. Root cause of the *remaining* majority not characterized further;
+together with the confirmed-but-curved subset, this is now the format's
+largest remaining open item by a wide margin, well beyond the narrow
+3-fixture footnote this section used to describe.
 
 **All three small-corpus outliers confirmed to share one identical
 signature [V, confirmed 2026-09-11]**, checked directly rather than
@@ -1005,24 +1016,62 @@ account for:
   before since `tail` failed outright, now 66.28%) since Region B's
   pretable header and the line table's own well-formed byte structure are
   now reachable and marked `identified` for the first time.
-- **A third, still-unexplained problem the fix above immediately
-  surfaced - now the format's largest remaining open item by a wide
-  margin [V, found 2026-09-11, still open]**: even with the line table
-  correctly located, most production blocks' `kind=2` line-table records
-  still don't coincide with the block's own perimeter/internal-line/
-  closing geometry - unlike the runaway bug, these points are individually
-  well-formed, just describing geometry `real` doesn't contain, by large
-  non-uniform deltas that don't fit the seam-offset shape. The unconfirmed
-  hypothesis is that these are another graded size's geometry, since real
-  production pieces are multi-size and every fixture this project's
-  checks were built against is not. `_block_ranges()` still marks these
-  bytes `identified` regardless (the byte *structure* - tags, lengths,
-  point format - genuinely is understood; it's specific point *values*
-  that don't cross-validate, the same "structure known, content role open"
-  distinction this document draws elsewhere, e.g. Region B's own unnamed
-  constants) - so this does not currently cost `coverage_pct` the way the
-  runaway-snapshot bug did, but it is a bigger, deeper open question about
-  what the line table actually stores at production scale. **[?]**
+- **The third problem the fix above surfaced: multi-size grading was the
+  wrong hypothesis, but a real, curved seam-allowance signal was found
+  underneath it [V, investigated 2026-09-11]**. Checked directly against
+  `2303-BD137-PLACED`'s own `aCEFC.tmp` (piece `SA60151TH`): its own size
+  table has exactly **one** size (`32A`), so `graded_outline()` to another
+  size isn't even possible from this object - and its mismatched points
+  don't match any of the zip's *other* `SA60151TH`-named piece objects
+  either (AccuMark splits a bra piece like this into several objects, one
+  per size-cluster, each independently stored - none of the 5 other
+  clusters' own real geometry contains these points). **Multi-size
+  grading is refuted, not just unconfirmed.**
+
+  What the mismatched `kind=2` points actually are, checked on two
+  different production pieces: plotting one record's points in order
+  (`aCEFC.tmp` record 6: 26 points) shows a smooth, continuously-connected
+  curve, not scattered garbage - each step 1000-5000 units, sweeping in
+  one direction, nothing like corrupted data. Measuring every `kind=2`
+  record's points against their nearest point on each `kind=1` perimeter
+  edge record finds a subset with a **near-perfectly constant offset
+  distance**: `aCEFC.tmp` record 8 (23 points) sits a uniform **7877 units
+  (0.79 in) ± 2 units** from perimeter edge record 2, all 23 points;
+  record 9 matches edge record 3 the same way (± 2.3 units). On
+  `SI01040A17`'s `aCF12.tmp`, record 10 (41 points) matches edge record 1
+  at 1576 units ± 44, and record 13 matches edge record 2 at 1581 units
+  ± 59. These are genuine, real **seam-allowance/cut-line curves** -
+  realistic magnitudes (0.79-1.99 in, well inside the existing
+  `SEAM_OFFSET_MAX` = 2 in tolerance), just far larger than the small
+  `CAP-*`/`TASK2-SEAM1CM` test corpus's seam values and, critically,
+  **curved** (the offset direction rotates continuously along the edge)
+  rather than the single axis-aligned/45°-diagonal per-corner offset
+  `check_line_table`'s `_is_seam_offset()` was built to recognise. That
+  function only accepts `dx == 0 or dy == 0 or abs(dx) == abs(dy)` - a
+  perpendicular offset from a curved edge essentially never satisfies
+  that, no matter how small the actual distance is, which is why these
+  points are rejected even though `SEAM_OFFSET_MAX` alone would allow
+  them.
+
+  **Not the whole story, though**: only a minority of `kind=2` records
+  (2 of 9 checked on `aCEFC.tmp`, 2-3 of 10 on `aCF12.tmp`) show this
+  clean single-edge match: 2-58 unit standard deviation. The rest match
+  their best `kind=1` edge with stdev in the hundreds to thousands -
+  likely records that span a compound edge crossing a corner (where a
+  single edge's own offset direction doesn't apply across the whole
+  record) or a genuinely different feature (facing, a second seam layer,
+  foam boundary) not yet identified. **Not fixed this pass**: generalising
+  `_is_seam_offset` to accept a curved, any-direction offset is a
+  real, tractable next step for the confirmed subset, but doing it safely
+  needs a per-record consistency requirement (not just a looser per-point
+  distance check) to avoid weakening Oracle C's corruption detection on
+  these exact production fixtures, and it would not resolve the remaining
+  majority of records anyway - left open rather than shipped half-solved.
+  `_block_ranges()` still marks these bytes `identified` regardless (byte
+  *structure* - tags, lengths, point format - is understood; it's specific
+  point *values* that don't yet cross-validate, the same "structure known,
+  content role open" distinction this document draws elsewhere) - so none
+  of this costs `coverage_pct` the way the runaway-snapshot bug did. **[?]**
 - **`_block_ranges()`'s Region-C marking bug, fixed [V, found and fixed
   2026-09-11]**: before this fix, a snapshot's byte range was marked
   `identified` as soon as it was computed, with no check that the

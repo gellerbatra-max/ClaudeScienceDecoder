@@ -1,5 +1,43 @@
 # Changelog
 
+## v2.0 (2026-09-11, continued once more) - three coverage regressions found and fixed
+
+User asked to check `unknown_bytes`/`coverage_pct` for regressions across
+the Region-C fix, rather than trust the improvement at a glance. Compared
+every `CAP-C*` fixture's `accumark_pds.coverage()` output byte-for-byte
+between the pre-fix commit (`21ee87c`, checked out into a throwaway git
+worktree) and the fix (`90c7e4d`) - not from memory of earlier terminal
+output.
+
+**Result: coverage improved on every fixture except three, which each
+regressed by exactly +2 unknown bytes** (`CAP-C41-NOTCH-WIDTH` 40->42,
+`CAP-C62-DART` 74->76, `CAP-C14-ANNOT` 25->27). Root cause, found by
+diffing the exact unknown byte-runs before/after: `parse_region_c`'s three
+marker fields between snapshot1 and snapshot2 (`marker1`, `marker2`,
+`marker3` - see the Region-C fix entry below) were never explicitly marked
+'identified' in `_block_ranges()` (`coverage()`'s byte-range accounting).
+Before the fix, the buggy snapshot1 over-read on these three fixtures
+happened to run far enough to swallow marker1's bytes as an accidental
+side effect, so they read as "identified" purely by coincidence. The fix
+correctly stops snapshot1 at its real end, so those marker bytes are no
+longer accidentally covered - and since nothing explicitly claimed them,
+they correctly fell to 'unknown'. Not a real defect in the fix itself (the
+bytes were never legitimately "identified" to begin with, just
+coincidentally swept up), but worth completing properly rather than
+leaving as a regression.
+
+**Fixed**: `parse_region_c` now also returns `marker1_offset`,
+`marker2_offset`, `marker3_offset`/`marker3_size` (not just each marker's
+value); `_block_ranges()` marks all three ranges 'identified' - the same
+"identified but role unexplained" status already given to Region B's own
+unnamed constants (FORMAT_SPEC.md's existing convention). Re-ran the same
+old-vs-new comparison: **zero regressions, every fixture improved**, e.g.
+`CAP-C00-BASE` 27->22 unknown bytes (98.25%->98.57%), `CAP-C30-SEAM-UNEVEN`
+169->16 (95.09%->99.54%) - the coverage improvement from the Region-C fix
+itself, now complete rather than partially offset by these three marker
+gaps. `robustness/run.py` still 303/303; `dataset_test.py` still 36/36;
+`selftest.py` SELFTEST PASS.
+
 ## v2.0 (2026-09-11, continued again) - the last Oracle-C gap closed: 303/303
 
 The Region-C fix below left 9 Oracle-C cases behind, all on `CAP-C00-BASE` -

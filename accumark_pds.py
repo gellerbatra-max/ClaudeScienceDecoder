@@ -379,14 +379,16 @@ def parse_region_c(d, o, n_perimeter, category_name):
     snap1, p = parse_point_snapshot(d, o, n_perimeter)
     def _next_nonzero_u32(p):
         while p+4 <= len(d) and u32(d, p) == 0: p += 4
-        return u32(d, p), p+4
-    marker1, p = _next_nonzero_u32(p)      # zero-padding before marker1 varies (CAP-C00-BASE [V])
-    marker2, p = _next_nonzero_u32(p)
-    marker3, p2 = u16(d, p), p+2           # [V] u16, value 1 on every sample checked; role unknown
+        return u32(d, p), p, p+4           # value, start offset, end offset
+    marker1, marker1_off, p = _next_nonzero_u32(p)   # zero-padding before marker1 varies (CAP-C00-BASE [V])
+    marker2, marker2_off, p = _next_nonzero_u32(p)
+    marker3_off, p2 = p, p+2
+    marker3 = u16(d, p)                    # [V] u16, value 1 on every sample checked; role unknown
     if p2+6 <= len(d) and COORD_LO < i32(d, p2+2) < COORD_HI and COORD_LO < i32(d, p2+6) < COORD_HI:
-        p = p2
+        marker3_size, p = 2, p2
     else:
-        marker3, p = _next_nonzero_u32(p)  # fallback: the old (pre-fix) reading
+        marker3, marker3_off, p = _next_nonzero_u32(p)  # fallback: the old (pre-fix) reading
+        marker3_size = 4
     snap2, p = parse_point_snapshot(d, p, n_perimeter)
     name_bytes = category_name.encode('latin1')
     name_at = d.find(name_bytes, p, p+400)
@@ -394,6 +396,13 @@ def parse_region_c(d, o, n_perimeter, category_name):
     end = name_at + len(name_bytes) if name_at != -1 else p
     return dict(snapshot1=snap1, marker1=marker1, snapshot2=snap2, marker2=marker2,
                 marker3=marker3,
+                # offsets/widths of the three marker fields themselves (not
+                # just their values) - so coverage()'s _block_ranges can mark
+                # these known-but-unexplained-role bytes 'identified' rather
+                # than leaving them 'unknown' now that the snapshots
+                # surrounding them no longer accidentally over-read into them.
+                marker1_offset=marker1_off, marker2_offset=marker2_off,
+                marker3_offset=marker3_off, marker3_size=marker3_size,
                 unclassified_gap_offset=p, unclassified_gap=unclassified_gap,
                 name_echo_offset=name_at, end=end), end
 
@@ -586,6 +595,17 @@ def _block_ranges(d, m, objs, pstart, block_end, tail):
         # 'plain turn' record).
         r.append((rc['snapshot1'][0]['offset'], rc['snapshot1'][-1]['offset']+rc['snapshot1'][-1]['size']))
         r.append((rc['snapshot2'][0]['offset'], rc['snapshot2'][-1]['offset']+rc['snapshot2'][-1]['size']))
+        # the three marker fields between the two snapshots: known position
+        # and value, role still unexplained ([?], FORMAT_SPEC.md §11) - the
+        # same "identified but not yet understood" status already given to
+        # Region B's own unnamed constants, so identified here on the same
+        # basis. Previously these bytes were only 'identified' by accident,
+        # swept up by the pre-fix snapshot boundary bug overshooting into
+        # them; now that the boundaries are correct, mark them explicitly
+        # rather than let them read as regressed 'unknown' coverage.
+        r.append((rc['marker1_offset'], rc['marker1_offset']+4))
+        r.append((rc['marker2_offset'], rc['marker2_offset']+4))
+        r.append((rc['marker3_offset'], rc['marker3_offset']+rc['marker3_size']))
         if rc['name_echo_offset'] != -1:
             r.append((rc['name_echo_offset'], rc['end']))
         for rec in tail['line_records']:

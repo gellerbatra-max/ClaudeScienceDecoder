@@ -13,7 +13,7 @@ import verify_capture as vc
 fails = []
 
 print('-- decoder version')
-ok = ap.__version__ == am.__version__ == '2.0'
+ok = ap.__version__ == am.__version__ == '3.0'
 print(f"   {'ok ' if ok else 'FAIL'} accumark_pds={ap.__version__} accumark_marker={am.__version__}")
 if not ok: fails.append('decoder version mismatch')
 

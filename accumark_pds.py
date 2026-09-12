@@ -15,7 +15,7 @@ from accumark_errors import (AccuMarkError, NotAnAccuMarkZip, NestedArchive,
     NotAnAccuMarkObject, TruncatedObject, WrongObjectType, NoSuchObject,
     AmbiguousObject, DecodeError)
 
-__version__ = '2.0'
+__version__ = '3.0'
 MAGIC = b'XGGT IXPORT DB5.'
 UNITS_PER_INCH = 10000.0          # coordinates are int32 in 1e-4 inch
 
@@ -111,7 +111,7 @@ def parse_object_records(d, start, n, n_rows=5):
     return recs
 
 # internal point lists after the perimeter: term(u16) tag(u16) count(u16) flag(u32)
-INTERNAL_TAGS = {0x47: 'grain', 0x44: 'drill', 0x49: 'cutout'}
+INTERNAL_TAGS = {0x47: 'grain', 0x44: 'drill', 0x49: 'cutout', 0x48: 'seam_curve', 0x4d: 'mirror'}
 # 0x0000/0x47 grain line, 0xFFFF/0x44 drill points. 0xFFFF/0x49 was first seen
 # on a closed circle (CAP-C60-CUTOUT, "cut-out") and the name stuck, but
 # CAP-C12-TWOINTLINES [V] shows it's really just "generic user-drawn internal
@@ -128,6 +128,35 @@ INTERNAL_TAGS = {0x47: 'grain', 0x44: 'drill', 0x49: 'cutout'}
 # capture: 25 and 49 points of the same circle) - the *binary* point count
 # (25) is the one that matches this list's own `count` field, not either
 # DXF layer number by coincidence.
+#
+# [V, added v3.0] 0x4d is the MIRROR/fold line: on every corpus fixture that
+# has one (CAP-C61-MIRROR, every OUCF fold-on-fold piece), its exactly-2-point
+# list coincides exactly (same coordinates, to the unit) with mirror_lines()'s
+# own independently-computed axis - two unrelated code paths agreeing this
+# strongly is treated as confirmation, not coincidence.
+#
+# [?, added v3.0] 0x48 was the format's largest open item - the "kind=2
+# bulge" investigation (see check_line_table's docstring, FORMAT_SPEC.md
+# SS11/SS12, CHANGELOG.md v2.0 #17-#26). Every point the bulge investigation
+# ever measured as "close to real geometry but not matching it" on the
+# moulded bra-cup pieces (aCEFC.tmp, aCF3B.tmp, aCF10.tmp, and every other
+# SA60151TH/SI01040A17 size-cluster object) turns out to have a byte-exact
+# (x,y) copy in one of these 0x48 lists - the walker simply never reached
+# them: `_is_internal_header` didn't recognise the tag, so the chain stopped
+# at the grain line and everything from here on read as "unexplained kind=2
+# echo of ungrounded geometry" instead of "the internal line this kind=2
+# record already echoes." Registering the tag alone (verified corpus-wide,
+# see kind2_survey.py) drops kind=2 points not matching `real` from 4207 to
+# 377 out of 12992 and raises check_line_table's pass rate on blocks with a
+# tail from 59/131 to 101/131 - the "clean plateau at a round seam-allowance
+# width, bulging by up to 2.6in in between" shape the earlier investigation
+# characterised was two different lines (an offset seam-line segment plus
+# this internal curve) sharing one merged kind=2 record. Provisionally named
+# `seam_curve` (the offsets it sits at - 0.787/1.181/1.575/1.969/2.756in on
+# this corpus - are round metric seam-allowance widths, and lining objects
+# read almost exactly 2x their matching shell object's offset, consistent
+# with a drawn sew/molding-placement line), but the exact PDS feature is not
+# yet pinned down by a controlled capture - see CAPTURE_PLAN.md CAP-C33.
 
 def _internal_list_label(d, o):
     """After a list's points: a u32 terminator, zero padding, then the 3-byte
@@ -152,7 +181,18 @@ def _internal_list_label(d, o):
     return None, o
 
 def _is_internal_header(d, o):
-    return o+10 <= len(d) and u16(d,o) in (0, 0xFFFF) and u16(d,o+2) in INTERNAL_TAGS
+    """[V, tightened v3.0] Added the u16@+6==1 check: re-surveyed every
+    genuine internal-list header in the corpus (all 5 tags, 157+ samples) and
+    found this field is 1 on every single one, regardless of tag - the field
+    at +8 varies meaningfully by tag instead (0 on grain/drill/cutout/
+    seam_curve, 0xFFFF on mirror) so is left unconstrained here. Costs
+    nothing on any known-good fixture (verified via corpus-wide diff before/
+    after) and closes off one more way a coincidental byte pattern elsewhere
+    in the file could be mistaken for a list header - on top of, not instead
+    of, _next_internal_header's own count-walk-then-label validation for the
+    harder case of bridging a real gap between two chains."""
+    return (o+10 <= len(d) and u16(d,o) in (0, 0xFFFF)
+            and u16(d,o+2) in INTERNAL_TAGS and u16(d,o+6) == 1)
 
 def _looks_like_field_block(d, o):
     """Cheap prefilter for 'a new piece_record's own metadata starts here' -

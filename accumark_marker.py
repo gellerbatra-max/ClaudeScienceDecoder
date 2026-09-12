@@ -26,7 +26,7 @@ from accumark_errors import (AccuMarkError, NotAnAccuMarkZip, NestedArchive,
 u16, i16, i32, u32 = ap.u16, ap.i16, ap.i32, ap.u32
 def f64(d, o): return struct.unpack_from('<d', d, o)[0]
 
-__version__ = '2.0'
+__version__ = '3.0'
 MAGIC = b'XGGT IXPORT DB5.'
 TRAILER = 396
 OBJECT_TYPES = {20: 'piece', 12: 'model', 13: 'order', 9: 'marker',

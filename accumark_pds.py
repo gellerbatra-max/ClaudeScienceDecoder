@@ -194,6 +194,20 @@ def _is_internal_header(d, o):
     return (o+10 <= len(d) and u16(d,o) in (0, 0xFFFF)
             and u16(d,o+2) in INTERNAL_TAGS and u16(d,o+6) == 1)
 
+
+def _is_valid_internal_list(d, o):
+    """Require a complete point walk and the list's own trailing Lnn label."""
+    if not _is_internal_header(d, o): return False
+    cnt = u16(d, o+4)
+    if cnt > 500: return False
+    p = o+10
+    for _ in range(cnt):
+        if p+14 > len(d): return False
+        point = parse_point(d, p)
+        if point['size'] < 14 or p+point['size'] > len(d): return False
+        p += point['size']
+    return _internal_list_label(d, p)[0] is not None
+
 def _looks_like_field_block(d, o):
     """Cheap prefilter for 'a new piece_record's own metadata starts here' -
     the same test summarize()'s own brute-force scan applies before the full
@@ -243,16 +257,7 @@ def _next_internal_header(d, start, limit):
     match, not a real format constraint."""
     for o in range(start, limit):
         if _looks_like_field_block(d, o): return None
-        if not _is_internal_header(d, o): continue
-        cnt = u16(d, o+4)
-        if cnt > 500: continue
-        p = o + 10
-        ok = True
-        for _ in range(cnt):
-            if p+14 > len(d): ok = False; break
-            p += parse_point(d, p)['size']
-        if ok and _internal_list_label(d, p)[0] is not None:
-            return o
+        if _is_valid_internal_list(d, o): return o
     return None
 
 # ---------------------------------------------------------- point sequences
@@ -684,7 +689,7 @@ def decode_piece_block(d, field_off=None):
     internal = []; internal_kinds = []; internal_labels = []; internal_closed = []
     internal_terminator_offsets = []; internal_header_offsets = []
     internal_label_end_offsets = []; o = after
-    while _is_internal_header(d, o):
+    while _is_valid_internal_list(d, o):
         internal_header_offsets.append(o)
         kind = INTERNAL_TAGS[u16(d,o+2)]; cnt = u16(d,o+4); o += 10
         seg = []
@@ -719,7 +724,7 @@ def decode_piece_block(d, field_off=None):
         # label bytes stay covered without ever covering a real gap).
         internal_label_end_offsets.append(past if label is not None else term_off+4)
         if label is not None:
-            if _is_internal_header(d, past):
+            if _is_valid_internal_list(d, past):
                 o = past; continue
             # [V, added 2026-09-11] no header immediately follows this
             # list's own label, but a LATER one may still belong to this
@@ -738,6 +743,8 @@ def decode_piece_block(d, field_off=None):
     # doesn't otherwise recognise (e.g. a stale pre-edit record predating
     # some feature) simply gets tail=None rather than raising.
     tail = None
+    segments = []
+    line_geometry = []
     try:
         pretable_off, table_start = _locate_tail(d, o)
         pretable = parse_pretable_header(d, pretable_off)
@@ -757,6 +764,8 @@ def decode_piece_block(d, field_off=None):
         region_c, region_c_end = parse_region_c(
             d, pretable_off+PRETABLE_HEADER_SIZE, n_snap, m['name'], table_start)
         line_records, tail_end = parse_line_table(d, table_start)
+        segments = parse_segments(d, o, pretable_off)
+        line_geometry = parse_line_geometry(d, o, pretable_off)
         tail = dict(pretable=pretable, region_c=region_c, table_start=table_start,
                     line_records=line_records, tail_end=tail_end)
     except Exception as e:
@@ -767,6 +776,8 @@ def decode_piece_block(d, field_off=None):
                 internal_terminator_offsets=internal_terminator_offsets,
                 internal_header_offsets=internal_header_offsets,
                 internal_label_end_offsets=internal_label_end_offsets,
+                segments=segments if tail and 'error' not in tail else [],
+                line_geometry=line_geometry if tail and 'error' not in tail else [],
                 block_end=o, tail=tail)
 
 def decode(data):
@@ -1051,12 +1062,152 @@ def coverage(data, summary=None):
     return dict(counts=counts, total=len(d), unknown_runs=runs,
                 coverage_pct=round(100*(1-counts.get('unknown',0)/len(d)), 2))
 
-def check_line_table(b):
+def _line_intersection(a, b, c, d):
+    """Intersection of infinite lines a-b and c-d, or None if parallel."""
+    ax, ay = a; bx, by = b; cx, cy = c; dx, dy = d
+    abx, aby = bx-ax, by-ay
+    cdx, cdy = dx-cx, dy-cy
+    den = abx*cdy - aby*cdx
+    scale = max(1.0, abs(abx), abs(aby), abs(cdx), abs(cdy))
+    if abs(den) <= 1e-12*scale*scale: return None
+    t = ((cx-ax)*cdy - (cy-ay)*cdx) / den
+    return ax+t*abx, ay+t*aby
+
+
+def seam_line_points(block):
+    """Derive AccuMark's cut-line candidates from perimeter edge attributes.
+
+    The returned list has one entry per seamed kind-1 edge. Each entry carries
+    rounded integer coordinates plus the geometric role that produced each
+    point. Coordinates remain in native 1e-4-inch units.
+    """
+    tail = block.get('tail') or {}
+    edge_records = [r for r in tail.get('line_records', [])
+                    if r.get('kind') == 1 and len(r.get('points', [])) >= 2]
+    if not edge_records: return []
+
+    segments = block.get('segments', [])
+    perim = [(p['x'], p['y']) for p in block.get('perimeter', [])]
+    area2 = sum(x1*y2-x2*y1 for (x1,y1),(x2,y2) in
+                zip(perim, perim[1:]+perim[:1])) if len(perim) >= 3 else -1
+    # Clockwise outlines have their exterior on the left of travel.
+    normal_sign = 1.0 if area2 < 0 else -1.0
+
+    edges = []
+    def geometry_amount(value):
+        # The attribute is an integer in 1e-4 in, but metric UI values are
+        # converted before that quantization. Recover only an unmistakable
+        # 0.1 mm setting; otherwise retain the stored value exactly.
+        mm = value * 25.4 / UNITS_PER_INCH
+        metric = round(mm, 1)
+        return metric * UNITS_PER_INCH / 25.4 if abs(mm-metric) <= 0.002 else value
+
+    for i, rec in enumerate(edge_records):
+        coords = [(p['x'], p['y']) for p in rec['points']]
+        attr = segments[i] if i < len(segments) else None
+        begin = attr['seam_begin'] if attr and attr.get('seam_flag') else 0
+        end = attr['seam_end'] if attr and attr.get('seam_flag') else 0
+        geom_begin, geom_end = geometry_amount(begin), geometry_amount(end)
+        lengths = [((b[0]-a[0])**2 + (b[1]-a[1])**2)**0.5
+                   for a, b in zip(coords, coords[1:])]
+        total = sum(lengths) or 1.0
+        walked = 0.0
+        lines = []
+        for j, (a, c) in enumerate(zip(coords, coords[1:])):
+            length = lengths[j] or 1.0
+            t0, t1 = walked/total, (walked+lengths[j])/total
+            amount0 = geom_begin + (geom_end-geom_begin)*t0
+            amount1 = geom_begin + (geom_end-geom_begin)*t1
+            nx = normal_sign * -(c[1]-a[1]) / length
+            ny = normal_sign *  (c[0]-a[0]) / length
+            lines.append(((a[0]+nx*amount0, a[1]+ny*amount0),
+                          (c[0]+nx*amount1, c[1]+ny*amount1)))
+            walked += lengths[j]
+        interior = []
+        for left, right in zip(lines, lines[1:]):
+            cross = _line_intersection(left[0], left[1], right[0], right[1])
+            if cross is None:
+                cross = ((left[1][0]+right[0][0])/2,
+                         (left[1][1]+right[0][1])/2)
+            interior.append(cross)
+        edges.append(dict(index=rec['idx'], attr=attr, begin=begin, end=end,
+                          lines=lines, start_foot=lines[0][0],
+                          interior=interior, end_foot=lines[-1][1]))
+
+    def junction(left, right):
+        cross = _line_intersection(left['lines'][-1][0], left['lines'][-1][1],
+                                   right['lines'][0][0], right['lines'][0][1])
+        if cross is not None: return cross
+        return ((left['end_foot'][0]+right['start_foot'][0])/2,
+                (left['end_foot'][1]+right['start_foot'][1])/2)
+
+    # AccuMark drops a short zero-allowance edge when the offset lines on
+    # either side intersect before that edge can contribute to the cut line.
+    # Preserve that intersection as a candidate for both neighboring seamed
+    # edges. The distance gate prevents remote infinite-line crossings from
+    # becoming plausible points.
+    consumed_before = {}
+    consumed_after = {}
+    seamed = [i for i, edge in enumerate(edges)
+              if edge['begin'] != 0 or edge['end'] != 0]
+    for pos, i in enumerate(seamed):
+        j = seamed[(pos+1) % len(seamed)] if seamed else i
+        skipped = []
+        k = (i+1) % len(edges)
+        while k != j:
+            skipped.append(k); k = (k+1) % len(edges)
+        if not skipped: continue
+        cumulative = 0.0
+        for target in skipped[1:] + [j]:
+            previous = (target-1) % len(edges)
+            cumulative += sum((((b[0]-a[0])**2 + (b[1]-a[1])**2)**0.5)
+                              for a, b in edges[previous]['lines'])
+            allowance_reach = abs(edges[i]['end']) + abs(edges[target]['begin']) + 2
+            if cumulative > allowance_reach: break
+            cross = _line_intersection(edges[i]['lines'][-1][0], edges[i]['lines'][-1][1],
+                                       edges[target]['lines'][0][0], edges[target]['lines'][0][1])
+            if cross is None: continue
+            consumed_after.setdefault(i, []).append(cross)
+            if target == j: consumed_before.setdefault(j, []).append(cross)
+
+    out = []
+    n = len(edges)
+    for i, edge in enumerate(edges):
+        if edge['begin'] == 0 and edge['end'] == 0: continue
+        candidates = [('previous_junction', junction(edges[(i-1) % n], edge)),
+                      ('start_foot', edge['start_foot'])]
+        candidates.extend(('consumed_edge_junction', p)
+                          for p in consumed_before.get(i, []))
+        candidates.extend(('interior_miter', p) for p in edge['interior'])
+        candidates.extend([('end_foot', edge['end_foot']),
+                           ('next_junction', junction(edge, edges[(i+1) % n]))])
+        candidates.extend(('consumed_edge_junction', p)
+                          for p in consumed_after.get(i, []))
+        points = []
+        for role, (x, y) in candidates:
+            xy = (int(round(x)), int(round(y)))
+            if not points or points[-1]['xy'] != xy:
+                points.append(dict(xy=xy, role=role, raw=(x, y)))
+        out.append(dict(edge_index=edge['index'],
+                        segment_name=edge['attr'].get('name') if edge['attr'] else None,
+                        seam_begin=edge['begin'], seam_end=edge['end'], points=points))
+    # Region A also stores the application's chosen cut-line endpoints. They
+    # are independent witnesses for corner styles whose join is not the plain
+    # intersection above (curved/slanted corners in production pieces).
+    for edge, geometry in zip(out, block.get('line_geometry', [])):
+        for role, xy in zip(('stored_cut_line_start', 'stored_cut_line_end'),
+                            geometry['pts']):
+            if not any(p['xy'] == xy for p in edge['points']):
+                edge['points'].append(dict(xy=xy, role=role, raw=xy))
+    return out
+
+
+def classify_line_table(b):
     """Structural consistency check for one decoded block's Region D (line
     table), independent of coverage(): every table point must coincide with
     a point this module already decoded elsewhere in the SAME block
-    (perimeter / closing / internal-line). Returns True/False - see
-    verify_capture.py's `line_table_consistent` field.
+    (perimeter / closing / internal-line). Returns a structured per-record,
+    per-point result; check_line_table() preserves the historical bool API.
 
     [V] Two count-based checks were tried and dropped as invalid rather than
     kept as false failures: "one kind-1 record per numbered (id != -1)
@@ -1074,25 +1225,15 @@ def check_line_table(b):
     points nor its grain line - a virtual/mirrored corner not otherwise
     stored in the piece, still unexplained ([?]).
 
-    [V] Seam-allowanced pieces (CAP-C30/C31, TASK2-SEAM1CM) add one kind-2
-    record per seam-allowanced edge, n_points=4: [mitered corner at this
-    edge's start, plain offset at start, plain offset at end, mitered corner
-    at end]. None of these 4 points are raw stored geometry - they are the
-    cut line, each one a real perimeter corner moved by a uniform amount
-    along x, y, or both (the seam allowance; a mitered corner moves on both
-    axes, a plain offset on one) - so they cannot appear in `real` above.
-    Recognised structurally rather than by re-deriving the exact seam value:
-    a bad point is accepted if some real point is within +-SEAM_OFFSET_MAX
-    on both axes with an integer offset that is 0 on at least one axis, or
-    equal in magnitude on both (the diagonal/mitered case). This is a shape
-    test, not a coincidence, so it still rejects an unrelated stray point.
-    Confirmed this way on TASK2-SEAM1CM's uniform 1 cm seam; still returns
-    False ([?]) on CAP-C30-SEAM-UNEVEN/CAP-C31-SEAM-TAPER, whose *uneven*
-    seam makes a shared corner's miter the intersection of two differently-
-    offset edges (e.g. dx=-3934,dy=-66 - neither axis-aligned nor diagonal),
-    not a simple per-corner offset; that needs the corner's two adjacent
-    seam_begin/seam_end values threaded through to re-derive properly, which
-    is Phase B work, not a parser bug.
+    [V, corrected 2026-09-12] Seam-allowanced pieces add numbered kind-2
+    cut-line records. `seam_line_points()` derives their expected points from
+    the owning block's tag-0x48/tag-0x4d segment attributes: signed chord
+    offsets, linear begin/end taper, intersections of adjacent offset lines,
+    zero-offset corner/foot candidates, and consumed short-edge
+    intersections. The exact model reproduces the controlled TASK2/C30/C31
+    numbered points to at most one native coordinate unit. The historical
+    axis/diagonal and curved-distance tests remain labelled fallbacks rather
+    than being folded into the exact result.
 
     [V, added 2026-09-11] a table point carrying a tag-0x07 child (a notch
     attribute block, §10.3) has its own `c` field set to the Notch Type
@@ -1247,11 +1388,25 @@ def check_line_table(b):
     `CURVED_SEAM_STDEV_MAX`), not a new category of weakness this
     specific check introduced."""
     tail = b.get('tail')
-    if not tail or 'error' in tail or not tail.get('line_records'): return False
+    if not tail or 'error' in tail or not tail.get('line_records'):
+        return dict(ok=False, seam_model=[], records=[], reason='missing line table')
     real = {(p['x'], p['y']) for p in b['perimeter']}
     if b.get('closing'): real.add((b['closing']['x'], b['closing']['y']))
     for seg in b['internal_lines']:
         for p in seg: real.add((p['x'], p['y']))
+    seam_model = seam_line_points(b)
+    seam_candidates = [dict(edge_index=edge['edge_index'], role=p['role'], xy=p['xy'])
+                       for edge in seam_model for p in edge['points']]
+    def _nearest_seam_model(pt):
+        if not seam_candidates: return None
+        best = min(seam_candidates,
+                   key=lambda p: max(abs(pt[0]-p['xy'][0]), abs(pt[1]-p['xy'][1])))
+        residual = max(abs(pt[0]-best['xy'][0]), abs(pt[1]-best['xy'][1]))
+        return dict(edge_index=best['edge_index'], role=best['role'],
+                    expected=best['xy'], residual=residual)
+    def _match_seam_model(pt):
+        match = _nearest_seam_model(pt)
+        return match if match and match['residual'] <= 2 else None
     notch_type_by_xy = {(p['x'], p['y']): p['notch_type'] for p in b['perimeter']
                          if p['notch_type'] is not None}
     def _is_seam_offset(pt):
@@ -1402,9 +1557,23 @@ def check_line_table(b):
             if hi - lo > len(best): best = frozenset(range(lo, hi))
             start = hi
         return best
+    record_results = []
+    table_ok = True
+    coordinate_counts = {}
+    for record in tail['line_records']:
+        if record['kind'] != 2: continue
+        for point in record['points']:
+            xy = (point['x'], point['y'])
+            coordinate_counts[xy] = coordinate_counts.get(xy, 0) + 1
     for rec in tail['line_records']:
         pts = rec['points']
-        if not pts: return False
+        record_result = dict(idx=rec['idx'], kind=rec['kind'], points=[])
+        record_results.append(record_result)
+        if not pts:
+            record_result['ok'] = False
+            record_result['reason'] = 'empty record'
+            table_ok = False
+            continue
         # the ORIGINAL per-point axis/diagonal leniency stays scoped to
         # numbered points only (kind=2 records are homogeneous - confirmed
         # above - so the first point decides it for the whole record).
@@ -1428,21 +1597,54 @@ def check_line_table(b):
         curved_indices = None                # computed lazily, at most once
         for idx, tp in enumerate(pts):
             pt = (tp['x'], tp['y'])
+            seam_match = None
+            accepted = True
             if pt in real:
-                pass
+                classification = 'stored_geometry'
+            elif rec['kind'] == 2 and (seam_match := _match_seam_model(pt)):
+                classification = 'seam_model_exact'
             elif is_numbered_seam and _is_seam_offset(pt):
-                pass
+                classification = 'axis_or_diagonal_fallback'
             elif curved_eligible:
                 if curved_indices is None:
                     curved_indices = _curved_seam_trimmed_indices(pts)
                 if idx not in curved_indices:
-                    return False
+                    classification = 'unexplained'
+                    accepted = False
+                    table_ok = False
+                else:
+                    classification = 'curved_offset_fallback'
             else:
-                return False
+                classification = 'unexplained'
+                accepted = False
+                table_ok = False
+            if not accepted and rec['kind'] == 2:
+                if coordinate_counts.get(pt, 0) > 1:
+                    classification = 'corner_semantics_unresolved'
+                else:
+                    near_match = _nearest_seam_model(pt)
+                    if near_match and near_match['residual'] <= 100:
+                        classification = 'seam_model_near'
+                        seam_match = near_match
             has_notch_tag = any(tag == 0x07 for tag, _ in tp['children'])
+            notch_ok = True
             if has_notch_tag and pt in notch_type_by_xy and tp['c'] != notch_type_by_xy[pt]:
-                return False
-    return True
+                notch_ok = False
+                table_ok = False
+            point_result = dict(x=pt[0], y=pt[1], id=tp['a'],
+                                classification=classification,
+                                ok=accepted and notch_ok,
+                                child_tags=[tag for tag, _ in tp['children']])
+            if seam_match: point_result['seam_match'] = seam_match
+            if not notch_ok: point_result['notch_type_match'] = False
+            record_result['points'].append(point_result)
+        record_result['ok'] = all(p['ok'] for p in record_result['points'])
+    return dict(ok=table_ok, seam_model=seam_model, records=record_results)
+
+
+def check_line_table(b):
+    """Return the historical bool line-table consistency result."""
+    return classify_line_table(b)['ok']
 
 def check_region_c(b):
     """Structural consistency check for Region C's two perimeter snapshots -
@@ -1541,7 +1743,7 @@ def parse_segments(d, start=0, end=None):
     3-byte ASCII label 'L%02d' that follows a field group is that group's
     line name, so the label preceding a field group names the *previous*
     record.  Attribute-record fields:
-        [u16 0x0004, u16 0x000E, u16 n_lines]  (first record only)
+        [three u16 preamble fields]             (first record only)
         u16 n_points_on_line
         u16 seam_flag      1 -> seam-allowance pair follows
         u16 c(=1)  u16 d(=0)
@@ -1553,23 +1755,48 @@ def parse_segments(d, start=0, end=None):
     end = len(d) if end is None else end
     labels = [start+m.start() for m in re.finditer(rb'L[0-9][0-9]', d[start:end])]
     recs = []
-    for k, o in enumerate(labels):
-        p = o+3; pre = None
-        if u16(d,p) == 4 and u16(d,p+2) == 0x0e:
-            pre = u16(d,p+4); p += 6
+
+    def parse_fields(p):
+        if p+12 > end: return None
         n_pts, flag, c, e = u16(d,p), u16(d,p+2), u16(d,p+4), u16(d,p+6)
-        if flag not in (0,1) or c != 1 or e != 0 or not 0 < n_pts <= 500: continue
-        p += 8
+        if flag not in (0,1) or c != 1 or e != 0 or not 0 < n_pts <= 500:
+            return None
+        q = p+8
         seam = None
         if flag == 1:
-            seam = (i32(d,p), i32(d,p+4)); p += 8+6
-        if i32(d,p) != 3: continue
-        recs.append(dict(offset=o, fields_offset=o+3, n_lines=pre, n_points=n_pts,
+            if q+8 > end: return None
+            seam = (i32(d,q), i32(d,q+4)); q += 8
+            # Both encodings occur in real exports: most records insert six
+            # zero bytes before the terminator, while some curve attributes
+            # put u32=3 immediately after the seam pair.
+            if q+4 <= end and i32(d,q) == 3:
+                pass
+            elif q+10 <= end and d[q:q+6] == b'\x00'*6 and i32(d,q+6) == 3:
+                q += 6
+            else:
+                return None
+        if q+4 > end or i32(d,q) != 3: return None
+        return n_pts, flag, seam, q+4
+
+    for k, o in enumerate(labels):
+        fields = o+3
+        parsed = parse_fields(fields)
+        preamble = None
+        if parsed is None:
+            parsed = parse_fields(fields+6)
+            if parsed is not None:
+                preamble = (u16(d,fields), u16(d,fields+2), u16(d,fields+4))
+                fields += 6
+        if parsed is None: continue
+        n_pts, flag, seam, record_end = parsed
+        recs.append(dict(offset=o, fields_offset=fields,
+                         n_lines=preamble[2] if preamble else None,
+                         preamble=preamble, n_points=n_pts,
                          seam_flag=flag,
                          seam_begin=seam[0] if seam else None,
                          seam_end=seam[1] if seam else None,
                          name=d[labels[k+1]:labels[k+1]+3].decode() if k+1 < len(labels) else None,
-                         end=p+4))                 # past the u32=3 terminator; feeds coverage()
+                         end=record_end))          # past the u32=3 terminator; feeds coverage()
     return recs
 
 def parse_line_geometry(d, start=0, end=None):
@@ -1671,7 +1898,7 @@ def summarize(data):
         o += 1
         if len(blocks) > 8: break     # matches decode()'s own safety cap
     name_hdr = d[0x15:d.index(b'\x00',0x15)].decode('latin1')
-    segs = parse_segments(d)
+    segs = [seg for block in blocks for seg in block.get('segments', [])]
     if not blocks:
         # v2: a forged/corrupt-but-magic-bearing object can pass decode()'s
         # header check yet contain zero plausible field blocks under this
@@ -1707,7 +1934,8 @@ def summarize(data):
         n_break_rows = b0['meta']['n_break_rows'],
         grade_rules = {o_['id']: o_['deltas'] for o_ in b0['objects']},
         segments   = segs,
-        line_geometry = parse_line_geometry(d),
+        line_geometry = [geometry for block in blocks
+                         for geometry in block.get('line_geometry', [])],
         seam_allow_in = sorted({(s['seam_begin']/UNITS_PER_INCH, s['seam_end']/UNITS_PER_INCH)
                                 for s in segs if s['seam_flag'] == 1}),
         mirror_lines_in = [tuple((x/UNITS_PER_INCH, y/UNITS_PER_INCH) for x, y in ax)

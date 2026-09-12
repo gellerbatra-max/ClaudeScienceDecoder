@@ -366,18 +366,30 @@ jump documented elsewhere for `CAP-C10-PENT` correlates with editing
 than one internal line; a second internal line added before any perimeter
 edit doesn't reproduce it.
 
+### 5.3 Additional internal-list tags **[V / provisional]** (v3)
+
+The same list framing also occurs with tags `0x0048` and `0x004d`.
+`0x0048` accounts for the former moulded-cup kind-2 "bulge": its points are
+byte-identical to the corresponding line-table echo records. It is exposed as
+`seam_curve`, a provisional feature name pending `CAP-C33-INTERNAL-TYPES`.
+`0x004d` is exposed as `mirror`; every observed two-point list coincides with
+the independently decoded fold axis. A candidate list is accepted only after
+walking its declared point count and finding its own valid terminator and
+trailing `Lnn` label. This validation applies to immediate and bridged lists,
+preventing header-shaped seam data from becoming false internal geometry.
+
 ## 6. Line records — name-*terminated*
 
 The 3-byte ASCII label `L%02d` follows the field group it names, so the label
 preceding a group belongs to the *previous* record. Attribute-record fields:
 
 ```
-u16 0x0004, u16 0x000E, u16 n_lines   (first record of the group only)
+[three u16 preamble fields]            (first record of the group only)
 u16 n_points_on_line
 u16 seam_flag            1 -> seam-allowance pair follows
 u16 c (=1), u16 d (=0)
 i32 seam_begin, i32 seam_end          iff seam_flag == 1   (1e-4 inch)
-6 zero bytes                          iff seam_flag == 1
+0 or 6 zero bytes                     iff seam_flag == 1
 u32 0x00000003                        terminator, then zero padding
 ```
 
@@ -386,12 +398,19 @@ point counts that match the DXF layer-1 polylines **on every piece** —
 `2;2;2;2` for the plain rectangles, `4;2;2;2` for the notched one (the
 notched edge), `10;10;8;10` for the circle **[V]**.
 
+The first-record preamble is not constant: production fixtures include
+`(4,6,6)` and `(6,6,1)` as well as `(4,14,n)`. `parse_segments()` therefore
+validates the attribute body at the direct position and, if needed, after a
+six-byte preamble. OUCF curve attributes also demonstrate the compact trailer
+where `u32 3` follows the seam pair immediately instead of after six zeros.
+
 ### 6.1 Seam allowance
 
 Seam allowance is **not** stored as an offset outline on the perimeter. It is
 a per-segment `(begin, end)` int32 pair inside the segment attribute record.
 `TASK2-SEAM1CM` yields `(3937, 3937)` on all four segments = 0.3937 in =
-**1.00 cm**; every other piece has `seam_flag = 0` **[V]**.
+**1.00 cm**. Production seams also carry negative values such as -1969,
+-2362, and -3150 (5, 6, and 8 mm inward sew-line offsets) **[V]**.
 
 **`begin` / `end` semantics [V]** (round 2, `CAP-C30-SEAM-UNEVEN`, Manual –
 Uneven with corner values 1.0 / 0.5 / 0.25 cm and one corner left at 0):
@@ -664,30 +683,25 @@ from Region A (§6.1's `Lnn FE FF 53 00 …` records) — the line table's
 version additionally carries the mitered corner needed to join adjacent
 offset segments cleanly.
 
-On an **uneven/tapered** seam (`CAP-C30-SEAM-UNEVEN`, `CAP-C31-SEAM-TAPER`)
-most corners turn out to be plain single-edge offsets once matched to the
-*correct* adjacent edge, not genuine two-edge miters **[V]** (2026-09-09
-re-analysis, no new capture): the PDS rule that "a value entered at a corner
-sets the `end` of the segment ending there and leaves the next segment's
-`begin` at 0" (§6.1) means a shared corner almost always has exactly one
-nonzero contributing edge. `CAP-C30-SEAM-UNEVEN`'s corner at real point 4
-(`121977,1`) is a clean example: its incoming edge's `seam_end = 984`
-(0.25 cm) reproduces the recorded cut-line point `(122961,1)` exactly
-(`+984,+0`), zero residual. The corner at point 3 matches its incoming
-edge's `seam_end = 1969` to within 25/1 units (rounding, not a modelling
-gap). **One corner remains genuinely unexplained**: the corner at real
-point 2 (`3938,78815`), whose incoming edge (`L00`, vertical, `seam_end =
-3937`) predicts a plain offset to `(1,78815)`, but the recorded cut-line
-point is `(4,78749)` — residual `(dx, dy) = (-3934, -66)` relative to a
-*plain-offset* prediction that already accounts for `seam_end`, not merely
-relative to the unmoved corner. This is the same numeric example this
-document already flagged; re-deriving it did not explain it, only pin down
-that it resists both the "plain single-edge offset" model (which works
-everywhere else) and a naive two-line intersection (which would give
-`(0,78685)`, also not a match). `check_line_table()` recognises only the
-uniform case (an offset that is 0 on one axis, or equal in magnitude on
-both, within `SEAM_OFFSET_MAX`) and still returns `line_table_consistent =
-no` on this file rather than force-fit **[?]**.
+**Exact seam construction [V, v3]:** `seam_line_points(block)` maps segment
+attributes to kind-1 edges in travel order. Each chord is offset by the
+edge's signed allowance; tapered chords use the line through the independently
+computed begin/end feet; adjacent chord lines intersect at curve miters.
+Corner candidates include feet and intersections with adjacent offset lines,
+with zero-allowance neighbors treated as perimeter lines. Short intervening
+edges are consumed while the adjacent allowances reach across them. The model
+reproduces every numbered point in `TASK2-SEAM1CM`, `CAP-C30-SEAM-UNEVEN`, and
+`CAP-C31-SEAM-TAPER` to at most one native unit. In particular, C30's formerly
+open `(4,78749)` point is the intersection of the two tapered lines and computes
+to `(4.2,78749.4)` before rounding. Both controlled fixtures now report
+`line_table_consistent=yes`.
+
+`classify_line_table()` exposes the per-point result while
+`check_line_table()` retains the bool API. Exact stored geometry and exact seam
+model matches run before the labelled axis/diagonal and curved-distance
+fallbacks. Production corner styles that do not use a plain miter remain
+labelled `corner_semantics_unresolved` and fail the bool check; they are not
+silently accepted.
 
 ### 10.2 The mirror piece's virtual 4th corner — located, not fully explained
 
@@ -1244,8 +1258,9 @@ seam/facing allowance with corner miters, generalizing the small
 corpus's own already-known but narrower "uneven seam" item), not a
 decode artifact, corruption, or coincidence specific to one piece family.
 
-**Quantified how much of this the shipped checks now actually recover,
-corpus-wide [V, measured 2026-09-11]**, rather than leaving the picture
+**Historical v2 baseline (superseded by the v3 survey below):** quantified how
+much the heuristic checks recovered corpus-wide [V, measured 2026-09-11],
+rather than leaving the picture
 at "some pieces pass, some don't": across every embedded piece with a
 tail, **7226 kind=2 points still don't match `real` directly**; before
 the interior-window search below, the corner-miter + polyline +
@@ -1356,6 +1371,18 @@ snapshot2's end and the name echo (or the line table, if there is no echo)
 are captured as `unclassified_gap` and are not yet understood **[?]**.
 
 ## 12. Coverage and remaining gaps
+
+The persisted v3 survey (`kind2_survey.py`, 43 ZIPs, 131 decodable blocks,
+12,992 kind-2 points) supersedes the prose-only v2 counts. Current classes are:
+12,615 `stored_geometry`, 294 `seam_model_exact`, 6
+`curved_offset_fallback`, 2 `axis_or_diagonal_fallback`, 68
+`corner_semantics_unresolved`, 2 `seam_model_near`, and 5 `unexplained` row
+occurrences. The 5 rows are four unique coordinates across three INMO/OUMO
+pieces (one coordinate repeats in two stale blocks); none has another
+byte-level copy outside Region D. Overall, 109/131 blocks pass. See
+`robustness/kind2_survey_v3_exact.csv` for every point,
+its child tags, nearest perimeter segment, matched seam role, expected
+coordinate, and residual.
 
 `accumark_pds.coverage()` classifies every byte of a file as `identified`
 (assigned a meaning by this document), `zero_pad`, `residue` (§1's 3-byte
@@ -1657,10 +1684,9 @@ account for:
   disputed `CAP-C40-NOTCH-TYPES` notch — table-point `c` resolved 2026-09-11
   as a third Notch Type copy, no longer open), the table-point `b` field,
   and `0f 0a` triples.
-- §10.1's uneven/tapered cut-line miter point at `CAP-C30-SEAM-UNEVEN`
-  corner 2 (two of the seam's three corners are now explained as plain
-  single-edge offsets; this one resists both that model and a naive
-  two-line intersection).
+- Production corner-style semantics for the 34 unique shared endpoints behind
+  the survey's 68 `corner_semantics_unresolved` rows, plus the two near-model
+  OUCF curve points. The controlled C30/C31 tapered intersections are resolved.
 - **§11's `unclassified_gap` bytes themselves remain unidentified [?]** —
   the raw zero-padded region between Region C's snapshot2 and the name
   echo/line table (§11) is still not marked `identified` by `coverage()`

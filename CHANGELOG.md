@@ -1,5 +1,30 @@
 # Changelog
 
+## v3.0 (2026-09-12) - exact kind-2 seam model and structured survey
+
+- Fixed `parse_segments()` to accept all observed first-record preambles and
+  both seam trailers (immediate `u32 3` and six-zero-padded). Segment and
+  explicit cut-line records are now scoped to their owning piece block.
+- Added `seam_line_points(block)`: signed chord offsets, linear begin/end
+  taper, curve miters, adjacent zero-offset perimeter lines, and consumed
+  short edges. It reproduces the controlled TASK2/C30/C31 numbered cut-line
+  points to at most one native unit; C30 and C31 now pass
+  `line_table_consistent`.
+- Added `classify_line_table()` with per-point labels and match evidence while
+  retaining `check_line_table()` as the existing bool API. Exact checks run
+  before the old axis/diagonal and curved-distance fallbacks.
+- Tightened every internal-list entry path to require a complete count walk,
+  valid terminator, and trailing `Lnn`, matching the bridged-list validation.
+- Expanded `kind2_survey.py` with child tags, seam edge/role, expected point,
+  residual, and nearest perimeter segment. On 43 ZIPs / 131 blocks / 12,992
+  kind-2 points: 12,615 stored geometry, 294 exact seam-model points, 8
+  accepted fallback points, 68 unaccepted production corner-style endpoints,
+  2 near-model curve points, and 5 unexplained rows representing four unique
+  coordinates across three INMO/OUMO pieces (one coordinate repeats in two
+  stale blocks). Passing blocks increase from 101 to 109.
+- Added classification counts to the robustness canonical form and updated the
+  controlled seam expectations and one-unit assertions in `selftest.py`.
+
 ## v2.0 (2026-09-11, continued once more #27) - live AccuMark V17 import validation of the generated dataset (decoder v2 plan's last outstanding verification step)
 
 User asked to run the live AccuMark validation: the one verification step

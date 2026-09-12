@@ -270,5 +270,37 @@ record. See FORMAT_SPEC.md §8 and CAPTURE_LOG.md's CAP-C70-PASTED row.
 Also captured ad hoc: `CAP-C00-BASE` (fresh baseline), `CAP-C02-SAVEAS-NOEDIT`
 (isolates what actually creates the second piece record — it's editing, not
 Save-As or pasting). All 13 round-2 captures pass `selftest.py`'s regression
-table. Remaining items (Phase 1 tail-section byte accounting beyond the
-priority list, Phase 4 notches, Phase 6 primitives) are still open.
+table. The legacy round-2 queue above is closed; the v3 follow-up queue below
+contains the remaining controlled experiments.
+
+---
+
+## V3 follow-up - internal tags and seam corner semantics
+
+Use AccuMark V17 with the `DATA90` storage area. For every capture, export the
+native ZIP and ASTM DXF, run `verify_capture.py`, and add the observed operation
+and result to `CAPTURE_LOG.md`. Do not promote a provisional field name solely
+from correlation.
+
+**Export, no edit:** export `2303-B1-OUMO-1-SP24` and one INMO piece from the
+`Test` area, then one OUCF piece. Record which ASTM layer contains each binary
+`0x48` and `0x4d` internal list (8 internal, 14 sew, 11 cutout, 9/10
+stripe/plaid, or 6 mirror).
+
+**CAP-C33-INTERNAL-TYPES:** one rectangle with one available internal feature
+of each type: plot/draw, sew, mirror, stripe, plaid, alternate grain, and cut
+internal. Establish the tag-to-feature table.
+
+**CAP-C32-SEAM-REMOVE:** remove the seam from C30 and compare against C00.
+
+**CAP-C34-SEAM-CURVED:** controlled curved edge with an even seam, once with a
+positive and once with a negative amount.
+
+**CAP-C35-SEAM-TAPER-TRUE:** one edge with nonzero, unequal values at both ends.
+
+**CAP-C36-SEAM-CORNERS:** identical bases using Slant, Mitered, Squared,
+Extension, Mirrored, and Turnback corners. This is the ground truth needed for
+the survey's `corner_semantics_unresolved` class.
+
+**CAP-C37-SEAM-SWAP:** apply Swap Sew/Cut and also test a fold piece with a seam
+on the fold line.

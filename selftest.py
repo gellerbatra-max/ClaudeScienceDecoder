@@ -73,18 +73,15 @@ if not ok: fails.append('RUL parse')
 print('-- round-2 captures (skipped when a folder is absent)')
 # line_records/line_table_consistent (§10, FORMAT_SPEC.md): one count per
 # piece record (block), from accumark_pds's TLV line-table parser, cross-
-# checked point-by-point against the independently decoded geometry. 'no' is
-# the CORRECT expectation on CAP-C30/C31 (uneven/tapered seam - the shared
-# corner's cut-line miter isn't derived yet, §10.1 [?]) and CAP-C61-MIRROR
-# (references an unexplained virtual 4th-corner point, §10.2 [?]) - these are
-# tracked gaps, not regressions; see FORMAT_SPEC.md.
+# checked point-by-point against independently decoded geometry. The exact
+# seam model now validates CAP-C30/C31's tapered intersections as well.
 R2 = [  # folder, baseline, {fact: want}, structural_change want (or None)
  ('CAP-C00-BASE',          None,               dict(piece_records=1, perimeter_points=4, line_records='5', line_table_consistent='yes'), None),
  ('CAP-C01-REEXPORT',      'CAP-C00-BASE',     dict(piece_records=1, line_records='5', line_table_consistent='yes'), 'no'),
  ('CAP-C02-SAVEAS-NOEDIT', 'CAP-C00-BASE',     dict(piece_records=1, line_records='5', line_table_consistent='yes'), 'no'),
  ('CAP-C50-DRILL1',        'CAP-C00-BASE',     dict(drill_points=1, piece_records=2, line_records='6;5', line_table_consistent='yes'), 'yes'),
- ('CAP-C30-SEAM-UNEVEN',   None,               dict(uneven_seam='yes', cutline_records=3, line_records='8;5', line_table_consistent='no'), None),
- ('CAP-C31-SEAM-TAPER',    'CAP-C00-BASE',     dict(uneven_seam='yes', cutline_records=2, line_records='7;5', line_table_consistent='no'), 'yes'),
+ ('CAP-C30-SEAM-UNEVEN',   None,               dict(uneven_seam='yes', cutline_records=3, line_records='8;5', line_table_consistent='yes'), None),
+ ('CAP-C31-SEAM-TAPER',    'CAP-C00-BASE',     dict(uneven_seam='yes', cutline_records=2, line_records='7;5', line_table_consistent='yes'), 'yes'),
  ('CAP-C20-RULE-DISTINCT', 'CAP-C02-SAVEAS-NOEDIT', dict(graded_points=1, n_break_rows=8, rul_n_rules=1, line_records='5;5', line_table_consistent='yes'), 'yes'),
  ('CAP-C21-RULE-TWO',      'CAP-C20-RULE-DISTINCT', dict(graded_points=2, n_break_rows=8, rul_n_rules=2, line_records='5;5', line_table_consistent='yes'), 'yes'),
  ('CAP-C22-RULE-NONE',     'CAP-C20-RULE-DISTINCT', dict(graded_points=0, n_break_rows=8, line_records='5;5', line_table_consistent='yes'), None),
@@ -119,6 +116,15 @@ for name, base, want, sc in R2:
     if name == 'CAP-C20-RULE-DISTINCT':
         want_d = [(393,-196),(787,-393),(1181,-590),(1574,-787),(1968,-984),(2362,-1181),(2755,-1377),(3149,-1574)]
         if s['grade_rules'].get(1) != want_d: bad.append(f"rule-1 deltas {s['grade_rules'].get(1)}")
+    if name in ('CAP-C30-SEAM-UNEVEN', 'CAP-C31-SEAM-TAPER'):
+        for block in s['blocks']:
+            model = [p for edge in ap.seam_line_points(block) for p in edge['points']]
+            if not model: continue
+            numbered = [tp for record in block['tail']['line_records'] if record['kind'] == 2
+                        for tp in record['points'] if tp['a'] != 65535]
+            residual = max(min(max(abs(tp['x']-p['xy'][0]), abs(tp['y']-p['xy'][1]))
+                               for p in model) for tp in numbered)
+            if residual > 1: bad.append(f'seam-model residual={residual}>1')
     print(f"   {'ok ' if not bad else 'FAIL'} {name:22} {'; '.join(bad) if bad else 'as expected'}")
     if bad: fails.append(f'{name}: ' + '; '.join(bad))
 

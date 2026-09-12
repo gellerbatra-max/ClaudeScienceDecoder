@@ -9,13 +9,9 @@ table printed to stdout.
 Usage:
     python kind2_survey.py [--out kind2_survey.csv] [--zips GLOB ...]
 
-Reuses accumark_pds.decode / check_line_table and accumark_marker.list_zip
-rather than re-implementing parsing. The per-point classification helpers
-inside check_line_table are closures and not importable, so this script
-re-derives the same three geometric primitives (point-to-segment distance,
-nearest-polyline lookup, in-`real`-set membership) standalone - see
-accumark_pds.py's check_line_table docstring for the canonical versions
-these mirror.
+Reuses accumark_pds.decode / classify_line_table and accumark_marker.list_zip
+rather than re-implementing the decoder's exact/fallback classification.
+Distance-to-perimeter and optional DXF comparison remain survey-only context.
 """
 import argparse, csv, glob, math, os, sys
 
@@ -34,14 +30,19 @@ def _seg_dist(pt, a, c):
     return math.hypot(px - (ax + t * dx), py - (ay + t * dy))
 
 
-def _nearest_perimeter_dist(pt, perim):
+def _nearest_perimeter(pt, perim):
     """Point-to-segment distance against the closed perimeter polyline."""
     n = len(perim)
     if n == 0:
-        return None
+        return None, None
     if n == 1:
-        return math.hypot(pt[0] - perim[0][0], pt[1] - perim[0][1])
-    return min(_seg_dist(pt, perim[i], perim[(i + 1) % n]) for i in range(n))
+        return 0, math.hypot(pt[0] - perim[0][0], pt[1] - perim[0][1])
+    pairs = [(i, _seg_dist(pt, perim[i], perim[(i + 1) % n])) for i in range(n)]
+    return min(pairs, key=lambda pair: pair[1])
+
+
+def _nearest_perimeter_dist(pt, perim):
+    return _nearest_perimeter(pt, perim)[1]
 
 
 def default_zip_globs():
@@ -99,7 +100,10 @@ def survey(zip_paths, out_path):
     fields = [
         'zip', 'member', 'piece_name', 'block', 'record_idx', 'record_kind',
         'n_points', 'point_idx', 'a', 'b', 'c', 'e', 'x', 'y', 'in_real',
-        'nearest_perim_units', 'nearest_perim_in', 'nearest_perim_mm',
+        'classification', 'point_ok', 'child_tags',
+        'seam_edge_index', 'seam_role', 'seam_expected_x', 'seam_expected_y',
+        'seam_residual_units', 'seam_begin', 'seam_end',
+        'nearest_perim_segment', 'nearest_perim_units', 'nearest_perim_in', 'nearest_perim_mm',
         'nearest_dxf14_in', 'block_check_line_table',
     ]
     rows_written = 0
@@ -107,6 +111,7 @@ def survey(zip_paths, out_path):
     blocks_passing = 0
     total_k2_points = 0
     not_in_real = 0
+    classification_counts = {}
     per_piece_unexplained = {}
 
     with open(out_path, 'w', newline='', encoding='utf-8') as fh:
@@ -145,8 +150,13 @@ def survey(zip_paths, out_path):
                     perim_in = [(x / UNITS, y / UNITS) for x, y in perim]
                     layer14 = dxf_layer14_polylines(dxf_path, perim_in) if dxf_path else []
 
-                    passed = ap.check_line_table(b)
+                    analysis = ap.classify_line_table(b)
+                    passed = analysis['ok']
                     blocks_passing += int(passed)
+                    classified = {(rr['idx'], pi): pp
+                                  for rr in analysis['records']
+                                  for pi, pp in enumerate(rr['points'])}
+                    seam_edges = {edge['edge_index']: edge for edge in analysis['seam_model']}
                     piece_key = (zpath, o['name'])
                     per_piece_unexplained.setdefault(piece_key, 0)
 
@@ -157,8 +167,13 @@ def survey(zip_paths, out_path):
                         for pi, tp in enumerate(pts):
                             pt = (tp['x'], tp['y'])
                             in_real = pt in real
+                            point_result = classified[(rc['idx'], pi)]
+                            classification = point_result['classification']
+                            classification_counts[classification] = classification_counts.get(classification, 0) + 1
+                            seam_match = point_result.get('seam_match') or {}
+                            seam_edge = seam_edges.get(seam_match.get('edge_index'), {})
                             total_k2_points += 1
-                            d_units = _nearest_perimeter_dist(pt, perim)
+                            nearest_segment, d_units = _nearest_perimeter(pt, perim)
                             d_in = d_units / UNITS if d_units is not None else None
                             d_mm = d_in * 25.4 if d_in is not None else None
                             d14 = None
@@ -175,6 +190,7 @@ def survey(zip_paths, out_path):
                                 d14 = best
                             if not in_real:
                                 not_in_real += 1
+                            if not point_result['ok']:
                                 per_piece_unexplained[piece_key] += 1
 
                             w.writerow([
@@ -182,6 +198,14 @@ def survey(zip_paths, out_path):
                                 rc['idx'], rc['kind'], rc['n_points'], pi,
                                 tp['a'] if tp['a'] != 65535 else -1, tp['b'], tp['c'], tp['e'],
                                 tp['x'], tp['y'], int(in_real),
+                                classification, int(point_result['ok']),
+                                ','.join('0x%02x' % tag for tag in point_result['child_tags']),
+                                seam_match.get('edge_index', ''), seam_match.get('role', ''),
+                                seam_match.get('expected', ('', ''))[0],
+                                seam_match.get('expected', ('', ''))[1],
+                                seam_match.get('residual', ''),
+                                seam_edge.get('seam_begin', ''), seam_edge.get('seam_end', ''),
+                                nearest_segment if nearest_segment is not None else '',
                                 ('%.1f' % d_units) if d_units is not None else '',
                                 ('%.4f' % d_in) if d_in is not None else '',
                                 ('%.2f' % d_mm) if d_mm is not None else '',
@@ -196,6 +220,7 @@ def survey(zip_paths, out_path):
         total_k2_points=total_k2_points,
         not_in_real=not_in_real,
         rows_written=rows_written,
+        classification_counts=classification_counts,
         per_piece_unexplained=per_piece_unexplained,
     )
 
@@ -220,6 +245,9 @@ def main():
     explained = summary['total_k2_points'] - summary['not_in_real']
     print('kind=2 points explained (in real): %d (%.1f%%)' % (explained, 100.0 * explained / tot))
     print('kind=2 points NOT in real       : %d (%.1f%%)' % (summary['not_in_real'], 100.0 * summary['not_in_real'] / tot))
+    print('kind=2 point classifications:')
+    for name, count in sorted(summary['classification_counts'].items(), key=lambda item: (-item[1], item[0])):
+        print('  %-28s %5d (%5.1f%%)' % (name, count, 100.0 * count / tot))
     print('CSV written: %s (%d rows)' % (args.out, summary['rows_written']))
 
     worst = sorted(summary['per_piece_unexplained'].items(), key=lambda kv: -kv[1])[:15]

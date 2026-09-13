@@ -322,7 +322,21 @@ peak itself) - while the straight edges in the NEG sample inset by exactly
 3937 units each, as expected. Added a dedicated `selftest.py` check (not
 the generic R2 fixture list, since this folder holds two zips).
 
-**CAP-C35-SEAM-TAPER-TRUE:** one edge with nonzero, unequal values at both ends.
+**CAP-C35-SEAM-TAPER-TRUE — DONE (2026-09-13).** A fresh rectangle with
+one edge given `1.50cm` at its start corner and `0.50cm` at its end
+corner (`captures/CAP-C35-SEAM-TAPER-TRUE/`) - unlike `CAP-C31`'s taper,
+which ramps from a `begin=0`, both ends here are nonzero and unequal.
+Decoded cleanly: `begin=5906` (1.50cm) and `end=1969` (0.50cm) match the
+two entered values exactly, and since this is the *only* seamed edge on
+the piece there's no adjacent-segment interaction to complicate the
+picture - `begin` is simply the value entered at the edge's own start
+corner, `end` the value at its own end corner, confirmed with zero
+residual by working straight from the offset cutline's own two points
+(`(1,1)` and `(3938,25562)`, each exactly `begin`/`end` units inward of
+the corresponding original corner). `check_line_table()` returns `True`
+and both points classify as `seam_model_exact` - no code changes needed,
+this sharpens the existing begin/end semantics from FORMAT_SPEC.md §6.1
+rather than contradicting them.
 
 **CAP-C36-SEAM-CORNERS — DONE (2026-09-13).** Six identical 1cm-seam
 rectangles (`CAP-C36-{SQUARED,SLANT,MITERED,EXTENSION,MIRRORED,TURNBACK}`,

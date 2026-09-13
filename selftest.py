@@ -107,6 +107,10 @@ R2 = [  # folder, baseline, {fact: want}, structural_change want (or None)
  ('CAP-C12-TWOINTLINES',    None,              dict(perimeter_points=4, internal_points='2', line_records='6;5', line_table_consistent='yes'), None),
  ('CAP-C13-LONGNAME',       None,              dict(piece_records=1, category='CAP-C13-LONGNAME-1234567890ABC', line_records='5', line_table_consistent='yes'), None),
  ('CAP-C14-ANNOT',          None,              dict(annotation='collar', perimeter_points=5, line_records='5', line_table_consistent='yes'), None),
+ # 2026-09-13: begin/end both nonzero and unequal (1.50cm/0.50cm) on the
+ # ONLY seamed edge - no adjacent-segment interaction, the cleanest
+ # possible confirmation of FORMAT_SPEC.md Sec 6.1's begin/end rule.
+ ('captures/CAP-C35-SEAM-TAPER-TRUE', None,     dict(piece_records=2, uneven_seam='yes', cutline_records=1, line_records='6;5', line_table_consistent='yes'), None),
 ]
 for name, base, want, sc in R2:
     folder = os.path.join(HERE, name)

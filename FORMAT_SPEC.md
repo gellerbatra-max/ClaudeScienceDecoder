@@ -428,6 +428,20 @@ writing an explicit 0. Values are 1e-4 in (0.25 cm = 984, 0.5 cm = 1969).
 In the PDS tool a value entered at a corner sets the `end` of the segment
 that *ends* there and leaves the next segment's `begin` at 0.
 
+**Confirmed with two nonzero, unequal values and zero ambiguity
+(`CAP-C35-SEAM-TAPER-TRUE`, 2026-09-13) [V].** Every prior sample either
+ramps from `begin=0` (`CAP-C30`/`CAP-C31`) or is uniform, so `begin` and
+`end` were only ever seen with one side pinned to zero. Here a single
+edge was given `1.50cm` at its own start corner and `0.50cm` at its own
+end corner, with every other edge left unseamed - no adjacent-segment
+interaction to complicate the reading. Result: `begin=5906` (1.50cm) and
+`end=1969` (0.50cm) match the two entered values exactly, and the
+resulting cutline's two points sit exactly `begin`/`end` units inward of
+the edge's own start/end corners, zero residual. This is the cleanest
+possible confirmation of the rule above - not a new finding, but the
+first sample where `begin` and `end` are both meaningfully nonzero at
+once.
+
 Two side effects of a seam on the rest of the file **[V]** (`CAP-C31-SEAM-TAPER`
 vs `CAP-C00-BASE`, same piece, same position): record 0 is re-normalised so
 that the **cut** outline's minimum is at the origin — the sew-line perimeter of

@@ -521,6 +521,23 @@ tried** — multi-piece grouping is a manifest-level concept, and the
 already-documented stale-duplicate-record case above remains the only way
 two piece blocks appear inside one piece `.tmp`.
 
+**Removing a seam does not collapse a two-record file back to one — the
+stale record is inherited, not regenerated [V]** (`CAP-C32-SEAM-REMOVE`,
+2026-09-13): took `CAP-C30-SEAM-UNEVEN` (already 2 records from its own
+original seam-definition edit) and set its seam allowance back to 0 on the
+whole piece via Advanced → Seam → Define. Record 0's four segment-attribute
+records all read `seam_flag=0`, byte-for-byte matching a piece that was
+never seamed at all - the logical removal is clean. But the file still
+carries **2** `piece_records`, not 1: the stale record inherited from the
+*original* seam-definition edit persists untouched, because removing the
+seam is itself just another edit on top of an already-two-record file, not
+an undo. The only other difference from `CAP-C00-BASE` is one expected byte
+from a longer inherited category name (`TASK1-CUTQTY3`, 13 characters, vs
+`CAP-C00-BASE`'s 12) - not new residue. **Answers the capture's original
+question directly: removal restores the logical value but leaves the same
+kind of stale-record residue this section already documents for every other
+post-first-save edit** - it is not a special case.
+
 **Copy-Piece/Paste-Piece confirmed directly, not just inferred [V]** (round
 2, `CAP-C70-PASTED`): opened `CAP-C00-BASE` fresh from storage, Create →
 Piece → **Copy** with **Category: Copy Original** selected, clicked to place

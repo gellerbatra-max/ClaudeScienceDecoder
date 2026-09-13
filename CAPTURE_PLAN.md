@@ -295,7 +295,14 @@ lists match layer 8. The existing production OUCF ZIP+ASTM capture proves
 of each type: plot/draw, sew, mirror, stripe, plaid, alternate grain, and cut
 internal. Establish the tag-to-feature table.
 
-**CAP-C32-SEAM-REMOVE:** remove the seam from C30 and compare against C00.
+**CAP-C32-SEAM-REMOVE — DONE (2026-09-13).** Took `CAP-C30-SEAM-UNEVEN`
+and set its seam allowance to 0 (Advanced → Seam → Define, whole piece).
+Compared against `CAP-C00-BASE`: the four segment-attribute records all
+clear to `seam_flag=0`, matching an unseamed piece exactly - but the file
+keeps its inherited 2 `piece_records` (from the original seam-definition
+edit) rather than collapsing to 1. Removal clears the logical value; it
+does not undo the stale-second-record residue §8 of FORMAT_SPEC.md already
+documents for every post-first-save edit. See `CAPTURE_LOG.md`.
 
 **CAP-C34-SEAM-CURVED:** controlled curved edge with an even seam, once with a
 positive and once with a negative amount.

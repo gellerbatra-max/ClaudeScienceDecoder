@@ -442,6 +442,21 @@ possible confirmation of the rule above - not a new finding, but the
 first sample where `begin` and `end` are both meaningfully nonzero at
 once.
 
+**"Swap Sew/Cut" literally exchanges which geometry is stored where
+(`CAP-C37-SEAM-SWAP`, 2026-09-13) [V].** Applying Advanced → Seam → Swap
+to `CAP-C35-SEAM-TAPER-TRUE` swaps the roles of the two coordinate sets
+directly: the **perimeter** (`kind=1`) takes on the *old offset seam
+line's* coordinates, and the new `kind=2` **seam record** takes on the
+*old perimeter's* coordinates - not a flag toggle, an actual exchange of
+which stored geometry is which. `begin`/`end` both negate (`5906/1969` →
+`-5906/-1969`), since the allowance is now measured in the opposite
+relative direction once the roles swap. The swapped edge's line label is
+freshly allocated (`L00` → `L05`) rather than reused, consistent with the
+per-creation-order labelling already documented below. `check_line_table()`
+returns `True` before and after with no code changes - the existing model
+already treats the swapped state as just another valid perimeter/seam
+pair.
+
 Two side effects of a seam on the rest of the file **[V]** (`CAP-C31-SEAM-TAPER`
 vs `CAP-C00-BASE`, same piece, same position): record 0 is re-normalised so
 that the **cut** outline's minimum is at the origin — the sew-line perimeter of

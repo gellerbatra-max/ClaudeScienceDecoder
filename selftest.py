@@ -111,6 +111,10 @@ R2 = [  # folder, baseline, {fact: want}, structural_change want (or None)
  # ONLY seamed edge - no adjacent-segment interaction, the cleanest
  # possible confirmation of FORMAT_SPEC.md Sec 6.1's begin/end rule.
  ('captures/CAP-C35-SEAM-TAPER-TRUE', None,     dict(piece_records=2, uneven_seam='yes', cutline_records=1, line_records='6;5', line_table_consistent='yes'), None),
+ # 2026-09-13: CAP-C35 after Advanced->Seam->Swap. Perimeter and seam record
+ # literally exchange coordinates and begin/end negate - see FORMAT_SPEC.md
+ # Sec 6.1. Same fact shape as C35 itself (line_table_consistent still yes).
+ ('captures/CAP-C37-SEAM-SWAP',      None,     dict(piece_records=2, uneven_seam='yes', cutline_records=1, line_records='6;5', line_table_consistent='yes'), None),
 ]
 for name, base, want, sc in R2:
     folder = os.path.join(HERE, name)

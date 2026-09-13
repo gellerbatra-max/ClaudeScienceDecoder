@@ -362,5 +362,29 @@ remains open (needs a piece whose real construction is documented
 independently), but the native encoding for each style name is now known.
 See `CAPTURE_LOG.md` for the exact `line_geometry` records.
 
-**CAP-C37-SEAM-SWAP:** apply Swap Sew/Cut and also test a fold piece with a seam
-on the fold line.
+**CAP-C37-SEAM-SWAP — Swap Sew/Cut half DONE (2026-09-13).** Took
+`CAP-C35-SEAM-TAPER-TRUE` (`begin=5906`/`end=1969` on its one seamed
+edge) and applied Advanced → Seam → **Swap** (`captures/CAP-C37-SEAM-SWAP/`).
+Result is a clean, complete swap: the stored **perimeter** (`kind=1`) becomes
+the *old offset cutline's* coordinates - `(1,1)-(3938,25562)-...` replacing
+`(5907,1)-(5907,25562)-...` - while the new `kind=2` seam record holds the
+*old perimeter's* coordinates exactly. The segment's `begin`/`end` both
+negate (`5906/1969` → `-5906/-1969`) since the allowance is now measured in
+the opposite relative direction, and the swapped edge gets a **freshly
+allocated line label** (`L00` → `L05`) rather than reusing its old one -
+consistent with FORMAT_SPEC.md §6.1's existing "labels are per-creation-
+order" finding. `check_line_table()` returns `True` on both the pre- and
+post-swap files - the existing model handles the swapped state with no
+changes needed. See FORMAT_SPEC.md §6.1.
+
+**Fold piece with a seam on the fold line - not completed.** Looked for
+the PDS mechanism to mark an edge as a piece's fold/mirror axis (matching
+the already-decoded `0x4d`/`mirror` internal-line tag from production
+`OUCF` pieces) and tried two candidates: Create → Line → **Mirror**
+duplicates geometry across a chosen axis line (a different operation -
+"mirror this shape," not "mark this edge as the fold line") and
+Advanced → Darts → **Fold** is specifically for folding a dart closed
+("select dart on side to fold to"), not a general piece-fold tool.
+Neither is the right control. Same honest non-completion as
+`CAP-C33-INTERNAL-TYPES` - abandoned rather than forced, no false claim
+recorded.

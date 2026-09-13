@@ -207,7 +207,25 @@ piece is a right triangle whose two short legs are axis-aligned — see §11
 for the numbers). Whether that reflects genuine mirror-fold geometry or
 just bounding-box corner completion can't be told apart on an axis-aligned
 right triangle; a non-45°, non-axis-aligned Fold Keep sample would settle
-it (`CAP-C80-BOOKMARK`-style Phase C capture, not yet done) **[?]**.
+it. **Attempted (`CAP-C80-BOOKMARK`, 2026-09-13), inconclusive on the
+original question, but two real findings surfaced along the way [?].** A
+wide non-square rectangle, folded along a line crossing the top and
+bottom edges at clearly asymmetric, non-45° points (not a corner-to-corner
+diagonal - AccuMark's own Fold Keep rejects an exact corner-to-corner
+line as "Invalid Fold line," a real validation rule not previously
+documented). Result: `n_perimeter=5` and all **5** points are stored
+explicitly - this sample simply doesn't reproduce a missing/virtual
+corner at all, so it can't settle the reflect-vs-bbox question; a
+different, more precisely targeted geometry would be needed. What it does
+show: (1) the piece's `mirror`-tagged internal line stores a perfectly
+horizontal segment in the file's own coordinate frame even though the
+fold line was drawn clearly oblique on screen, suggesting Fold Keep
+normalises the stored frame around the fold axis rather than preserving
+the original drawing orientation as-is - not confirmed in detail, just
+observed; (2) one point in this file's own line table (the `mirror`
+record's numbered endpoint) doesn't match any of `classify_line_table()`'s
+existing categories, a small new gap surfaced by this capture rather than
+resolved by it. The original ambiguity therefore remains genuinely open.
 
 **Darts are cut directly into the perimeter, not stored as an internal line
 [V]** (round 2, `CAP-C62-DART`): Advanced tab → Darts → Add on a plain
@@ -820,8 +838,10 @@ piece as having 4 corners, one more than are actually stored, so this
 finally surface in the file. Left **[?]**: this stored triangle happens to
 be a right triangle with axis-aligned legs, so "reflect across the fold
 line" and "complete the bounding rectangle" produce the identical answer —
-they can't be told apart on this sample, only on a non-axis-aligned Fold
-Keep capture (Phase C, not yet done).
+they can't be told apart on this sample. A non-axis-aligned attempt
+(`CAP-C80-BOOKMARK`, §4) didn't settle it either - that sample simply
+doesn't produce a missing corner at all (`n_perimeter=5`, all 5 stored) -
+so this remains open, needing a still more precisely targeted sample.
 
 ### 10.3 Still open
 

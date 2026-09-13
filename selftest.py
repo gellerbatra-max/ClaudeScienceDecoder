@@ -238,9 +238,12 @@ print('-- Fold Keep mirrors by genuine reflection, not bbox completion (skipped 
 # question (left unresolved by the axis-aligned CAP-C61-MIRROR, where
 # "reflect across the fold line" and "complete the bounding box" give the
 # same answer). On this genuinely oblique fold, id3/id7 reflect onto each
-# other across the file's own stored mirror-tagged axis to within 1 native
-# unit - a result bbox completion cannot produce, since there is no
-# rectangle to complete.
+# other across a shared axis to within 1 native unit - a result bbox
+# completion cannot produce, since there is no rectangle to complete.
+# That axis comes from the line table's own kind=2 record positionally
+# aligned with the 'mirror' internal tag - NOT from the independently
+# decoded mirrors_in field, which reports a different line entirely on
+# this sample (a real, separate, still-open discrepancy - see Sec 10.3).
 oblique_zip = os.path.join(CAPS, 'CAP-C82-FOLD-OBLIQUE', 'CAP-C82-FOLD-OBLIQUE.zip')
 if os.path.isfile(oblique_zip):
     obj = am.list_zip(oblique_zip)['piece'][0]
@@ -248,8 +251,8 @@ if os.path.isfile(oblique_zip):
     pts = {p['id']: (p['x'], p['y']) for p in block['perimeter']}
     real_coords = set(pts.values())
     # the grain line's kind=2 record touches neither real perimeter corner;
-    # the mirror record's own point ids don't reuse the perimeter's id
-    # numbering, so match by coordinate instead
+    # the 'mirror'-slot record's own point ids don't reuse the perimeter's
+    # id numbering, so match by coordinate instead
     mirror_rec = next(r for r in block['tail']['line_records']
                        if r['kind'] == 2 and any((pt['x'], pt['y']) in real_coords for pt in r['points']))
     A, B = [(pt['x'], pt['y']) for pt in mirror_rec['points']][:2]

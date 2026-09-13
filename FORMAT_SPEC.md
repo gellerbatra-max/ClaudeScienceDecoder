@@ -208,33 +208,47 @@ for the numbers). Whether that reflects genuine mirror-fold geometry or
 just bounding-box corner completion can't be told apart on an axis-aligned
 right triangle; a non-45°, non-axis-aligned Fold Keep sample would settle
 it. **Resolved (`CAP-C82-FOLD-OBLIQUE`, 2026-09-13) [V]: genuine
-reflection, not bounding-box completion.** A wide non-square rectangle,
+reflection, not bounding-box completion - though the exact record that
+proves it is not the one first suspected.** A wide non-square rectangle,
 folded along a line crossing the top and bottom edges at clearly
 asymmetric, non-45° points (not a corner-to-corner diagonal - AccuMark's
 own Fold Keep rejects an exact corner-to-corner line as "Invalid Fold
 line," a real validation rule not previously documented). This sample's
 `n_perimeter=5` with all 5 points stored explicitly - no missing/virtual
 corner to inspect directly, so the original "look for the absent corner"
-framing doesn't apply here. The real test instead: take the file's own
-`mirror`-tagged internal line as the reflection axis and check whether
-any two *other* stored points are exact mirror images of each other
-across it. They are - point `id3` `(89464,12782)` and point `id7`
-`(89464,1)` reflect onto each other across the stored axis (a line
-through `(89464,6392)`/`(41537,6392)`) to a residual of exactly **1
-native unit (0.0001 in)**, i.e. the smallest representable difference -
-essentially exact. A third point, `id6` `(89464,6392)`, sits exactly on
-the axis and correctly reflects to itself with zero residual. Since the
-fold axis here is not axis-aligned, not 45°, and not a corner-to-corner
-diagonal, "complete the bounding box" isn't even a coherent alternative
-for this pairing - only genuine geometric reflection produces it. This
-settles the question the axis-aligned `CAP-C61-MIRROR` sample couldn't:
-Mirror Piece performs true reflection across the fold line, not a
-bounding-box shortcut. (Two smaller points, `id5`/`id8`, don't pair with
-anything and are presumably the un-mirrored, "kept" side's own boundary;
-not investigated further since the core question is settled.) One point
-in this file's own line table remains outside `classify_line_table()`'s
-existing categories - a small new gap surfaced by this capture, not
-resolved by it, and not a threat to the reflection finding above.
+framing doesn't apply here. The real test instead: find two *other*
+stored points that are exact mirror images of each other, and check what
+axis they imply. Point `id3` `(89464,12782)` and point `id7`
+`(89464,1)` do exactly this, reflecting onto each other across the line
+through `(89464,6392)`/`(41537,6392)` to a residual of exactly **1
+native unit (0.0001 in)** - essentially exact. A third point, `id6`
+`(89464,6392)`, sits exactly on that same axis and correctly reflects to
+itself with zero residual. Since this axis is not axis-aligned, not 45°,
+and not a corner-to-corner diagonal, "complete the bounding box" isn't
+even a coherent alternative for this pairing - only genuine geometric
+reflection produces it. This settles the question the axis-aligned
+`CAP-C61-MIRROR` sample couldn't: Mirror Piece performs true reflection
+across a fold axis, not a bounding-box shortcut.
+
+**Surprise, honestly flagged rather than smoothed over**: the line
+carrying that axis, `(89464,6392)`-`(41537,6392)`, is *not* the piece's
+own independently-decoded `mirror` internal line - `mirrors_in` reports
+a completely different segment, `(1,12782)`-`(83074,1)`, which is
+exactly the perimeter's own `id5`-`id8` edge, not a plausible reflection
+axis at all (reflecting `id3`/`id6`/`id7` across it lands nowhere near
+any other stored point). The two live at the same file position in the
+internal-line-list/line-table pairing (`grain` then `mirror`, confirmed
+by header offset order), so this looks like the line-table's own
+`mirror`-slot echo genuinely diverging from the internal-line-list's own
+`mirror` entry on this Fold-Keep-generated piece - a real, new,
+unexplained discrepancy, distinct from the already-documented
+`internal_curve_table_extra` pattern (that one is a small ~(15,22)-unit
+shift, not a different line entirely). One point in this file's own
+line table (the un-numbered end of that echo) is correctly left
+`unexplained` by `classify_line_table()` as a result - a small new gap,
+not a threat to the reflection finding above, which rests on independent
+arithmetic (the `id3`/`id7` pairing), not on `mirrors_in` agreeing with
+anything.
 
 **Darts are cut directly into the perimeter, not stored as an internal line
 [V]** (round 2, `CAP-C62-DART`): Advanced tab → Darts → Add on a plain
@@ -854,12 +868,28 @@ shortcut? `CAP-C61-MIRROR`'s own rectangle happens to be a right triangle
 case where both answers coincide, so it can't distinguish them. This is
 now settled by `CAP-C82-FOLD-OBLIQUE` (§4): on a genuinely oblique,
 non-axis-aligned fold, two of the piece's stored points reflect onto each
-other across the file's own stored fold axis to a residual of 1 native
-unit (0.0001 in) - a result "complete the bounding box" cannot produce,
-since there is no rectangle to complete. Mirror Piece performs true
-geometric reflection.
+other across a shared axis to a residual of 1 native unit (0.0001 in) - a
+result "complete the bounding box" cannot produce, since there is no
+rectangle to complete. Mirror Piece performs true geometric reflection.
+(§4 also flags a real, separate surprise: that axis is *not* the same
+line the piece's own `mirrors_in` field reports - a distinct, still-open
+question about this sample's `mirror` internal-line echo.)
 
 ### 10.3 Still open
+
+- **`CAP-C82-FOLD-OBLIQUE`'s `mirror`-slot line-table echo doesn't match
+  the internal-line-list's own `mirrors_in` entry.** `mirrors_in` reports
+  `(1,12782)`-`(83074,1)` (the perimeter's own `id5`-`id8` edge); the
+  line table's positionally-corresponding kind=2 record instead stores
+  `(89464,6392)`-`(41537,6392)` - a completely different line, not a
+  small drift like the already-documented `internal_curve_table_extra`
+  pattern. The second line is real, in the sense that it's exactly the
+  axis two other stored points (`id3`/`id7`) genuinely reflect across
+  (§10.2), so it isn't simply garbage - but why the line table's own
+  `mirror` echo diverges from the internal-line-list's own `mirror` entry
+  on this specific Fold-Keep-generated piece is unexplained. One point
+  from this echo (`(41537,6392)`) is correctly left `unexplained` by
+  `classify_line_table()` as a direct consequence.
 
 - **The `07 2d` notch-attribute payload, byte-diffed across `CAP-C40-NOTCH-
   TYPES`'s four notches (Types 2, 4, 5, 1 in perimeter order — see §4;

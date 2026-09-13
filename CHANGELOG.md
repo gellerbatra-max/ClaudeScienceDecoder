@@ -2,6 +2,18 @@
 
 ## v3.0 (2026-09-12) - exact kind-2 seam model and structured survey
 
+- Resolved the provisional internal-list names by native-to-ASTM geometry:
+  `0x49=internal` (layer 8), `0x48=internal_cutout` (layer 11), and
+  `0x4d=mirror` (layer 6). The MOCUP no-edit capture matches 20/20 lists
+  across OUMO/INMO; the production OUCF capture matches 2/2.
+- Added `verify_capture.py --internal-layers`, a block-aware LINE/POINT/
+  POLYLINE checker that aligns each native piece from its layer-1 perimeter
+  and requires every internal list to match an equal-length entity on its
+  semantic ASTM layer. Added these captures to `selftest.py`.
+- Corrected the API names inherited from the historical
+  `CAP-C60-CUTOUT`: generic tag `0x49` now appears in `internal_lines_in` and
+  `internal_points`; `cutouts_in` / `cutout_points` now mean the verified
+  layer-11 `0x48` geometry. Added `grain_lines_in` and `mirrors_in`.
 - Fixed `parse_segments()` to accept all observed first-record preambles and
   both seam trailers (immediate `u32 3` and six-zero-padded). Segment and
   explicit cut-line records are now scoped to their owning piece block.
@@ -16,12 +28,18 @@
 - Tightened every internal-list entry path to require a complete count walk,
   valid terminator, and trailing `Lnn`, matching the bridged-list validation.
 - Expanded `kind2_survey.py` with child tags, seam edge/role, expected point,
-  residual, and nearest perimeter segment. On 43 ZIPs / 131 blocks / 12,992
-  kind-2 points: 12,615 stored geometry, 294 exact seam-model points, 8
-  accepted fallback points, 68 unaccepted production corner-style endpoints,
-  2 near-model curve points, and 5 unexplained rows representing four unique
-  coordinates across three INMO/OUMO pieces (one coordinate repeats in two
-  stale blocks). Passing blocks increase from 101 to 109.
+  residual, and nearest perimeter segment. On 44 ZIPs / 133 blocks / 13,369
+  kind-2 points: 12,992 stored geometry, 294 exact seam-model points, 8
+  accepted seam fallbacks, 5 structurally matched internal-curve table-extra
+  points, 68 unaccepted production corner-style endpoints, and 2 near-model
+  curve points. Passing blocks are 116/133; no point remains in the generic
+  `unexplained` class.
+- Identified the final five generic residuals as one exact 46-vs-44 encoding:
+  the line table reproduces a stored `0x49` curve in order, inserts one
+  near-start point, and repeats the final vertex. Classified the inserted
+  point as `internal_curve_table_extra` without guessing its spline/control
+  semantics; all five occurrences have delta `(15,22)` or `(16,22)` from the
+  stored start vertex and are regression-tested.
 - Added classification counts to the robustness canonical form and updated the
   controlled seam expectations and one-unit assertions in `selftest.py`.
 
@@ -1431,3 +1449,4 @@ from) and for exactly which templates carry real vs. placeholder grading.
 the quick matrix on every invocation, gated on Oracles A/B (any failure
 there is a regression) with Oracle C's known redundant-copy gap reported
 informationally, the same way the existing coverage section is.
+

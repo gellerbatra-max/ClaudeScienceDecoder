@@ -282,10 +282,14 @@ native ZIP and ASTM DXF, run `verify_capture.py`, and add the observed operation
 and result to `CAPTURE_LOG.md`. Do not promote a provisional field name solely
 from correlation.
 
-**Export, no edit:** export `2303-B1-OUMO-1-SP24` and one INMO piece from the
-`Test` area, then one OUCF piece. Record which ASTM layer contains each binary
-`0x48` and `0x4d` internal list (8 internal, 14 sew, 11 cutout, 9/10
-stripe/plaid, or 6 mirror).
+**Export, no edit — DONE (2026-09-12/13):** exported AccuMark V17 model
+`2303 MOCUP B1 1` to ASTM and preserved the byte-exact native OUMO/INMO piece
+members from the earlier all-model native export in
+`captures/V3-PROD-MOCUP-B1-1-NOEDIT`. All eight `0x48` lists match layer 11
+(internal cutout) point-for-point, worst residual 0.0001 in; all ten `0x49`
+lists match layer 8. The existing production OUCF ZIP+ASTM capture proves
+`0x4d` is layer 6 (mirror/fold), zero residual. Automated by
+`verify_capture.py --internal-layers`; see FORMAT_SPEC.md §5.2-5.3.
 
 **CAP-C33-INTERNAL-TYPES:** one rectangle with one available internal feature
 of each type: plot/draw, sew, mirror, stripe, plaid, alternate grain, and cut
@@ -304,3 +308,4 @@ the survey's `corner_semantics_unresolved` class.
 
 **CAP-C37-SEAM-SWAP:** apply Swap Sew/Cut and also test a fold piece with a seam
 on the fold line.
+

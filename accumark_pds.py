@@ -111,16 +111,15 @@ def parse_object_records(d, start, n, n_rows=5):
     return recs
 
 # internal point lists after the perimeter: term(u16) tag(u16) count(u16) flag(u32)
-INTERNAL_TAGS = {0x47: 'grain', 0x44: 'drill', 0x49: 'cutout', 0x48: 'seam_curve', 0x4d: 'mirror'}
+INTERNAL_TAGS = {0x47: 'grain', 0x44: 'drill', 0x49: 'internal',
+                 0x48: 'internal_cutout', 0x4d: 'mirror'}
 # 0x0000/0x47 grain line, 0xFFFF/0x44 drill points. 0xFFFF/0x49 was first seen
-# on a closed circle (CAP-C60-CUTOUT, "cut-out") and the name stuck, but
-# CAP-C12-TWOINTLINES [V] shows it's really just "generic user-drawn internal
-# line/curve" - a second, plain 2-point open line (Create -> Line -> 2-Point)
-# gets the *same* 0x49 tag, not a fourth kind. What actually distinguishes
-# the circle from the line is the terminator below (6 vs 3), confirmed by
-# this second sample rather than inferred from one. `cutout` is kept as the
-# dict/field name for continuity with earlier docs and selftest.py, but reads
-# as "kind of drawn internal line," not "is a closed cut-out."
+# on a closed circle (CAP-C60-CUTOUT, "cut-out"), but CAP-C12-TWOINTLINES [V]
+# shows it is the generic user-drawn internal line/curve tag: a plain open
+# 2-point line gets the same tag. The V3-PROD-MOCUP-B1-1-NOEDIT export pins
+# that distinction to ASTM: 0x49 geometry is layer 8 (internal line), while
+# all four 0x48 lists in each OUMO/INMO piece are layer 11 (internal cutout),
+# point-for-point to 0.0001 inch.
 # CAP-C60-CUTOUT itself: a circle drawn fully inside the piece with "Create
 # New Piece" unchecked, tessellated into a closed N-point polygon - the last
 # point repeats the first exactly. The DXF exporter re-tessellates it again
@@ -129,13 +128,11 @@ INTERNAL_TAGS = {0x47: 'grain', 0x44: 'drill', 0x49: 'cutout', 0x48: 'seam_curve
 # (25) is the one that matches this list's own `count` field, not either
 # DXF layer number by coincidence.
 #
-# [V, added v3.0] 0x4d is the MIRROR/fold line: on every corpus fixture that
-# has one (CAP-C61-MIRROR, every OUCF fold-on-fold piece), its exactly-2-point
-# list coincides exactly (same coordinates, to the unit) with mirror_lines()'s
-# own independently-computed axis - two unrelated code paths agreeing this
-# strongly is treated as confirmation, not coincidence.
+# [V, added v3.0] 0x4d is the MIRROR/fold line. In the production OUCF
+# ZIP+ASTM capture its two points match the explicit layer-6 LINE exactly;
+# they also coincide with mirror_lines()'s independently-computed fold axis.
 #
-# [?, added v3.0] 0x48 was the format's largest open item - the "kind=2
+# [V, added v3.0] 0x48 was the format's largest open item - the "kind=2
 # bulge" investigation (see check_line_table's docstring, FORMAT_SPEC.md
 # SS11/SS12, CHANGELOG.md v2.0 #17-#26). Every point the bulge investigation
 # ever measured as "close to real geometry but not matching it" on the
@@ -151,12 +148,10 @@ INTERNAL_TAGS = {0x47: 'grain', 0x44: 'drill', 0x49: 'cutout', 0x48: 'seam_curve
 # tail from 59/131 to 101/131 - the "clean plateau at a round seam-allowance
 # width, bulging by up to 2.6in in between" shape the earlier investigation
 # characterised was two different lines (an offset seam-line segment plus
-# this internal curve) sharing one merged kind=2 record. Provisionally named
-# `seam_curve` (the offsets it sits at - 0.787/1.181/1.575/1.969/2.756in on
-# this corpus - are round metric seam-allowance widths, and lining objects
-# read almost exactly 2x their matching shell object's offset, consistent
-# with a drawn sew/molding-placement line), but the exact PDS feature is not
-# yet pinned down by a controlled capture - see CAPTURE_PLAN.md CAP-C33.
+# this internal cutout) sharing one merged kind=2 record. The no-edit OUMO
+# and INMO export resolves the name: every 0x48 list matches a layer-11
+# polyline exactly (and its graded layer-86 companion), so this is
+# `internal_cutout`, not a seam curve.
 
 def _internal_list_label(d, o):
     """After a list's points: a u32 terminator, zero padding, then the 3-byte
@@ -184,8 +179,8 @@ def _is_internal_header(d, o):
     """[V, tightened v3.0] Added the u16@+6==1 check: re-surveyed every
     genuine internal-list header in the corpus (all 5 tags, 157+ samples) and
     found this field is 1 on every single one, regardless of tag - the field
-    at +8 varies meaningfully by tag instead (0 on grain/drill/cutout/
-    seam_curve, 0xFFFF on mirror) so is left unconstrained here. Costs
+    at +8 varies meaningfully by tag instead (0 on grain/drill/internal/
+    internal_cutout, 0xFFFF on mirror) so is left unconstrained here. Costs
     nothing on any known-good fixture (verified via corpus-wide diff before/
     after) and closes off one more way a coincidental byte pattern elsewhere
     in the file could be mistaken for a list header - on top of, not instead
@@ -1557,6 +1552,30 @@ def classify_line_table(b):
             if hi - lo > len(best): best = frozenset(range(lo, hi))
             start = hi
         return best
+    def _internal_curve_table_extras(pts):
+        """Recognise the exact 46-vs-44 curve-table expansion in cup pieces.
+
+        Five observed records reproduce one stored 0x49 curve in order, but
+        insert one near-start table point and repeat the final vertex. The
+        extra point has no byte-identical Region-A copy, so keep its role
+        conservatively named instead of guessing a spline/control meaning.
+        """
+        coords = [(tp['x'], tp['y']) for tp in pts]
+        for segment, kind, label in zip(b['internal_lines'],
+                                        b['internal_kinds'],
+                                        b['internal_labels']):
+            if kind != 'internal':
+                continue
+            stored = [(point['x'], point['y']) for point in segment]
+            if len(coords) != len(stored) + 2 or len(stored) < 2:
+                continue
+            if (coords[0] == stored[0] and coords[2:-1] == stored[1:]
+                    and coords[-1] == stored[-1]):
+                return {1: dict(kind=kind, label=label,
+                                role='near_start_table_extra',
+                                delta=(coords[1][0]-stored[0][0],
+                                       coords[1][1]-stored[0][1]))}
+        return {}
     record_results = []
     table_ok = True
     coordinate_counts = {}
@@ -1595,14 +1614,19 @@ def classify_line_table(b):
         is_numbered_seam = rec['kind'] == 2 and pts[0]['a'] != 65535
         curved_eligible = rec['kind'] == 2 and len(pts) >= 4
         curved_indices = None                # computed lazily, at most once
+        internal_extras = (_internal_curve_table_extras(pts)
+                           if rec['kind'] == 2 else {})
         for idx, tp in enumerate(pts):
             pt = (tp['x'], tp['y'])
             seam_match = None
+            internal_match = internal_extras.get(idx)
             accepted = True
             if pt in real:
                 classification = 'stored_geometry'
             elif rec['kind'] == 2 and (seam_match := _match_seam_model(pt)):
                 classification = 'seam_model_exact'
+            elif internal_match:
+                classification = 'internal_curve_table_extra'
             elif is_numbered_seam and _is_seam_offset(pt):
                 classification = 'axis_or_diagonal_fallback'
             elif curved_eligible:
@@ -1636,6 +1660,7 @@ def classify_line_table(b):
                                 ok=accepted and notch_ok,
                                 child_tags=[tag for tag, _ in tp['children']])
             if seam_match: point_result['seam_match'] = seam_match
+            if internal_match: point_result['internal_match'] = internal_match
             if not notch_ok: point_result['notch_type_match'] = False
             record_result['points'].append(point_result)
         record_result['ok'] = all(p['ok'] for p in record_result['points'])
@@ -1924,13 +1949,19 @@ def summarize(data):
         notches_in = [(p['x']/UNITS_PER_INCH, p['y']/UNITS_PER_INCH) for p in b0['perimeter'] if p['is_notch']],
         notch_types = [p['notch_type'] for p in b0['perimeter'] if p['is_notch']],
         grade_refs = [(p['id'], p['rule_ref']) for p in b0['perimeter'] if p['rule_ref'] is not None],
+        grain_lines_in = [[(q['x']/UNITS_PER_INCH, q['y']/UNITS_PER_INCH) for q in seg]
+                          for seg, k in zip(b0['internal_lines'], b0['internal_kinds']) if k == 'grain'],
         internal_lines_in = [[(q['x']/UNITS_PER_INCH, q['y']/UNITS_PER_INCH) for q in seg]
-                             for seg, k in zip(b0['internal_lines'], b0['internal_kinds']) if k == 'grain'],
+                             for seg, k in zip(b0['internal_lines'], b0['internal_kinds']) if k == 'internal'],
         drill_points_in = [(q['x']/UNITS_PER_INCH, q['y']/UNITS_PER_INCH)
                            for seg, k in zip(b0['internal_lines'], b0['internal_kinds']) if k == 'drill'
                            for q in seg],
         cutouts_in = [[(q['x']/UNITS_PER_INCH, q['y']/UNITS_PER_INCH) for q in seg]
-                     for seg, k in zip(b0['internal_lines'], b0['internal_kinds']) if k == 'cutout'],
+                      for seg, k in zip(b0['internal_lines'], b0['internal_kinds'])
+                      if k == 'internal_cutout'],
+        mirrors_in = [[(q['x']/UNITS_PER_INCH, q['y']/UNITS_PER_INCH) for q in seg]
+                      for seg, k in zip(b0['internal_lines'], b0['internal_kinds'])
+                      if k == 'mirror'],
         n_break_rows = b0['meta']['n_break_rows'],
         grade_rules = {o_['id']: o_['deltas'] for o_ in b0['objects']},
         segments   = segs,
@@ -1946,3 +1977,4 @@ def summarize(data):
 def summarize_zip(path, member=None):
     name, d = _select_piece_member(path, member)
     return summarize(d)
+

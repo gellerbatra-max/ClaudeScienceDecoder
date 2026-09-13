@@ -318,7 +318,7 @@ two counters at +0x260 (6→7) and +0x31e (5→6) in the tail section each
 increased by one when the drill list was added **[?]** — candidate "number of
 line records" fields.
 
-### 5.2 Internal cut-out **[V]** (round 2, `CAP-C60-CUTOUT`)
+### 5.2 Generic drawn internal geometry, tag `0x0049` **[V]**
 
 A circle drawn with Create→Circles→Center **and "Create New Piece"
 unchecked** (checked by default — leaving it checked spawns an independent
@@ -337,20 +337,14 @@ open grain/drill lists. The list's terminator is `u32 0x00000006`, not the
 with 3 meaning "open list" and 6 "closed loop"; `_internal_list_label` in
 `accumark_pds.py` now accepts either value when hunting for the trailing
 `Lnn` label. The main perimeter is completely unaffected (still the plain
-4-point rectangle) — a cut-out is purely additive internal geometry, not a
-perimeter modification, so it does not show up as a notch, drill point, or
-seam change.
+4-point rectangle): the circle is additive internal geometry and does not
+show up as a notch, drill point, seam, or perimeter modification.
 
 The ASTM DXF represents the same circle **twice**, at two different
-tessellation resolutions: layer 8 has 25 points (matching the binary list's
-`count` exactly) and layer 85 has 49 points (roughly double, presumably a
-finer display/smoothing curve) — both polylines share their first vertex and
-trace the same circle. `verify_capture.py`'s `dxf_check()` only reads
-layers `1`/`14` (the cut/sew perimeter), so it never touches either cut-out
-layer; the binary-vs-DXF residual check for this capture is validating the
-rectangle only, not the circle. `facts()`'s new `cutout_points` field (count
-per internal cut-out list, semicolon-joined if more than one) reads straight
-off `summarize()`'s `cutouts_in`.
+tessellation resolutions: semantic layer 8 has 25 points matching the binary
+list exactly, while graded/display companion layer 85 has 49. The decoder now
+exposes tag `0x49` as `internal`, `summarize()['internal_lines_in']`, and the
+capture fact `internal_points`; the historical capture folder name is kept.
 
 **Tag `0x0049` is "generic drawn internal line," not "closed cut-out"
 specifically [V]** (round 2, `CAP-C12-TWOINTLINES`): a plain open 2-point
@@ -366,17 +360,26 @@ jump documented elsewhere for `CAP-C10-PENT` correlates with editing
 than one internal line; a second internal line added before any perimeter
 edit doesn't reproduce it.
 
-### 5.3 Additional internal-list tags **[V / provisional]** (v3)
+### 5.3 Internal cutouts and mirror lines **[V]** (v3)
 
-The same list framing also occurs with tags `0x0048` and `0x004d`.
-`0x0048` accounts for the former moulded-cup kind-2 "bulge": its points are
-byte-identical to the corresponding line-table echo records. It is exposed as
-`seam_curve`, a provisional feature name pending `CAP-C33-INTERNAL-TYPES`.
-`0x004d` is exposed as `mirror`; every observed two-point list coincides with
-the independently decoded fold axis. A candidate list is accepted only after
-walking its declared point count and finding its own valid terminator and
-trailing `Lnn` label. This validation applies to immediate and bridged lists,
-preventing header-shaped seam data from becoming false internal geometry.
+Tag `0x0048` is an **internal cutout**. In
+`V3-PROD-MOCUP-B1-1-NOEDIT`, each OUMO and INMO object has four `0x48`
+lists of 26, 21, 23, and 6 points. All eight lists match equal-length ASTM
+layer-11 polylines point-for-point after perimeter-anchor translation; the
+worst residual is 0.0001 inch. Layer 86 repeats the same vertices as the
+graded companion. These lists caused the former kind-2 "bulge" and are now
+exposed as `internal_cutout`, `cutouts_in`, and `cutout_points`.
+
+Tag `0x004d` is the **mirror/fold line**. The production OUCF capture's
+two-point list matches the explicit ASTM layer-6 LINE with zero residual and
+also coincides with the independently decoded fold axis. It is exposed as
+`mirror`.
+
+`verify_capture.py --internal-layers` checks these mappings for every piece
+object in a capture ZIP. A candidate list is accepted only after walking its
+declared point count and finding its own valid terminator and trailing `Lnn`
+label. This applies to immediate and bridged lists, preventing header-shaped
+seam data from becoming false internal geometry.
 
 ## 6. Line records — name-*terminated*
 
@@ -1372,14 +1375,18 @@ are captured as `unclassified_gap` and are not yet understood **[?]**.
 
 ## 12. Coverage and remaining gaps
 
-The persisted v3 survey (`kind2_survey.py`, 43 ZIPs, 131 decodable blocks,
-12,992 kind-2 points) supersedes the prose-only v2 counts. Current classes are:
-12,615 `stored_geometry`, 294 `seam_model_exact`, 6
-`curved_offset_fallback`, 2 `axis_or_diagonal_fallback`, 68
-`corner_semantics_unresolved`, 2 `seam_model_near`, and 5 `unexplained` row
-occurrences. The 5 rows are four unique coordinates across three INMO/OUMO
-pieces (one coordinate repeats in two stale blocks); none has another
-byte-level copy outside Region D. Overall, 109/131 blocks pass. See
+The persisted v3 survey (`kind2_survey.py`, 44 ZIPs, 133 decodable blocks,
+13,369 kind-2 points) supersedes the prose-only v2 counts. Current classes are:
+12,992 `stored_geometry`, 294 `seam_model_exact`, 6
+`curved_offset_fallback`, 2 `axis_or_diagonal_fallback`, 5
+`internal_curve_table_extra`, 68 `corner_semantics_unresolved`, and 2
+`seam_model_near`; there are no generic `unexplained` rows. The five table
+extras all follow one exact 46-vs-44 pattern: the table reproduces a stored
+`0x49` curve in order, inserts one point after its first vertex, and repeats
+the final vertex. The extra's delta from the start is `(15,22)` native units
+in three current blocks and `(16,22)` in two translated stale blocks. Its
+precise spline/control role remains unnamed. Overall, 116/133 blocks pass.
+See
 `robustness/kind2_survey_v3_exact.csv` for every point,
 its child tags, nearest perimeter segment, matched seam role, expected
 coordinate, and residual.
@@ -1707,3 +1714,4 @@ for Phase B (arithmetic/byte-diff analysis against the existing corpus) and
 Phase C (the one or two targeted captures — `CAP-C80-BOOKMARK` for §11's
 snapshot hypothesis, `CAP-C81-MEASURE` if anything remains after that) in
 the decode plan.
+

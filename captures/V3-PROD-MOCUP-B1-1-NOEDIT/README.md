@@ -8,7 +8,9 @@
   `a1DCF.tmp` (INMO), `a1EB3.tmp` (OUMO), and `a2905.tmp` (model).
 - The outer ZIP container is reconstructed. The `.tmp` member bytes are not
   modified.
-- Intended use: preserve the successful no-edit evidence for later exact
-  `0x48`/ASTM-layer geometry matching. No line-type conclusion is claimed by
-  this capture alone.
+- Verified with `verify_capture.py --internal-layers`: all 20 native internal
+  lists across OUMO and INMO match their named ASTM entities. The eight
+  `0x48` lists match layer 11 (internal cutout) with a worst residual of
+  0.0001 inch; the ten `0x49` lists match layer 8 exactly; both grain lines
+  match layer 7 exactly.
 

@@ -1,7 +1,7 @@
 # Robustness report (v2)
 decoder_version: accumark_pds=3.0 accumark_marker=3.0
 
-303 cases, 303 passed, 0 failed, 37.2s
+303 cases, 303 passed, 0 failed, 19.3s
 
 ## Supported
 
@@ -338,3 +338,4 @@ History of two now-resolved Oracle-C findings, kept for context:
 - **RESOLVED: kind=2 "internal-line echo" points were over-covered by the seam-offset tolerance.** A follow-up session investigated the 9 Oracle-C cases the Region-C fix above left behind (CAP-C00-BASE, a piece with no seam allowance at all). Root cause: `kind=2` line-table records are not specific to seam allowance - they are the echo record for EVERY internal line (grain, drill, cutout), one per segment, present on any piece that has one, seamed or not (confirmed point-for-point exact on CAP-C00-BASE/CAP-C10-PENT/CAP-C50-DRILL1/CAP-C60-CUTOUT/CAP-C12-TWOINTLINES). `check_line_table`'s seam-offset leniency (`_is_seam_offset`, +-`SEAM_OFFSET_MAX`=2in) was being applied to every kind=2 record indiscriminately, so a corrupted echo point on a non-seam piece still landed "near" its own real, uncorrupted point by coincidence (sharing an axis with it) and was waved through as a plausible seam miter on a piece that was never seamed. Internal-line echoes are structurally distinct from genuine seam/cutline records by their points' own id field (`a == 65535`, unnumbered, vs a real numbered corner id on every seam/cutline point in the corpus - no fixture mixes the two within one record). Fixed: the leniency now only applies to points that carry a numbered id; an internal-line echo point must coincide exactly, like everything else. `robustness/run.py`'s Oracle C: 294/303 -> **303/303, all passing.**
 
 No further Oracle-C gaps as of this run.
+

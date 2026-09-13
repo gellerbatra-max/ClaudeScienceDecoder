@@ -101,6 +101,8 @@ def survey(zip_paths, out_path):
         'zip', 'member', 'piece_name', 'block', 'record_idx', 'record_kind',
         'n_points', 'point_idx', 'a', 'b', 'c', 'e', 'x', 'y', 'in_real',
         'classification', 'point_ok', 'child_tags',
+        'internal_kind', 'internal_label', 'internal_role',
+        'internal_delta_x', 'internal_delta_y',
         'seam_edge_index', 'seam_role', 'seam_expected_x', 'seam_expected_y',
         'seam_residual_units', 'seam_begin', 'seam_end',
         'nearest_perim_segment', 'nearest_perim_units', 'nearest_perim_in', 'nearest_perim_mm',
@@ -170,6 +172,7 @@ def survey(zip_paths, out_path):
                             point_result = classified[(rc['idx'], pi)]
                             classification = point_result['classification']
                             classification_counts[classification] = classification_counts.get(classification, 0) + 1
+                            internal_match = point_result.get('internal_match') or {}
                             seam_match = point_result.get('seam_match') or {}
                             seam_edge = seam_edges.get(seam_match.get('edge_index'), {})
                             total_k2_points += 1
@@ -200,6 +203,10 @@ def survey(zip_paths, out_path):
                                 tp['x'], tp['y'], int(in_real),
                                 classification, int(point_result['ok']),
                                 ','.join('0x%02x' % tag for tag in point_result['child_tags']),
+                                internal_match.get('kind', ''), internal_match.get('label', ''),
+                                internal_match.get('role', ''),
+                                internal_match.get('delta', ('', ''))[0],
+                                internal_match.get('delta', ('', ''))[1],
                                 seam_match.get('edge_index', ''), seam_match.get('role', ''),
                                 seam_match.get('expected', ('', ''))[0],
                                 seam_match.get('expected', ('', ''))[1],
@@ -261,3 +268,4 @@ def main():
 
 if __name__ == '__main__':
     main()
+

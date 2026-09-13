@@ -90,14 +90,14 @@ R2 = [  # folder, baseline, {fact: want}, structural_change want (or None)
  ('CAP-C40-NOTCH-TYPES',   None,               dict(notches=4, notch_types='2;4;5;1', line_records='5;5', line_table_consistent='yes'), None),
  ('CAP-C41-NOTCH-WIDTH',   None,               dict(notches=2, notch_types='1;1', perimeter_points=6, line_records='5;5', line_table_consistent='yes'), None),
  ('CAP-C42-NOTCH-ALLEDGES', None,              dict(notches=4, notch_types='1;1;1;1', segment_points='3;3;3;3', line_records='5;5', line_table_consistent='yes'), None),
- ('CAP-C60-CUTOUT',         None,              dict(perimeter_points=4, cutout_points='25', line_records='6;5', line_table_consistent='yes'), None),
+ ('CAP-C60-CUTOUT',         None,              dict(perimeter_points=4, internal_points='25', line_records='6;5', line_table_consistent='yes'), None),
  # 2026-09-09: was (perimeter_points=3, graded_points=1, line_table_consistent='no').
  # The "missing 4th corner" was the old point-table locator skipping the
  # table's first record (id 5); all four corners now match the DXF exactly.
  ('CAP-C61-MIRROR',         None,              dict(perimeter_points=4, graded_points=2, line_records='5', line_table_consistent='yes'), None),
  ('CAP-C62-DART',           None,              dict(perimeter_points=7, piece_records=2, line_records='7;5', line_table_consistent='yes'), None),
  ('CAP-C70-PASTED',         None,              dict(piece_records=1, category='CAP-C00-BASE', line_records='5', line_table_consistent='yes'), None),
- ('CAP-C12-TWOINTLINES',    None,              dict(perimeter_points=4, cutout_points='2', line_records='6;5', line_table_consistent='yes'), None),
+ ('CAP-C12-TWOINTLINES',    None,              dict(perimeter_points=4, internal_points='2', line_records='6;5', line_table_consistent='yes'), None),
  ('CAP-C13-LONGNAME',       None,              dict(piece_records=1, category='CAP-C13-LONGNAME-1234567890ABC', line_records='5', line_table_consistent='yes'), None),
  ('CAP-C14-ANNOT',          None,              dict(annotation='collar', perimeter_points=5, line_records='5', line_table_consistent='yes'), None),
 ]
@@ -127,6 +127,42 @@ for name, base, want, sc in R2:
             if residual > 1: bad.append(f'seam-model residual={residual}>1')
     print(f"   {'ok ' if not bad else 'FAIL'} {name:22} {'; '.join(bad) if bad else 'as expected'}")
     if bad: fails.append(f'{name}: ' + '; '.join(bad))
+
+print('-- native internal tags vs ASTM layers')
+LAYER_CAPTURES = [
+    (os.path.join(CAPS, 'V3-PROD-MOCUP-B1-1-NOEDIT'),
+     {'grain': 2, 'internal': 10, 'internal_cutout': 8}),
+    (os.path.join(CAPS, '2303-B1-A1- OUCF-SP24'),
+     {'grain': 1, 'mirror': 1}),
+    (os.path.join(HERE, 'CAP-C60-CUTOUT'),
+     {'grain': 1, 'internal': 1}),
+    (os.path.join(HERE, 'CAP-C12-TWOINTLINES'),
+     {'grain': 1, 'internal': 1}),
+]
+for folder, expected in LAYER_CAPTURES:
+    cap = vc.load(folder)
+    ok, results, msg = vc.internal_layer_check(cap)
+    counts = {}
+    for result in results:
+        counts[result['kind']] = counts.get(result['kind'], 0) + 1
+    ok = ok and counts == expected
+    name = os.path.basename(folder)
+    print(f"   {'ok ' if ok else 'FAIL'} {name:34} {msg}; {counts}")
+    if not ok: fails.append(f'{name}: internal layers {msg}; {counts}!={expected}')
+
+print('-- internal-curve line-table expansion')
+cp_zip = os.path.join(HERE, 'markers', '2303-CP150-JULY', '2303-CP 150 CPL.zip')
+extras = []
+for obj in am.list_zip(cp_zip).get('piece', []):
+    for block in ap.decode(obj['data'])['blocks']:
+        analysis = ap.classify_line_table(block)
+        for record in analysis['records']:
+            for point in record['points']:
+                if point['classification'] == 'internal_curve_table_extra':
+                    extras.append(point['internal_match']['delta'])
+ok = len(extras) == 5 and extras.count((15, 22)) == 3 and extras.count((16, 22)) == 2
+print(f"   {'ok ' if ok else 'FAIL'} five 46-vs-44 table extras {extras}")
+if not ok: fails.append(f'internal-curve table extras {extras}')
 
 print('-- markers (markers/, skipped when absent) - see MARKER_DECODE_PLAN.md')
 # Production style 2303 (bra): the same marker unlaid and laid (2026-09 V17
@@ -222,3 +258,4 @@ print()
 if fails:
     print('SELFTEST FAIL'); [print('  -', x) for x in fails]; sys.exit(1)
 print('SELFTEST PASS')
+

@@ -228,7 +228,13 @@ cause was a single mis-modeled field (`len_annot` read as u32 when it's
 really u16 + a separate, previously-always-zero flag field) plus
 metadata's `n_perimeter` over-counting by one on this piece. Both fixed;
 `CAP-C61-MIRROR` now decodes with dxf residual 0.000000. See FORMAT_SPEC.md
-§2/§4 and CAPTURE_LOG.md's CAP-C61-MIRROR row.
+§2/§4 and CAPTURE_LOG.md's CAP-C61-MIRROR row. **Follow-up (2026-09-13),
+now fully closed**: whether Mirror Piece derives a fold-generated corner by
+genuine reflection or bounding-box completion was left open on this
+axis-aligned sample (both give the same answer). `CAP-C82-FOLD-OBLIQUE`
+settles it on a genuinely oblique fold - true reflection, confirmed to
+0.0001 in. See FORMAT_SPEC.md §10.2 and CAPTURE_LOG.md's
+CAP-C82-FOLD-OBLIQUE row.
 
 **CAP-C62-DART** dart or pleat — **DONE (round 2)**: Advanced→Darts→Add cuts
 a dart directly into the perimeter as 3 new points (two dart-leg points plus

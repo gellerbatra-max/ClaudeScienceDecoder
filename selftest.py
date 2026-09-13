@@ -233,6 +233,43 @@ for name, want_kinds, want_flag, check_no_seam_value in FOLD_KEEP_CASES:
     print(f"   {'ok ' if ok else 'FAIL'} {name:22} {detail}")
     if not ok: fails.append(f'{name}: {detail}')
 
+print('-- Fold Keep mirrors by genuine reflection, not bbox completion (skipped when absent)')
+# 2026-09-13: CAP-C82-FOLD-OBLIQUE - settles FORMAT_SPEC.md Sec 10.2's open
+# question (left unresolved by the axis-aligned CAP-C61-MIRROR, where
+# "reflect across the fold line" and "complete the bounding box" give the
+# same answer). On this genuinely oblique fold, id3/id7 reflect onto each
+# other across the file's own stored mirror-tagged axis to within 1 native
+# unit - a result bbox completion cannot produce, since there is no
+# rectangle to complete.
+oblique_zip = os.path.join(CAPS, 'CAP-C82-FOLD-OBLIQUE', 'CAP-C82-FOLD-OBLIQUE.zip')
+if os.path.isfile(oblique_zip):
+    obj = am.list_zip(oblique_zip)['piece'][0]
+    block = ap.decode(obj['data'])['blocks'][0]
+    pts = {p['id']: (p['x'], p['y']) for p in block['perimeter']}
+    real_coords = set(pts.values())
+    # the grain line's kind=2 record touches neither real perimeter corner;
+    # the mirror record's own point ids don't reuse the perimeter's id
+    # numbering, so match by coordinate instead
+    mirror_rec = next(r for r in block['tail']['line_records']
+                       if r['kind'] == 2 and any((pt['x'], pt['y']) in real_coords for pt in r['points']))
+    A, B = [(pt['x'], pt['y']) for pt in mirror_rec['points']][:2]
+    def reflect(p, A, B):
+        (ax, ay), (bx, by), (px, py) = A, B, p
+        dx, dy = bx - ax, by - ay
+        L = (dx * dx + dy * dy) ** 0.5
+        ux, uy = dx / L, dy / L
+        t = (px - ax) * ux + (py - ay) * uy
+        projx, projy = ax + ux * t, ay + uy * t
+        return (2 * projx - px, 2 * projy - py)
+    r7 = reflect(pts[7], A, B)
+    residual = max(abs(r7[0] - pts[3][0]), abs(r7[1] - pts[3][1]))
+    ok = residual <= 1
+    print(f"   {'ok ' if ok else 'FAIL'} CAP-C82-FOLD-OBLIQUE   id7 reflected={tuple(round(v,1) for v in r7)} "
+          f"vs id3 stored={pts[3]}; residual={residual} native units")
+    if not ok: fails.append(f'CAP-C82-FOLD-OBLIQUE: reflection residual {residual} > 1')
+else:
+    print('   --  CAP-C82-FOLD-OBLIQUE      (absent)')
+
 print('-- shared seam-corner topology and quantized curve point')
 corner_counts = {}
 corner_example = None

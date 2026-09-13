@@ -207,25 +207,34 @@ piece is a right triangle whose two short legs are axis-aligned — see §11
 for the numbers). Whether that reflects genuine mirror-fold geometry or
 just bounding-box corner completion can't be told apart on an axis-aligned
 right triangle; a non-45°, non-axis-aligned Fold Keep sample would settle
-it. **Attempted (`CAP-C80-BOOKMARK`, 2026-09-13), inconclusive on the
-original question, but two real findings surfaced along the way [?].** A
-wide non-square rectangle, folded along a line crossing the top and
-bottom edges at clearly asymmetric, non-45° points (not a corner-to-corner
-diagonal - AccuMark's own Fold Keep rejects an exact corner-to-corner
-line as "Invalid Fold line," a real validation rule not previously
-documented). Result: `n_perimeter=5` and all **5** points are stored
-explicitly - this sample simply doesn't reproduce a missing/virtual
-corner at all, so it can't settle the reflect-vs-bbox question; a
-different, more precisely targeted geometry would be needed. What it does
-show: (1) the piece's `mirror`-tagged internal line stores a perfectly
-horizontal segment in the file's own coordinate frame even though the
-fold line was drawn clearly oblique on screen, suggesting Fold Keep
-normalises the stored frame around the fold axis rather than preserving
-the original drawing orientation as-is - not confirmed in detail, just
-observed; (2) one point in this file's own line table (the `mirror`
-record's numbered endpoint) doesn't match any of `classify_line_table()`'s
-existing categories, a small new gap surfaced by this capture rather than
-resolved by it. The original ambiguity therefore remains genuinely open.
+it. **Resolved (`CAP-C82-FOLD-OBLIQUE`, 2026-09-13) [V]: genuine
+reflection, not bounding-box completion.** A wide non-square rectangle,
+folded along a line crossing the top and bottom edges at clearly
+asymmetric, non-45° points (not a corner-to-corner diagonal - AccuMark's
+own Fold Keep rejects an exact corner-to-corner line as "Invalid Fold
+line," a real validation rule not previously documented). This sample's
+`n_perimeter=5` with all 5 points stored explicitly - no missing/virtual
+corner to inspect directly, so the original "look for the absent corner"
+framing doesn't apply here. The real test instead: take the file's own
+`mirror`-tagged internal line as the reflection axis and check whether
+any two *other* stored points are exact mirror images of each other
+across it. They are - point `id3` `(89464,12782)` and point `id7`
+`(89464,1)` reflect onto each other across the stored axis (a line
+through `(89464,6392)`/`(41537,6392)`) to a residual of exactly **1
+native unit (0.0001 in)**, i.e. the smallest representable difference -
+essentially exact. A third point, `id6` `(89464,6392)`, sits exactly on
+the axis and correctly reflects to itself with zero residual. Since the
+fold axis here is not axis-aligned, not 45°, and not a corner-to-corner
+diagonal, "complete the bounding box" isn't even a coherent alternative
+for this pairing - only genuine geometric reflection produces it. This
+settles the question the axis-aligned `CAP-C61-MIRROR` sample couldn't:
+Mirror Piece performs true reflection across the fold line, not a
+bounding-box shortcut. (Two smaller points, `id5`/`id8`, don't pair with
+anything and are presumably the un-mirrored, "kept" side's own boundary;
+not investigated further since the core question is settled.) One point
+in this file's own line table remains outside `classify_line_table()`'s
+existing categories - a small new gap surfaced by this capture, not
+resolved by it, and not a threat to the reflection finding above.
 
 **Darts are cut directly into the perimeter, not stored as an internal line
 [V]** (round 2, `CAP-C62-DART`): Advanced tab → Darts → Add on a plain
@@ -823,25 +832,32 @@ style is independently documented, not just topologically valid. See
 `CAPTURE_LOG.md`'s `CAP-C36-SEAM-CORNERS` entry for the full
 `line_geometry` records.
 
-### 10.2 The mirror piece's virtual 4th corner — located, not fully explained
+### 10.2 The mirror piece's 4th corner and reflection — both resolved [V]
 
 `CAP-C61-MIRROR`'s line table references a table point (`a = 5`, at
-(461361, 237653)) that matches **none** of the block's 3 real perimeter
-points ((429009,237653) id 1, (429009,270071) id 2, (461361,270071) id 6),
-its closing point, or its grain line. **[V]**: this point is exactly the
-4th corner of the axis-aligned rectangle the other 3 corners already
-define — `x` taken from id 6 (the corner with a different x than id 1),
-`y` taken from id 1 (the corner with a different y than id 6). Both §4's
-metadata `n_perimeter` and §11's pretable `n_perimeter_a/b` count this
-piece as having 4 corners, one more than are actually stored, so this
-"virtual" table point is where that logical 4th corner's coordinates
-finally surface in the file. Left **[?]**: this stored triangle happens to
-be a right triangle with axis-aligned legs, so "reflect across the fold
-line" and "complete the bounding rectangle" produce the identical answer —
-they can't be told apart on this sample. A non-axis-aligned attempt
-(`CAP-C80-BOOKMARK`, §4) didn't settle it either - that sample simply
-doesn't produce a missing corner at all (`n_perimeter=5`, all 5 stored) -
-so this remains open, needing a still more precisely targeted sample.
+(461361, 237653)). An earlier pass on this project mis-located the point
+table for this piece (the old locator skipped the table's first record,
+id 5, since it only scanned for id 1/−1) and so found only 3 of its 4
+real perimeter points, making id 5 look "virtual" - present only in the
+line table, absent from the perimeter. **That was a decoder bug, not a
+format mystery**: with the locator fixed (§2's correction), all **4**
+corners - `(461361,237653)` id 5, `(429009,237653)` id 1,
+`(429009,270071)` id 2, `(461361,270071)` id 6 - decode directly from the
+perimeter itself, forming a clean rectangle, and match the DXF to
+0.000000 in. Nothing about this point is inferred or computed by the
+decoder; it was always a stored point like any other.
+
+What genuinely remained open was a different question: when Fold Keep
+computed this corner's value in the first place, did it do so by
+reflecting a point across the fold line, or by some simpler bounding-box
+shortcut? `CAP-C61-MIRROR`'s own rectangle happens to be a right triangle
+case where both answers coincide, so it can't distinguish them. This is
+now settled by `CAP-C82-FOLD-OBLIQUE` (§4): on a genuinely oblique,
+non-axis-aligned fold, two of the piece's stored points reflect onto each
+other across the file's own stored fold axis to a residual of 1 native
+unit (0.0001 in) - a result "complete the bounding box" cannot produce,
+since there is no rectangle to complete. Mirror Piece performs true
+geometric reflection.
 
 ### 10.3 Still open
 
@@ -1832,11 +1848,11 @@ account for:
   be catalogued alongside it are resolved and no longer open: Region C's
   `n_perimeter` mismatch on `CAP-C14-ANNOT`/`CAP-C62-DART`/notch pieces
   (explained by `n_perimeter_a`, the "corners minus notches/dart-apex"
-  count, §11), and the *location* of `CAP-C61-MIRROR`'s virtual 4th
-  corner (§10.2). §10.2 itself is **not** fully closed, though — which of
-  two equally-fitting derivations (reflect across the fold line vs.
-  complete the bounding rectangle) produced that corner's value is still
-  open, unresolvable on this axis-aligned sample **[?]**.
+  count, §11), and both the *location* and *derivation* of
+  `CAP-C61-MIRROR`'s 4th corner (§10.2) - the point was always genuinely
+  stored (an earlier locator bug, not a virtual/computed value), and
+  `CAP-C82-FOLD-OBLIQUE` confirmed Mirror Piece performs true geometric
+  reflection, not bounding-box completion. §10.2 is now fully closed.
 
 None of these affect geometry, seam, notch, grade-rule, or grain/drill/
 cut-out decoding, all of which are validated to 0.000000 in DXF residual

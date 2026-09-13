@@ -270,5 +270,42 @@ record. See FORMAT_SPEC.md §8 and CAPTURE_LOG.md's CAP-C70-PASTED row.
 Also captured ad hoc: `CAP-C00-BASE` (fresh baseline), `CAP-C02-SAVEAS-NOEDIT`
 (isolates what actually creates the second piece record — it's editing, not
 Save-As or pasting). All 13 round-2 captures pass `selftest.py`'s regression
-table. Remaining items (Phase 1 tail-section byte accounting beyond the
-priority list, Phase 4 notches, Phase 6 primitives) are still open.
+table. The legacy round-2 queue above is closed; the v3 follow-up queue below
+contains the remaining controlled experiments.
+
+---
+
+## V3 follow-up - internal tags and seam corner semantics
+
+Use AccuMark V17 with the `DATA90` storage area. For every capture, export the
+native ZIP and ASTM DXF, run `verify_capture.py`, and add the observed operation
+and result to `CAPTURE_LOG.md`. Do not promote a provisional field name solely
+from correlation.
+
+**Export, no edit — DONE (2026-09-12/13):** exported AccuMark V17 model
+`2303 MOCUP B1 1` to ASTM and preserved the byte-exact native OUMO/INMO piece
+members from the earlier all-model native export in
+`captures/V3-PROD-MOCUP-B1-1-NOEDIT`. All eight `0x48` lists match layer 11
+(internal cutout) point-for-point, worst residual 0.0001 in; all ten `0x49`
+lists match layer 8. The existing production OUCF ZIP+ASTM capture proves
+`0x4d` is layer 6 (mirror/fold), zero residual. Automated by
+`verify_capture.py --internal-layers`; see FORMAT_SPEC.md §5.2-5.3.
+
+**CAP-C33-INTERNAL-TYPES:** one rectangle with one available internal feature
+of each type: plot/draw, sew, mirror, stripe, plaid, alternate grain, and cut
+internal. Establish the tag-to-feature table.
+
+**CAP-C32-SEAM-REMOVE:** remove the seam from C30 and compare against C00.
+
+**CAP-C34-SEAM-CURVED:** controlled curved edge with an even seam, once with a
+positive and once with a negative amount.
+
+**CAP-C35-SEAM-TAPER-TRUE:** one edge with nonzero, unequal values at both ends.
+
+**CAP-C36-SEAM-CORNERS:** identical bases using Slant, Mitered, Squared,
+Extension, Mirrored, and Turnback corners. The existing production endpoints
+now validate structurally as `shared_seam_corner`; this capture is still the
+ground truth needed to map those topology-valid joins to named corner styles.
+
+**CAP-C37-SEAM-SWAP:** apply Swap Sew/Cut and also test a fold piece with a seam
+on the fold line.

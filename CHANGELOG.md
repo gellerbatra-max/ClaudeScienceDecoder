@@ -1,5 +1,56 @@
 # Changelog
 
+## v3.0 (2026-09-12 to 2026-09-13) - exact kind-2 seam model and structured survey
+
+- Resolved the provisional internal-list names by native-to-ASTM geometry:
+  `0x49=internal` (layer 8), `0x48=internal_cutout` (layer 11), and
+  `0x4d=mirror` (layer 6). The MOCUP no-edit capture matches 20/20 lists
+  across OUMO/INMO; the production OUCF capture matches 2/2.
+- Added `verify_capture.py --internal-layers`, a block-aware LINE/POINT/
+  POLYLINE checker that aligns each native piece from its layer-1 perimeter
+  and requires every internal list to match an equal-length entity on its
+  semantic ASTM layer. Added these captures to `selftest.py`.
+- Corrected the API names inherited from the historical
+  `CAP-C60-CUTOUT`: generic tag `0x49` now appears in `internal_lines_in` and
+  `internal_points`; `cutouts_in` / `cutout_points` now mean the verified
+  layer-11 `0x48` geometry. Added `grain_lines_in` and `mirrors_in`.
+- Fixed `parse_segments()` to accept all observed first-record preambles and
+  both seam trailers (immediate `u32 3` and six-zero-padded). Segment and
+  explicit cut-line records are now scoped to their owning piece block.
+- Added `seam_line_points(block)`: signed chord offsets, linear begin/end
+  taper, curve miters, adjacent zero-offset perimeter lines, and consumed
+  short edges. It reproduces the controlled TASK2/C30/C31 numbered cut-line
+  points to at most one native unit; C30 and C31 now pass
+  `line_table_consistent`.
+- Added `classify_line_table()` with per-point labels and match evidence while
+  retaining `check_line_table()` as the existing bool API. Exact checks run
+  before the old axis/diagonal and curved-distance fallbacks.
+- Tightened every internal-list entry path to require a complete count walk,
+  valid terminator, and trailing `Lnn`, matching the bridged-list validation.
+- Expanded `kind2_survey.py` with child tags, seam edge/role, expected point,
+  residual, shared-corner record/ID evidence, and nearest perimeter segment.
+  On 44 ZIPs / 133 blocks / 13,369
+  kind-2 points: 12,992 stored geometry, 294 exact seam-model points, 8
+  accepted seam fallbacks, 5 structurally matched internal-curve table-extra
+  points, 68 topology-validated `shared_seam_corner` points, and 2 tightly
+  bounded `seam_model_quantized` curve points. All **133/133** blocks now pass;
+  no point remains in the generic `unexplained` class.
+- Identified the final five generic residuals as one exact 46-vs-44 encoding:
+  the line table reproduces a stored `0x49` curve in order, inserts one
+  near-start point, and repeats the final vertex. Classified the inserted
+  point as `internal_curve_table_extra` without guessing its spline/control
+  semantics; all five occurrences have delta `(15,22)` or `(16,22)` from the
+  stored start vertex and are regression-tested.
+- Added classification counts to the robustness canonical form and updated the
+  controlled seam expectations and one-unit assertions in `selftest.py`.
+- Classified the separate final kind-1 residue: two one-unit
+  `stored_geometry_quantized` points and eight
+  `shared_graded_perimeter_point` occurrences. The graded points are duplicated
+  at adjacent edge boundaries, carry rule-10001 and point-name children, and
+  match the same perimeter ID within 25 native units. Added one-copy mutation
+  tests for both shared seam corners and shared graded points so topology, not
+  proximity alone, is required. Corner-style names remain open for CAP-C36.
+
 ## v2.0 (2026-09-11, continued once more #27) - live AccuMark V17 import validation of the generated dataset (decoder v2 plan's last outstanding verification step)
 
 User asked to run the live AccuMark validation: the one verification step

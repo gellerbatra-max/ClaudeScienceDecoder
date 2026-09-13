@@ -3,7 +3,7 @@
 touching AccuMark.  Decodes every capture under captures/, checks each against
 its DXF, and re-runs the known structural-diff cases (including the two that
 must report NO change).  Exits non-zero on any failure."""
-import glob, os, sys, subprocess
+import copy, glob, os, sys, subprocess
 HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, HERE)
 import accumark_pds as ap
@@ -73,18 +73,15 @@ if not ok: fails.append('RUL parse')
 print('-- round-2 captures (skipped when a folder is absent)')
 # line_records/line_table_consistent (§10, FORMAT_SPEC.md): one count per
 # piece record (block), from accumark_pds's TLV line-table parser, cross-
-# checked point-by-point against the independently decoded geometry. 'no' is
-# the CORRECT expectation on CAP-C30/C31 (uneven/tapered seam - the shared
-# corner's cut-line miter isn't derived yet, §10.1 [?]) and CAP-C61-MIRROR
-# (references an unexplained virtual 4th-corner point, §10.2 [?]) - these are
-# tracked gaps, not regressions; see FORMAT_SPEC.md.
+# checked point-by-point against independently decoded geometry. The exact
+# seam model now validates CAP-C30/C31's tapered intersections as well.
 R2 = [  # folder, baseline, {fact: want}, structural_change want (or None)
  ('CAP-C00-BASE',          None,               dict(piece_records=1, perimeter_points=4, line_records='5', line_table_consistent='yes'), None),
  ('CAP-C01-REEXPORT',      'CAP-C00-BASE',     dict(piece_records=1, line_records='5', line_table_consistent='yes'), 'no'),
  ('CAP-C02-SAVEAS-NOEDIT', 'CAP-C00-BASE',     dict(piece_records=1, line_records='5', line_table_consistent='yes'), 'no'),
  ('CAP-C50-DRILL1',        'CAP-C00-BASE',     dict(drill_points=1, piece_records=2, line_records='6;5', line_table_consistent='yes'), 'yes'),
- ('CAP-C30-SEAM-UNEVEN',   None,               dict(uneven_seam='yes', cutline_records=3, line_records='8;5', line_table_consistent='no'), None),
- ('CAP-C31-SEAM-TAPER',    'CAP-C00-BASE',     dict(uneven_seam='yes', cutline_records=2, line_records='7;5', line_table_consistent='no'), 'yes'),
+ ('CAP-C30-SEAM-UNEVEN',   None,               dict(uneven_seam='yes', cutline_records=3, line_records='8;5', line_table_consistent='yes'), None),
+ ('CAP-C31-SEAM-TAPER',    'CAP-C00-BASE',     dict(uneven_seam='yes', cutline_records=2, line_records='7;5', line_table_consistent='yes'), 'yes'),
  ('CAP-C20-RULE-DISTINCT', 'CAP-C02-SAVEAS-NOEDIT', dict(graded_points=1, n_break_rows=8, rul_n_rules=1, line_records='5;5', line_table_consistent='yes'), 'yes'),
  ('CAP-C21-RULE-TWO',      'CAP-C20-RULE-DISTINCT', dict(graded_points=2, n_break_rows=8, rul_n_rules=2, line_records='5;5', line_table_consistent='yes'), 'yes'),
  ('CAP-C22-RULE-NONE',     'CAP-C20-RULE-DISTINCT', dict(graded_points=0, n_break_rows=8, line_records='5;5', line_table_consistent='yes'), None),
@@ -93,14 +90,14 @@ R2 = [  # folder, baseline, {fact: want}, structural_change want (or None)
  ('CAP-C40-NOTCH-TYPES',   None,               dict(notches=4, notch_types='2;4;5;1', line_records='5;5', line_table_consistent='yes'), None),
  ('CAP-C41-NOTCH-WIDTH',   None,               dict(notches=2, notch_types='1;1', perimeter_points=6, line_records='5;5', line_table_consistent='yes'), None),
  ('CAP-C42-NOTCH-ALLEDGES', None,              dict(notches=4, notch_types='1;1;1;1', segment_points='3;3;3;3', line_records='5;5', line_table_consistent='yes'), None),
- ('CAP-C60-CUTOUT',         None,              dict(perimeter_points=4, cutout_points='25', line_records='6;5', line_table_consistent='yes'), None),
+ ('CAP-C60-CUTOUT',         None,              dict(perimeter_points=4, internal_points='25', line_records='6;5', line_table_consistent='yes'), None),
  # 2026-09-09: was (perimeter_points=3, graded_points=1, line_table_consistent='no').
  # The "missing 4th corner" was the old point-table locator skipping the
  # table's first record (id 5); all four corners now match the DXF exactly.
  ('CAP-C61-MIRROR',         None,              dict(perimeter_points=4, graded_points=2, line_records='5', line_table_consistent='yes'), None),
  ('CAP-C62-DART',           None,              dict(perimeter_points=7, piece_records=2, line_records='7;5', line_table_consistent='yes'), None),
  ('CAP-C70-PASTED',         None,              dict(piece_records=1, category='CAP-C00-BASE', line_records='5', line_table_consistent='yes'), None),
- ('CAP-C12-TWOINTLINES',    None,              dict(perimeter_points=4, cutout_points='2', line_records='6;5', line_table_consistent='yes'), None),
+ ('CAP-C12-TWOINTLINES',    None,              dict(perimeter_points=4, internal_points='2', line_records='6;5', line_table_consistent='yes'), None),
  ('CAP-C13-LONGNAME',       None,              dict(piece_records=1, category='CAP-C13-LONGNAME-1234567890ABC', line_records='5', line_table_consistent='yes'), None),
  ('CAP-C14-ANNOT',          None,              dict(annotation='collar', perimeter_points=5, line_records='5', line_table_consistent='yes'), None),
 ]
@@ -119,8 +116,166 @@ for name, base, want, sc in R2:
     if name == 'CAP-C20-RULE-DISTINCT':
         want_d = [(393,-196),(787,-393),(1181,-590),(1574,-787),(1968,-984),(2362,-1181),(2755,-1377),(3149,-1574)]
         if s['grade_rules'].get(1) != want_d: bad.append(f"rule-1 deltas {s['grade_rules'].get(1)}")
+    if name in ('CAP-C30-SEAM-UNEVEN', 'CAP-C31-SEAM-TAPER'):
+        for block in s['blocks']:
+            model = [p for edge in ap.seam_line_points(block) for p in edge['points']]
+            if not model: continue
+            numbered = [tp for record in block['tail']['line_records'] if record['kind'] == 2
+                        for tp in record['points'] if tp['a'] != 65535]
+            residual = max(min(max(abs(tp['x']-p['xy'][0]), abs(tp['y']-p['xy'][1]))
+                               for p in model) for tp in numbered)
+            if residual > 1: bad.append(f'seam-model residual={residual}>1')
     print(f"   {'ok ' if not bad else 'FAIL'} {name:22} {'; '.join(bad) if bad else 'as expected'}")
     if bad: fails.append(f'{name}: ' + '; '.join(bad))
+
+print('-- native internal tags vs ASTM layers')
+LAYER_CAPTURES = [
+    (os.path.join(CAPS, 'V3-PROD-MOCUP-B1-1-NOEDIT'),
+     {'grain': 2, 'internal': 10, 'internal_cutout': 8}),
+    (os.path.join(CAPS, '2303-B1-A1- OUCF-SP24'),
+     {'grain': 1, 'mirror': 1}),
+    (os.path.join(HERE, 'CAP-C60-CUTOUT'),
+     {'grain': 1, 'internal': 1}),
+    (os.path.join(HERE, 'CAP-C12-TWOINTLINES'),
+     {'grain': 1, 'internal': 1}),
+]
+for folder, expected in LAYER_CAPTURES:
+    cap = vc.load(folder)
+    ok, results, msg = vc.internal_layer_check(cap)
+    counts = {}
+    for result in results:
+        counts[result['kind']] = counts.get(result['kind'], 0) + 1
+    ok = ok and counts == expected
+    name = os.path.basename(folder)
+    print(f"   {'ok ' if ok else 'FAIL'} {name:34} {msg}; {counts}")
+    if not ok: fails.append(f'{name}: internal layers {msg}; {counts}!={expected}')
+
+print('-- internal-curve line-table expansion')
+cp_zip = os.path.join(HERE, 'markers', '2303-CP150-JULY', '2303-CP 150 CPL.zip')
+extras = []
+for obj in am.list_zip(cp_zip).get('piece', []):
+    for block in ap.decode(obj['data'])['blocks']:
+        analysis = ap.classify_line_table(block)
+        for record in analysis['records']:
+            for point in record['points']:
+                if point['classification'] == 'internal_curve_table_extra':
+                    extras.append(point['internal_match']['delta'])
+ok = len(extras) == 5 and extras.count((15, 22)) == 3 and extras.count((16, 22)) == 2
+print(f"   {'ok ' if ok else 'FAIL'} five 46-vs-44 table extras {extras}")
+if not ok: fails.append(f'internal-curve table extras {extras}')
+
+print('-- shared seam-corner topology and quantized curve point')
+corner_counts = {}
+corner_example = None
+quantized_example = None
+for marker_zip in (
+        os.path.join(HERE, 'markers', '2303-BD137-PLACED', '2303-BD 137 PLACED.zip'),
+        os.path.join(HERE, 'markers', '2303-BD137-UNLAID', '2303-BD 137.zip'),
+        os.path.join(HERE, 'markers', 'misc-test-markers', 'AD1234 TEST 134.zip')):
+    for obj in am.list_zip(marker_zip).get('piece', []):
+        for block in ap.decode(obj['data'])['blocks']:
+            analysis = ap.classify_line_table(block)
+            for record in analysis['records']:
+                for point_i, point in enumerate(record['points']):
+                    name = point['classification']
+                    if name in ('shared_seam_corner', 'seam_model_quantized'):
+                        corner_counts[name] = corner_counts.get(name, 0) + 1
+                    if name == 'shared_seam_corner' and corner_example is None:
+                        corner_example = (block, point['corner_match'])
+                    if name == 'seam_model_quantized' and quantized_example is None:
+                        quantized_example = (block, record['idx'], point_i)
+ok = corner_counts == {'shared_seam_corner': 68, 'seam_model_quantized': 2}
+print(f"   {'ok ' if ok else 'FAIL'} classified corpus residue {corner_counts}")
+if not ok: fails.append(f'seam-corner classifications {corner_counts}')
+
+# The shared join is redundant evidence, not a loose proximity waiver: if
+# only one of its two table copies changes, it must stop validating.
+mutated = copy.deepcopy(corner_example[0]) if corner_example else None
+if mutated:
+    match = corner_example[1]
+    left = next(r for r in mutated['tail']['line_records']
+                if r['idx'] == match['left_record'])
+    left['points'][-1]['x'] += 1
+    mutation_ok = not ap.classify_line_table(mutated)['ok']
+else:
+    mutation_ok = False
+print(f"   {'ok ' if mutation_ok else 'FAIL'} one-copy corner corruption is rejected")
+if not mutation_ok: fails.append('shared seam-corner corruption was accepted')
+
+mutated = copy.deepcopy(corner_example[0]) if corner_example else None
+if mutated:
+    match = corner_example[1]
+    for record_id, point_i in ((match['left_record'], -1),
+                               (match['right_record'], 0)):
+        record = next(r for r in mutated['tail']['line_records']
+                      if r['idx'] == record_id)
+        record['points'][point_i]['x'] += ap.SHARED_SEAM_CORNER_MAX + 1000
+    paired_mutation_ok = not ap.classify_line_table(mutated)['ok']
+else:
+    paired_mutation_ok = False
+print(f"   {'ok ' if paired_mutation_ok else 'FAIL'} out-of-bound paired corner is rejected")
+if not paired_mutation_ok: fails.append('out-of-bound shared seam corner was accepted')
+
+mutated = copy.deepcopy(quantized_example[0]) if quantized_example else None
+if mutated:
+    _, record_id, point_i = quantized_example
+    record = next(r for r in mutated['tail']['line_records'] if r['idx'] == record_id)
+    record['points'][point_i]['x'] += ap.SEAM_MODEL_QUANTIZED_MAX + 100
+    quantized_mutation_ok = not ap.classify_line_table(mutated)['ok']
+else:
+    quantized_mutation_ok = False
+print(f"   {'ok ' if quantized_mutation_ok else 'FAIL'} over-limit quantized seam point is rejected")
+if not quantized_mutation_ok: fails.append('over-limit quantized seam point was accepted')
+
+print('-- line-table shadow geometry')
+shadow_counts = {}
+shadow_example = None
+for marker_zip in (
+        os.path.join(HERE, 'captures', '2303-B1-38B-IN WG-SP24',
+                     '2303-B1-38B-IN WG-SP24.ZIP'),
+        os.path.join(HERE, 'markers', '2303-BD137-PLACED', '2303-BD 137 PLACED.zip'),
+        os.path.join(HERE, 'markers', '2303-BD137-UNLAID', '2303-BD 137.zip')):
+    for obj in am.list_zip(marker_zip).get('piece', []):
+        for block in ap.decode(obj['data'])['blocks']:
+            analysis = ap.classify_line_table(block)
+            for record in analysis['records']:
+                for point in record['points']:
+                    name = point['classification']
+                    if name in ('stored_geometry_quantized',
+                                'shared_graded_perimeter_point'):
+                        shadow_counts[name] = shadow_counts.get(name, 0) + 1
+                    if name == 'shared_graded_perimeter_point' and shadow_example is None:
+                        shadow_example = (block, point['graded_match'])
+ok = shadow_counts == {'stored_geometry_quantized': 2,
+                       'shared_graded_perimeter_point': 8}
+print(f"   {'ok ' if ok else 'FAIL'} classified kind-1 residue {shadow_counts}")
+if not ok: fails.append(f'line-table shadow classifications {shadow_counts}')
+
+mutated = copy.deepcopy(shadow_example[0]) if shadow_example else None
+if mutated:
+    match = shadow_example[1]
+    left = next(r for r in mutated['tail']['line_records']
+                if r['idx'] == match['left_record'])
+    left['points'][-1]['x'] += 1
+    mutation_ok = not ap.classify_line_table(mutated)['ok']
+else:
+    mutation_ok = False
+print(f"   {'ok ' if mutation_ok else 'FAIL'} one-copy graded shadow corruption is rejected")
+if not mutation_ok: fails.append('shared graded shadow corruption was accepted')
+
+mutated = copy.deepcopy(shadow_example[0]) if shadow_example else None
+if mutated:
+    match = shadow_example[1]
+    for record_id, point_i in ((match['left_record'], -1),
+                               (match['right_record'], 0)):
+        record = next(r for r in mutated['tail']['line_records']
+                      if r['idx'] == record_id)
+        record['points'][point_i]['x'] += ap.GRADED_SHADOW_MAX + 100
+    paired_mutation_ok = not ap.classify_line_table(mutated)['ok']
+else:
+    paired_mutation_ok = False
+print(f"   {'ok ' if paired_mutation_ok else 'FAIL'} out-of-bound graded shadow is rejected")
+if not paired_mutation_ok: fails.append('out-of-bound graded shadow was accepted')
 
 print('-- markers (markers/, skipped when absent) - see MARKER_DECODE_PLAN.md')
 # Production style 2303 (bra): the same marker unlaid and laid (2026-09 V17

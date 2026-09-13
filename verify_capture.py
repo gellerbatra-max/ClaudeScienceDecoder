@@ -21,6 +21,11 @@ exits non-zero if any fails, so it can gate a capture loop.
   notches              count of notch vertices
   notch_types          semicolon list of notch Type numbers (1..30), in perimeter order
   drill_points         count of interior/drill points (0x44 internal list)
+  internal_points      semicolon list of point counts for layer-8 internal
+                       lines (0x49)
+  cutout_points        semicolon list of point counts for layer-11 internal
+                       cutouts (0x48)
+  mirror_points        semicolon list of point counts for mirror lines (0x4d)
   graded_points        count of points carrying an explicit rule reference
   rule_ids             semicolon list of referenced object-record ids
   piece_records        count of piece records in the file (2 => pasted copy)
@@ -50,6 +55,7 @@ Pass --coverage to also print the unknown-byte run list (offset, length,
 hex) instead of just the summary counts.
 """
 import argparse, glob, os, re, sys, zipfile, difflib
+from collections import Counter
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import accumark_pds as ap
 from accumark_errors import AccuMarkError, NotAnAccuMarkZip, NoSuchObject, NotADxf
@@ -92,6 +98,148 @@ def dxf_outline(path):
         if k == '20' and x is not None:
             x['y'] = float(v); cur['pts'].append((x['x'], x['y'])); x = None
     return polys
+
+
+DXF_INTERNAL_LAYERS = {
+    'grain': '7',
+    'drill': '13',
+    'internal': '8',
+    'internal_cutout': '11',
+    'mirror': '6',
+}
+
+
+def dxf_entities(path):
+    """Return LINE/POINT/POLYLINE geometry grouped by ASTM BLOCK.
+
+    `dxf_outline()` intentionally remains the small historical perimeter
+    parser. This companion keeps block ownership and non-polyline entities so
+    native internal lists can be checked against their semantic ASTM layers.
+    """
+    lines = [line.rstrip('\r\n') for line in open(path, errors='replace')]
+    pairs = [(lines[i].strip(), lines[i+1].strip())
+             for i in range(0, len(lines)-1, 2)]
+    if not any(k == '0' and v == 'SECTION' for k, v in pairs) \
+       and not any(v == '$ACADVER' for k, v in pairs):
+        raise NotADxf('no SECTION or $ACADVER found - not a DXF', source=path)
+
+    chunks, chunk = [], None
+    for pair in pairs:
+        if pair[0] == '0':
+            if chunk: chunks.append(chunk)
+            chunk = [pair]
+        elif chunk is not None:
+            chunk.append(pair)
+    if chunk: chunks.append(chunk)
+
+    entities, block, poly = [], None, None
+    for chunk in chunks:
+        kind = chunk[0][1]
+        if kind == 'BLOCK':
+            block = next((v for k, v in chunk if k == '2'), None)
+            poly = None
+            continue
+        if kind == 'ENDBLK':
+            block = poly = None
+            continue
+        if block is None:
+            continue
+        layer = next((v for k, v in chunk if k == '8'), None)
+        if kind == 'POLYLINE':
+            poly = dict(block=block, kind=kind, layer=layer, pts=[])
+            entities.append(poly)
+        elif kind == 'VERTEX' and poly is not None:
+            x = next((float(v) for k, v in chunk if k == '10'), None)
+            y = next((float(v) for k, v in chunk if k == '20'), None)
+            if x is not None and y is not None:
+                poly['pts'].append((x, y))
+        elif kind == 'SEQEND':
+            poly = None
+        elif kind in ('LINE', 'POINT'):
+            values = {k: float(v) for k, v in chunk
+                      if k in ('10', '20', '11', '21')}
+            pts = []
+            if '10' in values and '20' in values:
+                pts.append((values['10'], values['20']))
+            if kind == 'LINE' and '11' in values and '21' in values:
+                pts.append((values['11'], values['21']))
+            entities.append(dict(block=block, kind=kind, layer=layer, pts=pts))
+    return entities
+
+
+def _point_set_residual(a, b):
+    """Symmetric nearest-vertex residual in inches (Chebyshev distance)."""
+    if not a or not b:
+        return float('inf')
+    def directed(src, dst):
+        return max(min(max(abs(x-u), abs(y-v)) for u, v in dst) for x, y in src)
+    return max(directed(a, b), directed(b, a))
+
+
+def internal_layer_check(cap, tolerance=2e-4):
+    """Cross-check each native internal list against its named ASTM layer.
+
+    Every exported piece is aligned to its matching DXF BLOCK from layer-1
+    perimeter vertices. The check then requires an equal-length entity on the
+    expected semantic layer whose vertices match within `tolerance` inches.
+    """
+    if not cap.get('dxf'):
+        return False, [], 'no DXF in folder'
+    entities = dxf_entities(cap['dxf'])
+    results = []
+    with zipfile.ZipFile(cap['zip']) as zf:
+        for info in zf.infolist():
+            data = zf.read(info)
+            if not data.startswith(ap.MAGIC) or ap.u16(data, 0x7a) != 20:
+                continue
+            decoded = ap.decode(data)
+            piece = data[0x15:data.index(b'\x00', 0x15)].decode('latin1')
+            block_name = next((name for name in {e['block'] for e in entities}
+                               if name == piece or name.startswith(piece + '_')), None)
+            if block_name is None:
+                results.append(dict(member=info.filename, piece=piece, kind='*',
+                                    label='', expected_layer='', residual=None,
+                                    entity=None, ok=False, error='no matching DXF BLOCK'))
+                continue
+            block = decoded['blocks'][0]
+            binary_perimeter = [(p['x']/ap.UNITS_PER_INCH,
+                                 p['y']/ap.UNITS_PER_INCH)
+                                for p in block['perimeter']]
+            dxf_perimeter = [p for e in entities
+                             if e['block'] == block_name and e['layer'] == '1'
+                             for p in e['pts']]
+            if not binary_perimeter or not dxf_perimeter:
+                results.append(dict(member=info.filename, piece=piece, kind='*',
+                                    label='', expected_layer='', residual=None,
+                                    entity=None, ok=False, error='no perimeter anchors'))
+                continue
+            votes = Counter((round(u-x, 4), round(v-y, 4))
+                            for x, y in binary_perimeter
+                            for u, v in dxf_perimeter)
+            (tx, ty), anchors = votes.most_common(1)[0]
+            for kind, label, segment in zip(block['internal_kinds'],
+                                            block['internal_labels'],
+                                            block['internal_lines']):
+                layer = DXF_INTERNAL_LAYERS[kind]
+                native = [(p['x']/ap.UNITS_PER_INCH + tx,
+                           p['y']/ap.UNITS_PER_INCH + ty) for p in segment]
+                candidates = [e for e in entities
+                              if e['block'] == block_name and e['layer'] == layer
+                              and len(e['pts']) == len(native)]
+                ranked = sorted((_point_set_residual(native, e['pts']), i, e)
+                                for i, e in enumerate(candidates))
+                residual, _, match = ranked[0] if ranked else (None, None, None)
+                results.append(dict(member=info.filename, piece=piece, kind=kind,
+                                    label=label, expected_layer=layer,
+                                    residual=residual,
+                                    entity=match['kind'] if match else None,
+                                    anchors=anchors, shift=(tx, ty),
+                                    ok=residual is not None and residual <= tolerance))
+    if not results:
+        return False, [], 'ZIP has no piece objects'
+    ok = all(result['ok'] for result in results)
+    return ok, results, '%d/%d internal lists match named ASTM layers' % (
+        sum(result['ok'] for result in results), len(results))
 
 def dxf_check(cap):
     """Compare the binary perimeter with the DXF outline.
@@ -237,7 +385,9 @@ def facts(cap):
         notches=len(s['notches_in']),
         notch_types=';'.join(str(t) for t in s['notch_types']),
         drill_points=len(s['drill_points_in']),
+        internal_points=';'.join(str(len(line)) for line in s['internal_lines_in']),
         cutout_points=';'.join(str(len(c)) for c in s['cutouts_in']),
+        mirror_points=';'.join(str(len(line)) for line in s['mirrors_in']),
         graded_points=len(s['grade_refs']),
         rule_ids=';'.join(str(r) for _, r in s['grade_refs']),
         segment_points=';'.join(str(g['n_points']) for g in segs),
@@ -270,6 +420,8 @@ def main(argv=None):
     p.add_argument('--expect', action='append', default=[], metavar='KEY=VALUE')
     p.add_argument('--coverage', action='store_true',
                    help='print the accumark_pds.coverage() unknown-byte run list')
+    p.add_argument('--internal-layers', action='store_true',
+                   help='require native internal lists to match their named ASTM layers')
     a = p.parse_args(argv)
 
     cap = load(a.folder)
@@ -277,7 +429,7 @@ def main(argv=None):
     print(f"== {os.path.basename(cap['folder'])}  ({f['file_bytes']} bytes)")
     for k in ('exported_name','category','annotation','rule_table','size','sample_size',
               'n_sizes','base_size','piece_records','perimeter_points','notches','notch_types','drill_points',
-              'cutout_points','graded_points','rule_ids','segment_points','seam_cm','uneven_seam',
+              'internal_points','cutout_points','mirror_points','graded_points','rule_ids','segment_points','seam_cm','uneven_seam',
               'cutline_records','object_record_ids','n_break_rows','grade_rules',
               'rul_table','rul_n_rules','rul_sizes',
               'line_records','line_points','line_kinds','notch_blocks','graded_tags',
@@ -286,6 +438,17 @@ def main(argv=None):
     worst, msg = dxf_check(cap)
     print(f'   dxf                {msg}')
     f['dxf_match'] = 'yes' if (worst is not None and worst <= 2e-4) else 'no'
+
+    layers_ok = True
+    if a.internal_layers:
+        layers_ok, layer_results, layer_msg = internal_layer_check(cap)
+        print(f'   internal layers    {layer_msg}')
+        for result in layer_results:
+            residual = ('%.6f' % result['residual']
+                        if result.get('residual') is not None else 'none')
+            print('      %s %-16s %-3s -> layer %-2s %-8s residual=%s' % (
+                'PASS' if result['ok'] else 'FAIL', result['kind'], result['label'],
+                result['expected_layer'], result.get('entity') or '-', residual))
 
     if a.coverage:
         cov = ap.coverage(cap['data'], summary=s)
@@ -310,7 +473,7 @@ def main(argv=None):
             print('  !! no structural difference: the intended edit did NOT reach the '
                   'saved piece (name/timestamp/heap bytes only)')
 
-    ok = True
+    ok = layers_ok
     for e in a.expect:
         k, _, want = e.partition('=')
         got = f.get(k)

@@ -126,7 +126,9 @@ def canon_piece_full(data):
     inert. facts() is what actually proves whether that redundant copy is
     cross-validated by anything the decoder does."""
     import verify_capture as vc
-    dec_canon = canon_decode(__import__('accumark_pds').decode(data))
+    ap = __import__('accumark_pds')
+    decoded = ap.decode(data)
+    dec_canon = canon_decode(decoded)
     try:
         f, _ = vc.facts(dict(folder='.', zip='mem', data=data, dxf=None, rul=None))
         facts_part = dict(line_table_consistent=f.get('line_table_consistent'),
@@ -134,6 +136,13 @@ def canon_piece_full(data):
                            notches=f.get('notches'), perimeter_points=f.get('perimeter_points'),
                            graded_points=f.get('graded_points'),
                            unknown_bytes=f.get('unknown_bytes'))
+        class_counts = {}
+        for block in decoded['blocks']:
+            for record in ap.classify_line_table(block)['records']:
+                for point in record['points']:
+                    name = point['classification']
+                    class_counts[name] = class_counts.get(name, 0) + 1
+        facts_part['line_table_classifications'] = class_counts
     except Exception as e:
         facts_part = dict(error='%s: %s' % (type(e).__name__, e))
     return dec_canon + '|' + json.dumps(facts_part, sort_keys=True, default=str)

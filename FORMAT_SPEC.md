@@ -716,6 +716,17 @@ open `(4,78749)` point is the intersection of the two tapered lines and computes
 to `(4.2,78749.4)` before rounding. Both controlled fixtures now report
 `line_table_consistent=yes`.
 
+**Curved edges, confirmed working with no code changes (`CAP-C34-SEAM-CURVED`,
+2026-09-13) [V].** A rectangle with one edge bowed into a 3-point curve,
+tested at `+1.00cm` (that edge only) and `-1.00cm` (whole piece, all four
+edges) - both classify entirely as `seam_model_exact`/`stored_geometry`,
+`line_table_consistent=yes`. The offset curve's own peak and corner points
+move by a distance *close to but not exactly* the seam amount (e.g. `+1cm`
+moves the peak by 4041 units, not the nominal 3937), confirming the model
+is doing genuine curve-normal offsetting rather than a naive per-axis
+shift - only points on a genuinely straight edge move by exactly the
+signed allowance.
+
 `classify_line_table()` exposes the per-point result while
 `check_line_table()` retains the bool API. Exact stored geometry and exact seam
 model matches run first. Two tightly bounded structural classes cover the

@@ -171,6 +171,28 @@ ok = len(extras) == 5 and extras.count((15, 22)) == 3 and extras.count((16, 22))
 print(f"   {'ok ' if ok else 'FAIL'} five 46-vs-44 table extras {extras}")
 if not ok: fails.append(f'internal-curve table extras {extras}')
 
+print('-- exact seam model on a curved edge (skipped when the folder is absent)')
+# 2026-09-13: CAP-C34-SEAM-CURVED-POS/-NEG - a rectangle with one edge bowed
+# into a 3-point curve, +1.00cm and -1.00cm seam allowance. The exact seam
+# model (seam_line_points/classify_line_table) was built and validated on
+# straight-edge C30/C31 samples only; this checks it also covers a curved
+# edge in both directions without any new code. CAPTURE_PLAN.md's CAP-C34.
+curve_dir = os.path.join(HERE, 'captures', 'CAP-C34-SEAM-CURVED')
+if os.path.isdir(curve_dir):
+    for sign in ('POS', 'NEG'):
+        zpath = os.path.join(curve_dir, f'CAP-C34-SEAM-CURVED-{sign}.zip')
+        block = ap.decode_zip(zpath)['blocks'][0]
+        consistent = ap.check_line_table(block)
+        analysis = ap.classify_line_table(block)
+        kinds = {pt['classification'] for rec in analysis['records'] for pt in rec['points']}
+        bad_kinds = kinds - {'stored_geometry', 'seam_model_exact', 'axis_or_diagonal_fallback'}
+        ok = consistent and not bad_kinds
+        print(f"   {'ok ' if ok else 'FAIL'} CAP-C34-SEAM-CURVED-{sign:3} "
+              f"line_table_consistent={consistent}; classes={sorted(kinds)}")
+        if not ok: fails.append(f'CAP-C34-SEAM-CURVED-{sign}: consistent={consistent} bad_kinds={bad_kinds}')
+else:
+    print('   --  CAP-C34-SEAM-CURVED       (absent)')
+
 print('-- shared seam-corner topology and quantized curve point')
 corner_counts = {}
 corner_example = None

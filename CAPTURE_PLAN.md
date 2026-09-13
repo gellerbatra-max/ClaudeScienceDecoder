@@ -304,8 +304,23 @@ edit) rather than collapsing to 1. Removal clears the logical value; it
 does not undo the stale-second-record residue §8 of FORMAT_SPEC.md already
 documents for every post-first-save edit. See `CAPTURE_LOG.md`.
 
-**CAP-C34-SEAM-CURVED:** controlled curved edge with an even seam, once with a
-positive and once with a negative amount.
+**CAP-C34-SEAM-CURVED — DONE (2026-09-13).** A rectangle with one edge
+bowed into a 3-point curve, tested with `+1.00cm` (`CAP-C34-SEAM-CURVED-POS`,
+that edge only) and `-1.00cm` (`CAP-C34-SEAM-CURVED-NEG`, applied to the
+whole piece, all four edges) in `captures/CAP-C34-SEAM-CURVED/`. Both cases
+already validate cleanly against the existing exact seam model
+(`line_table_consistent=yes`, every point classifies as `seam_model_exact`
+or `stored_geometry`) - no new code needed, since `seam_line_points()` was
+built generally enough to cover curved edges even though it was only ever
+tested against straight-edge `CAP-C30`/`CAP-C31` before. Confirms real
+curve-normal offset geometry, not a naive per-axis shift: the offset
+curve's peak and miter-foot points sit near, but not exactly at, a plain
+vertical shift by the seam amount (e.g. POS's peak moves by 4041 units
+against a nominal 3937 = 1cm, because the offset is normal to the curve's
+local tangent, which is close to but not exactly vertical away from the
+peak itself) - while the straight edges in the NEG sample inset by exactly
+3937 units each, as expected. Added a dedicated `selftest.py` check (not
+the generic R2 fixture list, since this folder holds two zips).
 
 **CAP-C35-SEAM-TAPER-TRUE:** one edge with nonzero, unequal values at both ends.
 

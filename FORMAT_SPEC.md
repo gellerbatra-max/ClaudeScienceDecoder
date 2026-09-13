@@ -375,6 +375,21 @@ two-point list matches the explicit ASTM layer-6 LINE with zero residual and
 also coincides with the independently decoded fold axis. It is exposed as
 `mirror`.
 
+**Confirmed by direct, controlled construction, not just production
+inference (`CAP-C37-FOLD-SEAM`, 2026-09-13) [V].** `Modify → Piece
+Actions → Fold Keep` (the same tool `CAP-C61-MIRROR` used) on a fresh
+rectangle with an internal 2-point line as the fold axis produces exactly
+`internal_kinds=['grain','mirror']` - the first non-production sample of
+this tag, closing the loop from "inferred from one OUCF capture" to
+"reproduced on demand." **Fold Keep's own "seam allowance for the split
+line" prompt is not persisted anywhere in the file**: entering `1.00`
+(3937 = 1cm) leaves every perimeter segment at `seam_flag=0`, and a raw
+byte search for `3937` as both `i32` and `u16` across the whole payload
+finds zero matches. Whatever that value is used for - most likely
+positioning the mirrored copy during the fold operation itself - it is
+not part of this format's persisted seam representation the way
+`Advanced → Seam → Define`'s values are.
+
 `verify_capture.py --internal-layers` checks these mappings for every piece
 object in a capture ZIP. A candidate list is accepted only after walking its
 declared point count and finding its own valid terminator and trailing `Lnn`

@@ -377,14 +377,24 @@ order" finding. `check_line_table()` returns `True` on both the pre- and
 post-swap files - the existing model handles the swapped state with no
 changes needed. See FORMAT_SPEC.md §6.1.
 
-**Fold piece with a seam on the fold line - not completed.** Looked for
-the PDS mechanism to mark an edge as a piece's fold/mirror axis (matching
-the already-decoded `0x4d`/`mirror` internal-line tag from production
-`OUCF` pieces) and tried two candidates: Create → Line → **Mirror**
-duplicates geometry across a chosen axis line (a different operation -
-"mirror this shape," not "mark this edge as the fold line") and
-Advanced → Darts → **Fold** is specifically for folding a dart closed
-("select dart on side to fold to"), not a general piece-fold tool.
-Neither is the right control. Same honest non-completion as
-`CAP-C33-INTERNAL-TYPES` - abandoned rather than forced, no false claim
-recorded.
+**Fold piece with a seam on the fold line — DONE (2026-09-13), found via
+`Modify → Piece Actions → Fold Keep`** (the same tool `CAP-C61-MIRROR`
+used, per FORMAT_SPEC.md §2/§4 - missed on the first pass through this
+item, which tried `Create → Line → Mirror` and `Advanced → Darts → Fold`
+instead, neither of which is the right control). Drew an internal 2-Point
+line down the middle of a fresh rectangle, then Fold Keep → selected that
+line as the fold line → entered `1.00` at its own "Enter the seam
+allowance value for the split line" prompt → kept one half
+(`captures/CAP-C37-FOLD-SEAM/`). Two results: (1) **the fold axis decodes
+as a genuine `internal_kinds=['grain','mirror']` pair** - the first
+*controlled, non-production* confirmation that Fold Keep produces the
+same `0x4d`/`mirror` tag already decoded from the `OUCF` production
+capture, closing the loop from inference to direct construction. (2)
+**The "seam allowance for the split line" is not stored anywhere in the
+file** - every perimeter segment reads `seam_flag=0`, and a raw byte
+search for `3937`/`1.00cm` (as both `i32` and `u16`) across the entire
+1409-byte payload finds zero matches. This is a clean, direct answer, not
+an absence of evidence: whatever that value is used for (most likely
+positioning the mirrored copy during the fold operation itself, or a
+cosmetic/print-only value), it is not part of this format's persisted
+seam representation the way `Advanced → Seam → Define`'s values are.

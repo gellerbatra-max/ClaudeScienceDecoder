@@ -201,6 +201,27 @@ if os.path.isdir(curve_dir):
 else:
     print('   --  CAP-C34-SEAM-CURVED       (absent)')
 
+print('-- Fold Keep produces a real mirror tag; its own seam value is not stored (skipped when absent)')
+# 2026-09-13: CAP-C37-FOLD-SEAM - the first controlled (non-production)
+# confirmation that Fold Keep produces internal_kinds=['grain','mirror'],
+# and that its own "seam allowance for the split line" prompt (entered as
+# 1.00cm = 3937) is not persisted anywhere in the payload. See
+# FORMAT_SPEC.md's Sec 5.3 and CAPTURE_PLAN.md's CAP-C37 entry.
+fold_zip = os.path.join(CAPS, 'CAP-C37-FOLD-SEAM', 'CAP-C37-FOLD-SEAM.zip')
+if os.path.isfile(fold_zip):
+    obj = am.list_zip(fold_zip)['piece'][0]
+    block = ap.decode(obj['data'])['blocks'][0]
+    kinds = block.get('internal_kinds')
+    no_seam = all((sg.get('seam_flag') or 0) == 0 for sg in (block.get('segments') or []))
+    payload = obj['data']
+    no_stored_value = (3937).to_bytes(4, 'little', signed=True) not in payload and (3937).to_bytes(2, 'little') not in payload
+    ok = kinds == ['grain', 'mirror'] and no_seam and no_stored_value
+    print(f"   {'ok ' if ok else 'FAIL'} CAP-C37-FOLD-SEAM internal_kinds={kinds}; "
+          f"all seam_flag=0: {no_seam}; 3937 absent from payload: {no_stored_value}")
+    if not ok: fails.append(f'CAP-C37-FOLD-SEAM: kinds={kinds} no_seam={no_seam} no_stored_value={no_stored_value}')
+else:
+    print('   --  CAP-C37-FOLD-SEAM         (absent)')
+
 print('-- shared seam-corner topology and quantized curve point')
 corner_counts = {}
 corner_example = None

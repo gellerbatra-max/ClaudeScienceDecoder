@@ -381,6 +381,7 @@ def facts(cap):
         size=s['size'], sample_size=s['sample_size'], n_sizes=len(s['sizes']),
         base_size=s['sizes'][s['base_index']] if s['sizes'] else None,
         piece_records=s['n_blocks'],
+        mirror_flag=b0['meta'].get('mirror_flag'),
         perimeter_points=len(b0['perimeter']),
         notches=len(s['notches_in']),
         notch_types=';'.join(str(t) for t in s['notch_types']),

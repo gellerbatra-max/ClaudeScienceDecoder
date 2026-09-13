@@ -42,11 +42,15 @@ def parse_metadata(d, off=None):
     f = dict(field_off=o)
     f['len_name']    = u16(d,o)
     f['len_annot']   = u16(d,o+2)
-    # [V] CAP-C61-MIRROR: this u16 is 0 in every other capture (so reading
-    # len_annot as an i32 happened to work by coincidence), but is 2 here -
-    # the only capture made with the "Fold Keep" tool (internal fold line + Mirror Piece checkbox). Likely a mirror/flip flag
-    # or a count of mirror-related sub-records; meaning unconfirmed.
-    f['unk_u16_annot'] = u16(d,o+4)
+    # [V, 2026-09-13] Mirror Piece flag: 0 unless the piece was built with
+    # Fold Keep's Mirror Piece checkbox on, in which case it reads 2.
+    # Confirmed by direct manipulation (CAP-C37-FOLD-SEAM vs
+    # CAP-C37-FOLD-NOMIRROR, identical setup but for that one checkbox) on
+    # top of the original CAP-C61-MIRROR finding. Reading len_annot as an
+    # i32 happened to work by coincidence in every capture before this field
+    # was understood, since it was always 0 then. Why the flag reads 2
+    # rather than a plain boolean 1 is still open.
+    f['mirror_flag'] = u16(d,o+4)
     f['len_size']    = i32(d,o+6)
     f['len_ruletab'] = i32(d,o+10)
     f['n_perimeter'] = i32(d,o+14)

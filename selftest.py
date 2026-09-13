@@ -101,7 +101,7 @@ R2 = [  # folder, baseline, {fact: want}, structural_change want (or None)
  # 2026-09-09: was (perimeter_points=3, graded_points=1, line_table_consistent='no').
  # The "missing 4th corner" was the old point-table locator skipping the
  # table's first record (id 5); all four corners now match the DXF exactly.
- ('CAP-C61-MIRROR',         None,              dict(perimeter_points=4, graded_points=2, line_records='5', line_table_consistent='yes'), None),
+ ('CAP-C61-MIRROR',         None,              dict(perimeter_points=4, graded_points=2, mirror_flag=2, line_records='5', line_table_consistent='yes'), None),
  ('CAP-C62-DART',           None,              dict(perimeter_points=7, piece_records=2, line_records='7;5', line_table_consistent='yes'), None),
  ('CAP-C70-PASTED',         None,              dict(piece_records=1, category='CAP-C00-BASE', line_records='5', line_table_consistent='yes'), None),
  ('CAP-C12-TWOINTLINES',    None,              dict(perimeter_points=4, internal_points='2', line_records='6;5', line_table_consistent='yes'), None),
@@ -201,26 +201,37 @@ if os.path.isdir(curve_dir):
 else:
     print('   --  CAP-C34-SEAM-CURVED       (absent)')
 
-print('-- Fold Keep produces a real mirror tag; its own seam value is not stored (skipped when absent)')
+print('-- Fold Keep: mirror_flag, real mirror tag, seam value not stored (skipped when absent)')
 # 2026-09-13: CAP-C37-FOLD-SEAM - the first controlled (non-production)
 # confirmation that Fold Keep produces internal_kinds=['grain','mirror'],
 # and that its own "seam allowance for the split line" prompt (entered as
-# 1.00cm = 3937) is not persisted anywhere in the payload. See
-# FORMAT_SPEC.md's Sec 5.3 and CAPTURE_PLAN.md's CAP-C37 entry.
-fold_zip = os.path.join(CAPS, 'CAP-C37-FOLD-SEAM', 'CAP-C37-FOLD-SEAM.zip')
-if os.path.isfile(fold_zip):
+# 1.00cm = 3937) is not persisted anywhere in the payload.
+# CAP-C37-FOLD-NOMIRROR - same setup, Mirror Piece unchecked - resolves the
+# long-open mirror_flag ([?] since CAP-C61-MIRROR): 0 when unchecked (no
+# mirror-tagged internal line at all), 2 when checked. See FORMAT_SPEC.md's
+# Sec 2/5.3 and CAPTURE_PLAN.md's CAP-C37 entry.
+FOLD_KEEP_CASES = [
+    ('CAP-C37-FOLD-SEAM',     ['grain', 'mirror'], 2, True),
+    ('CAP-C37-FOLD-NOMIRROR', ['grain'],           0, False),
+]
+for name, want_kinds, want_flag, check_no_seam_value in FOLD_KEEP_CASES:
+    fold_zip = os.path.join(CAPS, name, f'{name}.zip')
+    if not os.path.isfile(fold_zip):
+        print(f'   --  {name:22} (absent)'); continue
     obj = am.list_zip(fold_zip)['piece'][0]
-    block = ap.decode(obj['data'])['blocks'][0]
-    kinds = block.get('internal_kinds')
-    no_seam = all((sg.get('seam_flag') or 0) == 0 for sg in (block.get('segments') or []))
     payload = obj['data']
-    no_stored_value = (3937).to_bytes(4, 'little', signed=True) not in payload and (3937).to_bytes(2, 'little') not in payload
-    ok = kinds == ['grain', 'mirror'] and no_seam and no_stored_value
-    print(f"   {'ok ' if ok else 'FAIL'} CAP-C37-FOLD-SEAM internal_kinds={kinds}; "
-          f"all seam_flag=0: {no_seam}; 3937 absent from payload: {no_stored_value}")
-    if not ok: fails.append(f'CAP-C37-FOLD-SEAM: kinds={kinds} no_seam={no_seam} no_stored_value={no_stored_value}')
-else:
-    print('   --  CAP-C37-FOLD-SEAM         (absent)')
+    block = ap.decode(payload)['blocks'][0]
+    kinds = block.get('internal_kinds')
+    flag = block['meta'].get('mirror_flag')
+    no_seam = all((sg.get('seam_flag') or 0) == 0 for sg in (block.get('segments') or []))
+    ok = kinds == want_kinds and flag == want_flag and no_seam
+    detail = f"internal_kinds={kinds}; mirror_flag={flag}; all seam_flag=0: {no_seam}"
+    if check_no_seam_value:
+        no_stored_value = (3937).to_bytes(4, 'little', signed=True) not in payload and (3937).to_bytes(2, 'little') not in payload
+        ok = ok and no_stored_value
+        detail += f"; 3937 absent from payload: {no_stored_value}"
+    print(f"   {'ok ' if ok else 'FAIL'} {name:22} {detail}")
+    if not ok: fails.append(f'{name}: {detail}')
 
 print('-- shared seam-corner topology and quantized curve point')
 corner_counts = {}

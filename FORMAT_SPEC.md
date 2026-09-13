@@ -50,7 +50,7 @@ the strings themselves:
 |---|---|---|
 | +0x00 | u16 | `len(name)` |
 | +0x02 | u16 | `len(annotation)` |
-| +0x04 | u16 | 0 in every non-mirror sample; **2** on `CAP-C61-MIRROR` (round 2) — the only capture made with the "Fold Keep" tool (internal fold line + Mirror Piece checkbox). Previously mis-modeled as the high 16 bits of a u32 `len(annotation)` (harmless while always 0). Likely a mirror/flip flag or a count of mirror-related sub-records; meaning **[?]** unconfirmed pending a second Fold Keep sample |
+| +0x04 | u16 | **Mirror Piece flag - resolved [V, 2026-09-13]**: `0` whenever `Fold Keep`'s **Mirror Piece** checkbox is off, `2` whenever it is on. Confirmed on three independent Fold Keep samples, not just the original `CAP-C61-MIRROR`: `CAP-C37-FOLD-SEAM` (Mirror Piece checked) also reads `2`, and a same-session control build, `CAP-C37-FOLD-NOMIRROR` (identical setup, Mirror Piece unchecked), reads `0` - and correspondingly has **no** `mirror`-tagged internal line at all (`internal_kinds=['grain']` only, vs `['grain','mirror']` on both checked samples). This is the field's functional meaning, confirmed by direct manipulation of the one checkbox that changes it; *why* the flag value is `2` rather than a plain boolean `1` remains open. Previously mis-modeled as the high 16 bits of a u32 `len(annotation)` (harmless while always 0 in the pre-Fold-Keep corpus) |
 | +0x06 | u32 | `len(size)` |
 | +0x0A | u32 | `len(rule_table)` |
 | +0x0E | u32 | `n_perimeter` — perimeter point records **including** the closing record **[V]** |

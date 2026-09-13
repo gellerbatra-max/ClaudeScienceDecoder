@@ -561,6 +561,9 @@ def parse_region_c(d, o, n_perimeter, category_name, table_start=None):
                 name_echo_offset=name_at, end=end), end
 
 SEAM_OFFSET_MAX = 30000            # bound (3 in) for a cutline miter/offset - see check_line_table
+SEAM_MODEL_QUANTIZED_MAX = 10      # 0.001 in: curve/tessellation rounding only
+SHARED_SEAM_CORNER_MAX = 200       # 0.020 in: observed non-plain corner joins
+GRADED_SHADOW_MAX = 25             # 0.0025 in: current-vs-shadow graded point
 # [V, widened 2026-09-11] originally 20000 (2in), calibrated against the
 # small CAP-C30/C31/TASK2-SEAM1CM test corpus - too tight for a confirmed
 # real production value found while verifying the interior-window search:
@@ -1389,6 +1392,14 @@ def classify_line_table(b):
     if b.get('closing'): real.add((b['closing']['x'], b['closing']['y']))
     for seg in b['internal_lines']:
         for p in seg: real.add((p['x'], p['y']))
+    real_points = sorted(real)
+    def _nearest_real(pt):
+        if not real_points:
+            return None
+        expected = min(real_points,
+                       key=lambda p: max(abs(pt[0]-p[0]), abs(pt[1]-p[1])))
+        return dict(expected=expected,
+                    residual=max(abs(pt[0]-expected[0]), abs(pt[1]-expected[1])))
     seam_model = seam_line_points(b)
     seam_candidates = [dict(edge_index=edge['edge_index'], role=p['role'], xy=p['xy'])
                        for edge in seam_model for p in edge['points']]
@@ -1402,6 +1413,21 @@ def classify_line_table(b):
     def _match_seam_model(pt):
         match = _nearest_seam_model(pt)
         return match if match and match['residual'] <= 2 else None
+    def _match_quantized_seam_model(pt, table_point):
+        """Match a tightly rounded, unnumbered interior seam vertex.
+
+        AccuMark's A2 OUCF curve stores one line-table point eight native
+        units from the intersection derived from its integer chord samples.
+        Keep this separate from exact geometry and exclude numbered corner
+        points, whose larger deltas carry corner-construction semantics.
+        """
+        if table_point['a'] != 65535:
+            return None
+        match = _nearest_seam_model(pt)
+        if (match and match['role'] == 'interior_miter'
+                and match['residual'] <= SEAM_MODEL_QUANTIZED_MAX):
+            return match
+        return None
     notch_type_by_xy = {(p['x'], p['y']): p['notch_type'] for p in b['perimeter']
                          if p['notch_type'] is not None}
     def _is_seam_offset(pt):
@@ -1576,6 +1602,57 @@ def classify_line_table(b):
                                 delta=(coords[1][0]-stored[0][0],
                                        coords[1][1]-stored[0][1]))}
         return {}
+    kind2_records = [record for record in tail['line_records']
+                     if record['kind'] == 2 and record['points']]
+    shared_seam_corners = {}
+    for left, right in zip(kind2_records, kind2_records[1:]):
+        left_point = left['points'][-1]
+        right_point = right['points'][0]
+        xy = (left_point['x'], left_point['y'])
+        if xy != (right_point['x'], right_point['y']):
+            continue
+        match = _nearest_seam_model(xy)
+        if (not match or 'junction' not in match['role']
+                or match['residual'] > SHARED_SEAM_CORNER_MAX):
+            continue
+        shared_seam_corners[xy] = dict(
+            left_record=left['idx'], right_record=right['idx'],
+            left_id=left_point['a'], right_id=right_point['a'],
+            seam_match=match)
+    perimeter_by_id = {}
+    for point in b['perimeter']:
+        if point['id'] != -1:
+            perimeter_by_id.setdefault(point['id'], []).append((point['x'], point['y']))
+    kind1_records = [record for record in tail['line_records']
+                     if record['kind'] == 1 and record['points']]
+    kind1_coordinate_counts = {}
+    for record in kind1_records:
+        for point in record['points']:
+            xy = (point['x'], point['y'])
+            kind1_coordinate_counts[xy] = kind1_coordinate_counts.get(xy, 0) + 1
+    shared_graded_points = {}
+    for left, right in zip(kind1_records, kind1_records[1:]):
+        left_point = left['points'][-1]
+        right_point = right['points'][0]
+        xy = (left_point['x'], left_point['y'])
+        if (xy != (right_point['x'], right_point['y'])
+                or left_point['a'] != right_point['a']
+                or left_point['a'] == 65535):
+            continue
+        if not all({tag for tag, _ in point['children']} >= {0x04, 0x06}
+                   for point in (left_point, right_point)):
+            continue
+        expected_options = perimeter_by_id.get(left_point['a'], [])
+        if not expected_options:
+            continue
+        expected = min(expected_options,
+                       key=lambda p: max(abs(xy[0]-p[0]), abs(xy[1]-p[1])))
+        residual = max(abs(xy[0]-expected[0]), abs(xy[1]-expected[1]))
+        if not 0 < residual <= GRADED_SHADOW_MAX:
+            continue
+        shared_graded_points[xy] = dict(
+            left_record=left['idx'], right_record=right['idx'],
+            point_id=left_point['a'], expected=expected, residual=residual)
     record_results = []
     table_ok = True
     coordinate_counts = {}
@@ -1623,8 +1700,21 @@ def classify_line_table(b):
             accepted = True
             if pt in real:
                 classification = 'stored_geometry'
+            elif ((real_match := _nearest_real(pt))
+                  and real_match['residual'] <= 1):
+                classification = 'stored_geometry_quantized'
+            elif (rec['kind'] == 1 and kind1_coordinate_counts.get(pt, 0) == 2
+                  and (graded_match := shared_graded_points.get(pt))):
+                classification = 'shared_graded_perimeter_point'
             elif rec['kind'] == 2 and (seam_match := _match_seam_model(pt)):
                 classification = 'seam_model_exact'
+            elif (rec['kind'] == 2 and coordinate_counts.get(pt, 0) == 2
+                  and (corner_match := shared_seam_corners.get(pt))):
+                classification = 'shared_seam_corner'
+                seam_match = corner_match['seam_match']
+            elif rec['kind'] == 2 and (seam_match :=
+                                      _match_quantized_seam_model(pt, tp)):
+                classification = 'seam_model_quantized'
             elif internal_match:
                 classification = 'internal_curve_table_extra'
             elif is_numbered_seam and _is_seam_offset(pt):
@@ -1660,6 +1750,12 @@ def classify_line_table(b):
                                 ok=accepted and notch_ok,
                                 child_tags=[tag for tag, _ in tp['children']])
             if seam_match: point_result['seam_match'] = seam_match
+            if classification == 'stored_geometry_quantized':
+                point_result['geometry_match'] = real_match
+            if classification == 'shared_graded_perimeter_point':
+                point_result['graded_match'] = graded_match
+            if classification == 'shared_seam_corner':
+                point_result['corner_match'] = corner_match
             if internal_match: point_result['internal_match'] = internal_match
             if not notch_ok: point_result['notch_type_match'] = False
             record_result['points'].append(point_result)
@@ -1977,4 +2073,3 @@ def summarize(data):
 def summarize_zip(path, member=None):
     name, d = _select_piece_member(path, member)
     return summarize(d)
-

@@ -701,10 +701,15 @@ to `(4.2,78749.4)` before rounding. Both controlled fixtures now report
 
 `classify_line_table()` exposes the per-point result while
 `check_line_table()` retains the bool API. Exact stored geometry and exact seam
-model matches run before the labelled axis/diagonal and curved-distance
-fallbacks. Production corner styles that do not use a plain miter remain
-labelled `corner_semantics_unresolved` and fail the bool check; they are not
-silently accepted.
+model matches run first. Two tightly bounded structural classes cover the
+remaining production representation differences before the labelled
+axis/diagonal and curved-distance fallbacks: an unnumbered interior seam point
+may be `seam_model_quantized` only within 10 native units (0.001 in) of an
+`interior_miter`, and a `shared_seam_corner` must be the byte-identical end/start
+point of two adjacent kind-2 records and remain within 200 units (0.020 in) of
+a modelled junction. A one-copy mutation breaks the duplicate and is rejected.
+This validates line-table topology without claiming which PDS corner style
+generated the join; those style semantics remain open pending `CAP-C36`.
 
 ### 10.2 The mirror piece's virtual 4th corner — located, not fully explained
 
@@ -1379,17 +1384,22 @@ The persisted v3 survey (`kind2_survey.py`, 44 ZIPs, 133 decodable blocks,
 13,369 kind-2 points) supersedes the prose-only v2 counts. Current classes are:
 12,992 `stored_geometry`, 294 `seam_model_exact`, 6
 `curved_offset_fallback`, 2 `axis_or_diagonal_fallback`, 5
-`internal_curve_table_extra`, 68 `corner_semantics_unresolved`, and 2
-`seam_model_near`; there are no generic `unexplained` rows. The five table
+`internal_curve_table_extra`, 68 `shared_seam_corner`, and 2
+`seam_model_quantized`; there are no generic `unexplained` rows. The five table
 extras all follow one exact 46-vs-44 pattern: the table reproduces a stored
 `0x49` curve in order, inserts one point after its first vertex, and repeats
 the final vertex. The extra's delta from the start is `(15,22)` native units
 in three current blocks and `(16,22)` in two translated stale blocks. Its
-precise spline/control role remains unnamed. Overall, 116/133 blocks pass.
-See
+precise spline/control role remains unnamed. The last kind-1 residue is also
+classified: two source-local points are one-unit `stored_geometry_quantized`
+matches, while eight occurrences are `shared_graded_perimeter_point` copies.
+The latter are duplicated across adjacent kind-1 records, carry both the
+grading-rule (`0x04`, rule 10001) and point-name (`0x06`) children, match the
+same numbered perimeter point within 25 units, and fail if one table copy is
+mutated. Overall, **133/133 blocks pass**. See
 `robustness/kind2_survey_v3_exact.csv` for every point,
 its child tags, nearest perimeter segment, matched seam role, expected
-coordinate, and residual.
+coordinate, residual, and shared-corner record/ID evidence.
 
 `accumark_pds.coverage()` classifies every byte of a file as `identified`
 (assigned a meaning by this document), `zero_pad`, `residue` (§1's 3-byte
@@ -1532,8 +1542,8 @@ account for:
   `check_line_table`'s new `_curved_seam_record_ok()` accepts a kind=2
   record as a whole - never point-by-point - when every one of its points
   sits within `SEAM_OFFSET_MAX` of the *same* perimeter edge with a tight,
-  consistent standard deviation (`CURVED_SEAM_STDEV_MAX = 200` units,
-  comfortably above the confirmed cases' 2-59 and well below the
+  consistent standard deviation (`CURVED_SEAM_STDEV_MAX = 60` units,
+  just above the confirmed cases' 0.3-47.5 and well below the
   ambiguous/unrelated ones' hundreds-to-thousands), gated to records of
   at least 4 points so a 1-2 point internal-line echo (a lone drill point,
   a 2-point grain line) can never satisfy "consistency" by coincidence.
@@ -1543,11 +1553,11 @@ account for:
   corner-derived - so this fallback is scoped by record size, not the
   numbered/unnumbered split the existing per-point leniency uses.
   Confirmed both correct and safe by a corpus-wide diff against the
-  pre-fix code (156 production blocks + the 35-block small corpus): **it
-  does not flip `check_line_table`'s overall True/False result on a
-  single fixture** - every piece with a genuine curved-seam record also
-  has at least one other, still-unexplained `kind=2` record, so the block
-  as a whole correctly keeps failing. What changed is narrower and
+  pre-fix code (156 production blocks + the 35-block small corpus): **at
+  the time of that isolated fix, it did not flip `check_line_table`'s
+  overall True/False result on a single fixture** because every affected
+  piece still had another unmatched `kind=2` record. What changed was
+  narrower and
   verified directly: the specific targeted records (`aCEFC.tmp`'s 8/9,
   `aCF12.tmp`'s 10/13) now validate for the right reason instead of
   failing for a reason that was never really about them. Corruption
@@ -1691,9 +1701,13 @@ account for:
   disputed `CAP-C40-NOTCH-TYPES` notch — table-point `c` resolved 2026-09-11
   as a third Notch Type copy, no longer open), the table-point `b` field,
   and `0f 0a` triples.
-- Production corner-style semantics for the 34 unique shared endpoints behind
-  the survey's 68 `corner_semantics_unresolved` rows, plus the two near-model
-  OUCF curve points. The controlled C30/C31 tapered intersections are resolved.
+- Production corner-style *names and construction choices* for the 34
+  source-local shared endpoints behind the survey's 68
+  `shared_seam_corner` rows. Their adjacent-record topology and 0.020-in
+  model bound are validated, and the two near-model OUCF curve occurrences
+  are now bounded `seam_model_quantized` matches; CAP-C36 is still needed to
+  map Slant/Mitered/Squared/etc. to native patterns. The controlled C30/C31
+  tapered intersections are resolved.
 - **§11's `unclassified_gap` bytes themselves remain unidentified [?]** —
   the raw zero-padded region between Region C's snapshot2 and the name
   echo/line table (§11) is still not marked `identified` by `coverage()`
@@ -1714,4 +1728,3 @@ for Phase B (arithmetic/byte-diff analysis against the existing corpus) and
 Phase C (the one or two targeted captures — `CAP-C80-BOOKMARK` for §11's
 snapshot hypothesis, `CAP-C81-MEASURE` if anything remains after that) in
 the decode plan.
-

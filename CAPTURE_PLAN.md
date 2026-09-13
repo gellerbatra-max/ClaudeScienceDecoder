@@ -303,9 +303,9 @@ positive and once with a negative amount.
 **CAP-C35-SEAM-TAPER-TRUE:** one edge with nonzero, unequal values at both ends.
 
 **CAP-C36-SEAM-CORNERS:** identical bases using Slant, Mitered, Squared,
-Extension, Mirrored, and Turnback corners. This is the ground truth needed for
-the survey's `corner_semantics_unresolved` class.
+Extension, Mirrored, and Turnback corners. The existing production endpoints
+now validate structurally as `shared_seam_corner`; this capture is still the
+ground truth needed to map those topology-valid joins to named corner styles.
 
 **CAP-C37-SEAM-SWAP:** apply Swap Sew/Cut and also test a fold piece with a seam
 on the fold line.
-

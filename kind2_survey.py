@@ -105,6 +105,8 @@ def survey(zip_paths, out_path):
         'internal_delta_x', 'internal_delta_y',
         'seam_edge_index', 'seam_role', 'seam_expected_x', 'seam_expected_y',
         'seam_residual_units', 'seam_begin', 'seam_end',
+        'corner_left_record', 'corner_right_record',
+        'corner_left_id', 'corner_right_id',
         'nearest_perim_segment', 'nearest_perim_units', 'nearest_perim_in', 'nearest_perim_mm',
         'nearest_dxf14_in', 'block_check_line_table',
     ]
@@ -174,6 +176,7 @@ def survey(zip_paths, out_path):
                             classification_counts[classification] = classification_counts.get(classification, 0) + 1
                             internal_match = point_result.get('internal_match') or {}
                             seam_match = point_result.get('seam_match') or {}
+                            corner_match = point_result.get('corner_match') or {}
                             seam_edge = seam_edges.get(seam_match.get('edge_index'), {})
                             total_k2_points += 1
                             nearest_segment, d_units = _nearest_perimeter(pt, perim)
@@ -212,6 +215,10 @@ def survey(zip_paths, out_path):
                                 seam_match.get('expected', ('', ''))[1],
                                 seam_match.get('residual', ''),
                                 seam_edge.get('seam_begin', ''), seam_edge.get('seam_end', ''),
+                                corner_match.get('left_record', ''),
+                                corner_match.get('right_record', ''),
+                                corner_match.get('left_id', ''),
+                                corner_match.get('right_id', ''),
                                 nearest_segment if nearest_segment is not None else '',
                                 ('%.1f' % d_units) if d_units is not None else '',
                                 ('%.4f' % d_in) if d_in is not None else '',
@@ -268,4 +275,3 @@ def main():
 
 if __name__ == '__main__':
     main()
-

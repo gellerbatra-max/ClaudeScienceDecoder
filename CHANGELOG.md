@@ -1,6 +1,6 @@
 # Changelog
 
-## v3.0 (2026-09-12) - exact kind-2 seam model and structured survey
+## v3.0 (2026-09-12 to 2026-09-13) - exact kind-2 seam model and structured survey
 
 - Resolved the provisional internal-list names by native-to-ASTM geometry:
   `0x49=internal` (layer 8), `0x48=internal_cutout` (layer 11), and
@@ -28,12 +28,13 @@
 - Tightened every internal-list entry path to require a complete count walk,
   valid terminator, and trailing `Lnn`, matching the bridged-list validation.
 - Expanded `kind2_survey.py` with child tags, seam edge/role, expected point,
-  residual, and nearest perimeter segment. On 44 ZIPs / 133 blocks / 13,369
+  residual, shared-corner record/ID evidence, and nearest perimeter segment.
+  On 44 ZIPs / 133 blocks / 13,369
   kind-2 points: 12,992 stored geometry, 294 exact seam-model points, 8
   accepted seam fallbacks, 5 structurally matched internal-curve table-extra
-  points, 68 unaccepted production corner-style endpoints, and 2 near-model
-  curve points. Passing blocks are 116/133; no point remains in the generic
-  `unexplained` class.
+  points, 68 topology-validated `shared_seam_corner` points, and 2 tightly
+  bounded `seam_model_quantized` curve points. All **133/133** blocks now pass;
+  no point remains in the generic `unexplained` class.
 - Identified the final five generic residuals as one exact 46-vs-44 encoding:
   the line table reproduces a stored `0x49` curve in order, inserts one
   near-start point, and repeats the final vertex. Classified the inserted
@@ -42,6 +43,13 @@
   stored start vertex and are regression-tested.
 - Added classification counts to the robustness canonical form and updated the
   controlled seam expectations and one-unit assertions in `selftest.py`.
+- Classified the separate final kind-1 residue: two one-unit
+  `stored_geometry_quantized` points and eight
+  `shared_graded_perimeter_point` occurrences. The graded points are duplicated
+  at adjacent edge boundaries, carry rule-10001 and point-name children, and
+  match the same perimeter ID within 25 native units. Added one-copy mutation
+  tests for both shared seam corners and shared graded points so topology, not
+  proximity alone, is required. Corner-style names remain open for CAP-C36.
 
 ## v2.0 (2026-09-11, continued once more #27) - live AccuMark V17 import validation of the generated dataset (decoder v2 plan's last outstanding verification step)
 
@@ -1449,4 +1457,3 @@ from) and for exactly which templates carry real vs. placeholder grading.
 the quick matrix on every invocation, gated on Oracles A/B (any failure
 there is a regression) with Oracle C's known redundant-copy gap reported
 informationally, the same way the existing coverage section is.
-

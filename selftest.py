@@ -3,7 +3,7 @@
 touching AccuMark.  Decodes every capture under captures/, checks each against
 its DXF, and re-runs the known structural-diff cases (including the two that
 must report NO change).  Exits non-zero on any failure."""
-import glob, os, sys, subprocess
+import copy, glob, os, sys, subprocess
 HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, HERE)
 import accumark_pds as ap
@@ -164,6 +164,119 @@ ok = len(extras) == 5 and extras.count((15, 22)) == 3 and extras.count((16, 22))
 print(f"   {'ok ' if ok else 'FAIL'} five 46-vs-44 table extras {extras}")
 if not ok: fails.append(f'internal-curve table extras {extras}')
 
+print('-- shared seam-corner topology and quantized curve point')
+corner_counts = {}
+corner_example = None
+quantized_example = None
+for marker_zip in (
+        os.path.join(HERE, 'markers', '2303-BD137-PLACED', '2303-BD 137 PLACED.zip'),
+        os.path.join(HERE, 'markers', '2303-BD137-UNLAID', '2303-BD 137.zip'),
+        os.path.join(HERE, 'markers', 'misc-test-markers', 'AD1234 TEST 134.zip')):
+    for obj in am.list_zip(marker_zip).get('piece', []):
+        for block in ap.decode(obj['data'])['blocks']:
+            analysis = ap.classify_line_table(block)
+            for record in analysis['records']:
+                for point_i, point in enumerate(record['points']):
+                    name = point['classification']
+                    if name in ('shared_seam_corner', 'seam_model_quantized'):
+                        corner_counts[name] = corner_counts.get(name, 0) + 1
+                    if name == 'shared_seam_corner' and corner_example is None:
+                        corner_example = (block, point['corner_match'])
+                    if name == 'seam_model_quantized' and quantized_example is None:
+                        quantized_example = (block, record['idx'], point_i)
+ok = corner_counts == {'shared_seam_corner': 68, 'seam_model_quantized': 2}
+print(f"   {'ok ' if ok else 'FAIL'} classified corpus residue {corner_counts}")
+if not ok: fails.append(f'seam-corner classifications {corner_counts}')
+
+# The shared join is redundant evidence, not a loose proximity waiver: if
+# only one of its two table copies changes, it must stop validating.
+mutated = copy.deepcopy(corner_example[0]) if corner_example else None
+if mutated:
+    match = corner_example[1]
+    left = next(r for r in mutated['tail']['line_records']
+                if r['idx'] == match['left_record'])
+    left['points'][-1]['x'] += 1
+    mutation_ok = not ap.classify_line_table(mutated)['ok']
+else:
+    mutation_ok = False
+print(f"   {'ok ' if mutation_ok else 'FAIL'} one-copy corner corruption is rejected")
+if not mutation_ok: fails.append('shared seam-corner corruption was accepted')
+
+mutated = copy.deepcopy(corner_example[0]) if corner_example else None
+if mutated:
+    match = corner_example[1]
+    for record_id, point_i in ((match['left_record'], -1),
+                               (match['right_record'], 0)):
+        record = next(r for r in mutated['tail']['line_records']
+                      if r['idx'] == record_id)
+        record['points'][point_i]['x'] += ap.SHARED_SEAM_CORNER_MAX + 1000
+    paired_mutation_ok = not ap.classify_line_table(mutated)['ok']
+else:
+    paired_mutation_ok = False
+print(f"   {'ok ' if paired_mutation_ok else 'FAIL'} out-of-bound paired corner is rejected")
+if not paired_mutation_ok: fails.append('out-of-bound shared seam corner was accepted')
+
+mutated = copy.deepcopy(quantized_example[0]) if quantized_example else None
+if mutated:
+    _, record_id, point_i = quantized_example
+    record = next(r for r in mutated['tail']['line_records'] if r['idx'] == record_id)
+    record['points'][point_i]['x'] += ap.SEAM_MODEL_QUANTIZED_MAX + 100
+    quantized_mutation_ok = not ap.classify_line_table(mutated)['ok']
+else:
+    quantized_mutation_ok = False
+print(f"   {'ok ' if quantized_mutation_ok else 'FAIL'} over-limit quantized seam point is rejected")
+if not quantized_mutation_ok: fails.append('over-limit quantized seam point was accepted')
+
+print('-- line-table shadow geometry')
+shadow_counts = {}
+shadow_example = None
+for marker_zip in (
+        os.path.join(HERE, 'captures', '2303-B1-38B-IN WG-SP24',
+                     '2303-B1-38B-IN WG-SP24.ZIP'),
+        os.path.join(HERE, 'markers', '2303-BD137-PLACED', '2303-BD 137 PLACED.zip'),
+        os.path.join(HERE, 'markers', '2303-BD137-UNLAID', '2303-BD 137.zip')):
+    for obj in am.list_zip(marker_zip).get('piece', []):
+        for block in ap.decode(obj['data'])['blocks']:
+            analysis = ap.classify_line_table(block)
+            for record in analysis['records']:
+                for point in record['points']:
+                    name = point['classification']
+                    if name in ('stored_geometry_quantized',
+                                'shared_graded_perimeter_point'):
+                        shadow_counts[name] = shadow_counts.get(name, 0) + 1
+                    if name == 'shared_graded_perimeter_point' and shadow_example is None:
+                        shadow_example = (block, point['graded_match'])
+ok = shadow_counts == {'stored_geometry_quantized': 2,
+                       'shared_graded_perimeter_point': 8}
+print(f"   {'ok ' if ok else 'FAIL'} classified kind-1 residue {shadow_counts}")
+if not ok: fails.append(f'line-table shadow classifications {shadow_counts}')
+
+mutated = copy.deepcopy(shadow_example[0]) if shadow_example else None
+if mutated:
+    match = shadow_example[1]
+    left = next(r for r in mutated['tail']['line_records']
+                if r['idx'] == match['left_record'])
+    left['points'][-1]['x'] += 1
+    mutation_ok = not ap.classify_line_table(mutated)['ok']
+else:
+    mutation_ok = False
+print(f"   {'ok ' if mutation_ok else 'FAIL'} one-copy graded shadow corruption is rejected")
+if not mutation_ok: fails.append('shared graded shadow corruption was accepted')
+
+mutated = copy.deepcopy(shadow_example[0]) if shadow_example else None
+if mutated:
+    match = shadow_example[1]
+    for record_id, point_i in ((match['left_record'], -1),
+                               (match['right_record'], 0)):
+        record = next(r for r in mutated['tail']['line_records']
+                      if r['idx'] == record_id)
+        record['points'][point_i]['x'] += ap.GRADED_SHADOW_MAX + 100
+    paired_mutation_ok = not ap.classify_line_table(mutated)['ok']
+else:
+    paired_mutation_ok = False
+print(f"   {'ok ' if paired_mutation_ok else 'FAIL'} out-of-bound graded shadow is rejected")
+if not paired_mutation_ok: fails.append('out-of-bound graded shadow was accepted')
+
 print('-- markers (markers/, skipped when absent) - see MARKER_DECODE_PLAN.md')
 # Production style 2303 (bra): the same marker unlaid and laid (2026-09 V17
 # export), the full 97-placement drawn-marker DXF of the laid marker, and the
@@ -258,4 +371,3 @@ print()
 if fails:
     print('SELFTEST FAIL'); [print('  -', x) for x in fails]; sys.exit(1)
 print('SELFTEST PASS')
-

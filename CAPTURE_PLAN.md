@@ -302,10 +302,29 @@ positive and once with a negative amount.
 
 **CAP-C35-SEAM-TAPER-TRUE:** one edge with nonzero, unequal values at both ends.
 
-**CAP-C36-SEAM-CORNERS:** identical bases using Slant, Mitered, Squared,
-Extension, Mirrored, and Turnback corners. The existing production endpoints
-now validate structurally as `shared_seam_corner`; this capture is still the
-ground truth needed to map those topology-valid joins to named corner styles.
+**CAP-C36-SEAM-CORNERS — DONE (2026-09-13).** Six identical 1cm-seam
+rectangles (`CAP-C36-{SQUARED,SLANT,MITERED,EXTENSION,MIRRORED,TURNBACK}`,
+`captures/CAP-C36-SEAM-CORNERS/`), one Corner Style applied to a single
+isolated corner each. Decoded via `line_geometry`: **Slant** replaces the
+corner with a single diagonal segment directly joining each edge's own
+offset-line foot (no miter point at all). **Squared** inserts one extra
+right-angle step of exactly one seam-width, cutting the corner flat instead
+of leaving a point. **Turnback** overshoots along each edge to the
+*original* (pre-offset) coordinate before turning back to meet the seam
+line, producing a small rectangular tab at the corner — the classic
+turned-and-stitched finish. **Mitered, Extension, and Mirrored are
+byte-for-byte identical** to each other in every geometric field on this
+piece — confirmed by diffing the raw payloads: the only 12 differing bytes
+across all three are small record-id counters that step by a constant +6
+between files (edit-history residue, not corner-style data), everything
+else including all coordinates matches exactly. Both are genuine findings,
+not a decode gap: a plain 90° corner with no extension length or fold axis
+configured has nothing for Extension/Mirrored to visibly change, so they
+degenerate to the same plain miter Mitered itself produces. Mapping the
+production `shared_seam_corner` endpoints to a *specific* named style
+remains open (needs a piece whose real construction is documented
+independently), but the native encoding for each style name is now known.
+See `CAPTURE_LOG.md` for the exact `line_geometry` records.
 
 **CAP-C37-SEAM-SWAP:** apply Swap Sew/Cut and also test a fold piece with a seam
 on the fold line.

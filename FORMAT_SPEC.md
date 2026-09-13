@@ -709,7 +709,29 @@ may be `seam_model_quantized` only within 10 native units (0.001 in) of an
 point of two adjacent kind-2 records and remain within 200 units (0.020 in) of
 a modelled junction. A one-copy mutation breaks the duplicate and is rejected.
 This validates line-table topology without claiming which PDS corner style
-generated the join; those style semantics remain open pending `CAP-C36`.
+generated the join.
+
+**Corner style native encoding — resolved (`CAP-C36-SEAM-CORNERS`, 2026-09-13)
+[V].** Six identical 1cm-seam rectangles, one Corner Style applied to a
+single isolated corner each. **Slant** replaces the corner with one diagonal
+segment directly joining each edge's own offset-line foot — no miter point.
+**Squared** inserts one extra right-angle step of exactly one seam-width
+(3937 units = 1cm), cutting the corner flat instead of leaving a point.
+**Turnback** overshoots along each edge to the piece's *original*
+(pre-offset) coordinate before turning back to meet the seam line, producing
+a small rectangular tab — the turned-and-stitched finish. **Mitered,
+Extension, and Mirrored are byte-for-byte identical to each other** in every
+geometric field (raw payload diff confirms this): the only 12 differing
+bytes across all three sit at the same offsets and step by a constant +6
+between files — edit-history record-id residue, not corner-style data. This
+is expected, not a gap: a plain 90° corner with no extension length or fold
+axis configured has nothing for Extension/Mirrored to visibly change, so
+both degenerate to Mitered's plain miter. **Still open**: mapping the
+production `shared_seam_corner` endpoints found above to a *specific* one of
+these named styles — that needs a production piece whose intended corner
+style is independently documented, not just topologically valid. See
+`CAPTURE_LOG.md`'s `CAP-C36-SEAM-CORNERS` entry for the full
+`line_geometry` records.
 
 ### 10.2 The mirror piece's virtual 4th corner — located, not fully explained
 
@@ -1705,9 +1727,12 @@ account for:
   source-local shared endpoints behind the survey's 68
   `shared_seam_corner` rows. Their adjacent-record topology and 0.020-in
   model bound are validated, and the two near-model OUCF curve occurrences
-  are now bounded `seam_model_quantized` matches; CAP-C36 is still needed to
-  map Slant/Mitered/Squared/etc. to native patterns. The controlled C30/C31
-  tapered intersections are resolved.
+  are now bounded `seam_model_quantized` matches. `CAP-C36-SEAM-CORNERS` has
+  since mapped Slant/Squared/Turnback/Mitered/Extension/Mirrored to their
+  native `line_geometry` encoding (§10.1) - what's still open is only
+  matching a *specific* production endpoint to one of those named styles,
+  not the styles' own encoding. The controlled C30/C31 tapered intersections
+  are resolved.
 - **§11's `unclassified_gap` bytes themselves remain unidentified [?]** —
   the raw zero-padded region between Region C's snapshot2 and the name
   echo/line table (§11) is still not marked `identified` by `coverage()`

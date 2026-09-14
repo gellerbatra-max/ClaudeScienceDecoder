@@ -273,6 +273,34 @@ if os.path.isfile(oblique_zip):
 else:
     print('   --  CAP-C82-FOLD-OBLIQUE      (absent)')
 
+print('-- Bookmark: Define alone is a no-op on disk; edit-after-bookmark adds one extra stale record (skipped when absent)')
+# 2026-09-14: CAP-C80-BOOKMARK - settles FORMAT_SPEC.md Sec 11's "is Region
+# C's snapshot1/snapshot2 pair a Bookmark->Restore cache" question: NO.
+# CONTROL (never bookmarked) and BOOKMARK (bookmarked, never edited) are
+# byte-identical except for the piece-name-length difference, both
+# piece_records=1 - Define writes nothing extra to the file by itself.
+# The real bookmark-specific effect only shows up after an edit: MODIFIED
+# has piece_records=3 (1 live + 2 identical pre-edit copies), one more
+# than the generic post-save-edit mechanism (Sec 8) produces alone.
+bookmark_dir = os.path.join(CAPS, 'CAP-C80-BOOKMARK')
+control_zip = os.path.join(bookmark_dir, 'CAP-C80-BOOKMARK-CONTROL.zip')
+base_zip = os.path.join(bookmark_dir, 'CAP-C80-BOOKMARK.zip')
+modified_zip = os.path.join(bookmark_dir, 'CAP-C80-BOOKMARK-MODIFIED.zip')
+if os.path.isfile(control_zip) and os.path.isfile(base_zip) and os.path.isfile(modified_zip):
+    control_data = am.list_zip(control_zip)['piece'][0]['data']
+    base_data = am.list_zip(base_zip)['piece'][0]['data']
+    modified_data = am.list_zip(modified_zip)['piece'][0]['data']
+    name_len_diff = len('CAP-C80-BOOKMARK-CONTROL') - len('CAP-C80-BOOKMARK')
+    define_is_noop = (len(control_data) - len(base_data)) == name_len_diff
+    base_records = ap.summarize(base_data)['n_blocks']
+    modified_records = ap.summarize(modified_data)['n_blocks']
+    ok = define_is_noop and base_records == 1 and modified_records == 3
+    print(f"   {'ok ' if ok else 'FAIL'} CAP-C80-BOOKMARK       Define no-op: {define_is_noop}; "
+          f"unedited piece_records={base_records}; edited-after-bookmark piece_records={modified_records} (want 3)")
+    if not ok: fails.append(f'CAP-C80-BOOKMARK: define_is_noop={define_is_noop} base_records={base_records} modified_records={modified_records}')
+else:
+    print('   --  CAP-C80-BOOKMARK          (absent)')
+
 print('-- shared seam-corner topology and quantized curve point')
 corner_counts = {}
 corner_example = None

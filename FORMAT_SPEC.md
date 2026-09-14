@@ -1526,8 +1526,26 @@ per-point test `check_region_c` already used, just applied to gate
 marking instead of only to the pass/fail fact. Two snapshots of the same
 geometry bracketed by a repeated 100.00%-shaped constant is consistent
 with these being PDS's *Bookmark → Restore Original / Restore Defined*
-geometry cache, but that is unconfirmed pending `CAP-C80-BOOKMARK` (Phase C
-of the decode plan); `marker3`'s role is similarly unconfirmed **[?]**.
+geometry cache — **checked directly via `CAP-C80-BOOKMARK` (resolved,
+2026-09-14) and found NOT to be the mechanism**: a piece that was
+bookmarked (`Edit→Bookmark→Define`) and saved with no further edit is
+byte-identical (mod piece-name length) to a never-bookmarked control —
+`Define` writes nothing to the file by itself, so Region C's two
+snapshots are not a bookmark cache written at Define time. What Bookmark
+*does* leave a trace of is different and more interesting: editing a
+bookmarked piece produces **`piece_records=3`** (one live + *two* full
+copies of the pre-edit geometry), one more stale record than the
+already-documented generic post-save-edit mechanism (§8) produces on its
+own — a genuine, bookmark-specific extra duplicate, just not the one this
+hypothesis originally guessed. Also newly found: the piece `Restore
+Defined` creates fails `region_c_consistent` (`snapshot2` decodes as
+garbage-huge coordinates, the same signature as the three already-known
+desynced-snapshot outliers) even though its own perimeter and line table
+are fine - left open, not yet known whether this is a genuine PDS write
+quirk of that specific operation or a decoder offset assumption that
+doesn't generalize to it. `marker3`'s role is similarly unconfirmed
+**[?]**. See CAPTURE_LOG.md's `CAP-C80-BOOKMARK` entry for the full
+byte-level comparison.
 
 Immediately after snapshot2, on a piece with more than one piece record
 (`piece_records > 1`, i.e. it has been edited at least once, §8) an
@@ -1888,6 +1906,9 @@ None of these affect geometry, seam, notch, grade-rule, or grain/drill/
 cut-out decoding, all of which are validated to 0.000000 in DXF residual
 across the corpus; they are catalogued here as the specific, named targets
 for Phase B (arithmetic/byte-diff analysis against the existing corpus) and
-Phase C (the one or two targeted captures — `CAP-C80-BOOKMARK` for §11's
-snapshot hypothesis, `CAP-C81-MEASURE` if anything remains after that) in
-the decode plan.
+Phase C (targeted captures) in the decode plan. `CAP-C80-BOOKMARK` (§11's
+snapshot hypothesis) is now done - it settled the "is Region C a bookmark
+cache" question (no) and surfaced two new specifics instead (the
+bookmark-specific 3rd piece_record; `Restore Defined`'s own
+`region_c_consistent=no` anomaly); `CAP-C81-MEASURE` remains open if
+anything's left after that.

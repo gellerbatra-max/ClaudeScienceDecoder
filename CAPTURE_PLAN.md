@@ -297,9 +297,39 @@ lists match layer 8. The existing production OUCF ZIP+ASTM capture proves
 `0x4d` is layer 6 (mirror/fold), zero residual. Automated by
 `verify_capture.py --internal-layers`; see FORMAT_SPEC.md §5.2-5.3.
 
-**CAP-C33-INTERNAL-TYPES:** one rectangle with one available internal feature
-of each type: plot/draw, sew, mirror, stripe, plaid, alternate grain, and cut
-internal. Establish the tag-to-feature table.
+**CAP-C33-INTERNAL-TYPES — RESOLVED, premise corrected (2026-09-14).** The
+original plan (plot/draw, sew, stripe, plaid, alternate grain, cut internal)
+was chasing the wrong product's taxonomy. A live GUI search this project
+already tried (Create→Line, Edit→Line Info/"Relabel Internal", Modify→Swap)
+never found a PDS control exposing these terms - checked why via AccuMark's
+own shipped manuals (`PDS_Users_PE.pdf`, `PDS2K_QRef.pdf`,
+`pds2000userguide.pdf`, none previously read for this specific question):
+**"Stripe Line"/"Plaid Line"/"Alt Ref Line"/"Free XPT Line"/etc. are
+`PDS_Users_PE.pdf` p.167's "Line Modifiers - Types and Labels" section,
+explicitly scoped "MicroMark data uses line types..." - a different Gerber
+product, not AccuMark/PDS at all.** There is no PDS control for this
+taxonomy because it doesn't apply to PDS piece files. AccuMark's own,
+genuinely different taxonomy is documented verbatim at p.217-218,
+"Internal Line Labels" ("AccuMark data uses line labels..."): eleven
+single-letter codes - **A** (2-point annotation line, fixed), **B**
+(3-point annotation line, fixed), **C** (opstop/optional cutter stop
+point), **D** (drill hole), **G** (grain line, fixed/auto-assigned), **H**
+(internal cutout, fixed, must be a closed internal), **I** (user-defined
+internal), **M** (mirror line, fixed/auto-assigned), **P** (fixed piecing,
+two-point internal), **S** (seam), **T** (grid line, for large pieces).
+Five of these are already matched to their native hex tags by this
+project's own empirical work: `G`=`0x47` grain, `D`=`0x44` drill,
+`I`=`0x49` internal, `H`=`0x48` internal_cutout, `M`=`0x4d` mirror (§5.2-
+5.3). `S` (seam) is already fully decoded too, but via a structurally
+different mechanism (`seam_flag`/`begin`/`end` on perimeter segments, not
+an internal-line-list object) - not a missing tag, a different field
+entirely. **Genuinely still uncaptured, if ever worth pursuing**: `A`/`B`
+(annotation lines), `C` (opstop), `P` (fixed piecing), `T` (grid line) -
+none seen in this corpus yet, each would need its own targeted capture
+(the manual's own "To edit line types: use the Edit Line Info function"
+is the one candidate PDS control, not yet tried for this specific purpose
+since the earlier search was hunting for the wrong taxonomy). See
+FORMAT_SPEC.md §5.3.
 
 **CAP-C32-SEAM-REMOVE — DONE (2026-09-13).** Took `CAP-C30-SEAM-UNEVEN`
 and set its seam allowance to 0 (Advanced → Seam → Define, whole piece).

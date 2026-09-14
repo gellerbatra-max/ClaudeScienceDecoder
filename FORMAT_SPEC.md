@@ -447,6 +447,53 @@ declared point count and finding its own valid terminator and trailing `Lnn`
 label. This applies to immediate and bridged lists, preventing header-shaped
 seam data from becoming false internal geometry.
 
+### 5.4 The complete internal-line taxonomy, and a corrected premise
+**[V, 2026-09-14]**
+
+`CAPTURE_PLAN.md`'s `CAP-C33-INTERNAL-TYPES` item planned to map internal-
+line tags for Sew/Stripe/Plaid/Alternate-Grain/Plot-Draw/Cut-Internal - a
+live GUI search (Create→Line, Edit→Line Info/"Relabel Internal",
+Modify→Swap) never found a PDS control exposing these terms, and the item
+sat abandoned rather than forced. Checked against AccuMark's own shipped
+manuals (`PDS_Users_PE.pdf`, `PDS2K_QRef.pdf`, `pds2000userguide.pdf`) for
+this specific question: **that taxonomy belongs to a different Gerber
+product.** `PDS_Users_PE.pdf` p.167's "Line Modifiers - Types and Labels"
+section, listing exactly those terms (Style/Draft/Stripe/Plaid/Grain/Alt
+Ref/Annotation/Drill Hole/Grade Ref/Internal/Free XPT/Split/Paste),
+opens verbatim: *"**MicroMark** data uses line types or labels to define
+lines for a piece."* There is no PDS control for it because it isn't a
+PDS concept.
+
+AccuMark/PDS's own, genuinely different taxonomy is documented two pages
+later, p.217-218, "Internal Line Labels," opening *"**AccuMark** data
+uses line labels to define internal lines for a piece"* - eleven
+single-letter codes, quoted verbatim:
+
+| Code | Meaning (manual's own wording) | Native tag |
+|---|---|---|
+| A | Two-point annotation line; determines width/spacing of characters (fixed) | not yet captured |
+| B | Three-point annotation line; determines width/height/spacing (fixed) | not yet captured |
+| C | Opstop (optional stop point) - stops the cutter to permit repositioning for matching | not yet captured |
+| D | Drill hole (optional, recommended) | `0x0044` [V] (§5.1) |
+| G | Grain line; assigned automatically when digitizing a grain line (fixed) | `0x0047` [V] (§5) |
+| H | Internal cutout (fixed; must be digitized as a closed internal) | `0x0048` [V] (§5.3) |
+| I | User-defined internal (optional, recommended) | `0x0049` [V] (§5.2) |
+| M | Mirror line; assigned automatically when mirroring during digitizing (fixed) | `0x004d` [V] (§5.3) |
+| P | Fixed piecing (fixed; must be digitized as a two-point internal) | not yet captured |
+| S | Seam (fixed) | not an internal-line tag at all - a different, already-fully-decoded mechanism (`seam_flag`/`begin`/`end` on perimeter segments, §6.1), not stored in the internal-line-list |
+| T | Grid line (used for large pieces) | not yet captured |
+
+Five of the eleven are already matched to their native hex tags by this
+project's own empirical work, independent of the manual. `S` isn't a gap
+in that mapping - it was never going to be an internal-line-list tag,
+since seam allowance is a property of perimeter segments, not a drawn
+internal line. **Genuinely still open, if ever worth a targeted capture**:
+`A`/`B` (annotation lines), `C` (opstop), `P` (fixed piecing), `T` (grid
+line) - none seen in this corpus. The manual's own candidate control for
+assigning one (*"To edit line types: use the Edit Line Info function"*)
+was never tried for this specific purpose, since every earlier attempt at
+this item was hunting for the MicroMark taxonomy instead.
+
 ## 6. Line records — name-*terminated*
 
 The 3-byte ASCII label `L%02d` follows the field group it names, so the label

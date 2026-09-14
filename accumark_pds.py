@@ -1848,6 +1848,46 @@ def check_region_c(b):
             if (p['x'], p['y']) not in real: return False
     return True
 
+def find_annotation_echoes(data):
+    """[V, 2026-09-14] Scan for Annotation "echo" records - a compact,
+    fixed-shape record each Create->Annotation text object gets, in
+    addition to its own primary record, later in the file (near the
+    piece-name-echo region that closes out Region C). Found by scanning
+    for the record's own header rather than at a fixed offset, since
+    these aren't part of decode()'s sequential cursor walk. See
+    FORMAT_SPEC.md Sec 5.4 for the full record layout and how this was
+    pinned down (a controlled 0 deg/45 deg rotation pair, cross-checked
+    against an independent two-annotation sample).
+
+    Returns a list of dicts, one per echo record found:
+    {offset, text_length, x, y, rotation_radians, rotation_degrees}.
+    text_length is the echoed annotation's own string length (not the
+    text itself, which isn't repeated in this record) - matched against
+    a primary record's string length, it identifies which annotation an
+    echo belongs to. A single annotation can have more than one echo
+    record if more than one object with that same text length exists on
+    the piece (e.g. a stale block left behind by an edit) - that's not a
+    bug, see FORMAT_SPEC.md Sec 5.4.
+    """
+    import math as _math
+    out = []
+    n = len(data)
+    for off in range(0, max(0, n - 40)):
+        if struct.unpack_from('<I', data, off)[0] != 1: continue
+        if struct.unpack_from('<I', data, off + 4)[0] != 52: continue
+        text_length = struct.unpack_from('<I', data, off + 8)[0]
+        if not (0 < text_length < 64): continue
+        if struct.unpack_from('<I', data, off + 20)[0] != 0: continue
+        sentinel = struct.unpack_from('<i', data, off + 32)[0]
+        terminator = struct.unpack_from('<I', data, off + 36)[0]
+        if sentinel != -1 or terminator != 0: continue
+        x = struct.unpack_from('<i', data, off + 12)[0]
+        y = struct.unpack_from('<i', data, off + 16)[0]
+        rot = struct.unpack_from('<d', data, off + 24)[0]
+        out.append({'offset': off, 'text_length': text_length, 'x': x, 'y': y,
+                    'rotation_radians': rot, 'rotation_degrees': _math.degrees(rot)})
+    return out
+
 def _select_piece_member(path, member=None):
     """v2: pick the single piece (type 20) object in a ZIP by content
     (the XGGT magic), not by the `.tmp` extension - so a renamed member

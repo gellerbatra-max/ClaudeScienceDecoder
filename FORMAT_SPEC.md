@@ -514,35 +514,71 @@ ordinary annotation creation, so a future attempt should look elsewhere
 (digitizing tools, or `Edit Line Info` applied to an existing line)
 rather than repeating this same recipe.
 
-**A previously-undocumented record type found along the way, partially
-decoded, including a clean confirmation of the rotation field**: each
-Annotation object is stored as its own length-prefixed record - a `u32`
-constant `52`, a `u16` string length, the raw text bytes (no padding to
-a fixed boundary - a 3-character string is followed immediately by the
-next field, confirmed on `"ROT"`), then a `u32` constant `28`, an `i32`
-X and `i32` Y position, then a `u32` constant `14`, then a `u32` that is
-`0` at 0° rotation. **Rotation itself, resolved by a controlled pair
-(`CAP-C33-ANNOT-ROTA`/`-ROTB`, 2026-09-14): identical text ("SAME"),
-placed at the same clicked position, differing only in Font Rotation (0°
-vs. 45°) - byte-diffing the two exports to 17 total differing bytes
-isolates it exactly**: an 8-byte field elsewhere in the record (all-zero
-at 0°) holds `18 2d 44 54 fb 21 e9 3f` at 45° - an **IEEE-754
-double-precision float equal to `0.7853981633974483`, which is exactly
-`radians(45)`**, bit-for-bit. **Rotation is stored as a double, in
-radians**, not degrees or a fixed-point integer. Its exact byte offset
-relative to the record's own other fields isn't pinned down yet (found
-via absolute-position diffing of two otherwise-identical files, not by
-walking the record structure field-by-field), and a second occurrence of
-each annotation's own text was seen further into the file on the
-original two-annotation sample but did not reproduce at the expected
-relative position on this controlled pair - the "repeats a second time,
-maybe an Annotation Library echo" hypothesis is accordingly still
-unconfirmed, not walked back. This is a **new, distinct structure**,
-now anchored by one exactly-decoded field (rotation) plus several
-still-unlabeled ones; a dedicated follow-up (varying string length,
-sweeping rotation across more angles, and pinning the field's offset
-relative to the record start rather than by absolute position) would be
-needed to close it out completely.
+**A previously-undocumented record type found along the way, now fully
+decoded structurally, including an exact, general-purpose confirmation
+of the rotation field [V, 2026-09-14, second pass]**: each Annotation
+object is written **twice** into the piece file - a **primary record**
+at its point of creation in the object stream, and a **compact echo
+record** later in the file (near the piece-name-echo region that closes
+out Region C). Both share the same 8-byte header: `u32` constant `1`,
+`u32` constant `52` (a record-kind tag for "Annotation," not literally a
+length prefix as first guessed), then a `u16` string length. In the
+**primary record** that length is followed immediately by the raw text
+bytes (no padding to a fixed boundary - a 3-character string is followed
+immediately by the next field, confirmed on `"ROT"`), then either a
+short `X`/`Y`/constant-`14` tail (`u32` constant `28`, `i32` X, `i32` Y,
+`u32` constant `14` - seen on `"TEST"`, at 0° rotation) or a longer block
+of four tagged corner points plus `10000`-scaled constants (seen on
+every `Create→Annotation`-tool sample captured since, rotated or not) -
+this primary-record tail is still only partially decoded and wasn't the
+focus of this pass.
+
+The **echo record**, by contrast, is now fully decoded end-to-end,
+field-by-field, and confirmed identical in shape across five independent
+instances (`"TEST"`, `"ROT"` x2, `"SAME"` x2, spanning
+`CAP-C33-ANNOTATION`/`-ANNOT-ROTA`/`-ANNOT-ROTB`):
+
+```
+u32  const = 1
+u32  const = 52
+u32  text_length        -- matches that annotation's own primary-record
+                            string length exactly, in all 5 instances
+i32  x                  -- matches the annotation's placed position
+i32  y
+u32  const = 0
+f64  rotation_radians   -- 0.0 for "TEST" (0°); exactly radians(45) for
+                            every "ROT"/"SAME" instance placed at 45°
+i32  sentinel = -1      -- 0xFFFFFFFF
+u32  terminator = 0
+```
+
+36 bytes total, found by scanning for the `1`,`52` header rather than by
+a fixed absolute offset. This resolves both questions the first pass
+left open. The rotation field's position is no longer merely "found by
+absolute diffing" - it sits at a fixed **+20 bytes** into this record's
+own start (`1`, `52`, `length`, `X`, `Y`, `const 0`, then the double).
+And "does the record repeat a second time" has a clean answer: **it
+does, but the repeat count matches the number of annotation objects that
+share that text, not a fixed structural rule.** `CAP-C33-ANNOTATION` has
+*two* `"ROT"`-labeled echo records (different X/Y, `rotation=45°` both)
+because that capture's live editing history left two separate `"ROT"`
+annotation objects on the piece (most likely one stale and one live,
+matching this project's general stale-block pattern seen elsewhere - not
+independently re-verified here), while `"TEST"` and each of `"SAME"`'s
+two controlled-pair samples get exactly one echo apiece. No "Annotation
+Library" mechanism needs to be invoked.
+
+This closes the Annotation record structure out to the point of general
+reuse - any future capture's rotation can now be read straight off its
+echo record by scanning for the `1,52` header and a `text_length` that
+matches a known annotation's string length, without needing a fresh
+controlled-pair diff. What's left, deliberately not chased further here:
+the primary record's own tail (the corner-point block, and what decides
+the short-vs-long tail form), and wiring this into `accumark_pds.py`'s
+`decode()` - these records are found by scanning rather than by a fixed
+position in the sequential cursor `decode()` already walks, so they stay
+a standalone lookup (`find_annotation_echoes()`) rather than a field in
+the main parse for now.
 
 **A pattern in the five known tags, checked once the full letter-code
 list was on hand: the tag byte is literally the ASCII code of the

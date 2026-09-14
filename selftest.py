@@ -320,6 +320,36 @@ if os.path.isfile(rota_zip) and os.path.isfile(rotb_zip):
 else:
     print('   --  CAP-C33-ANNOT-ROTA/B      (absent)')
 
+print('-- Annotation echo record: general-purpose scan, cross-checked on 3 independent captures (skipped when absent)')
+# 2026-09-14 (second pass): the diff-based check above found the rotation
+# field by brute-force comparison of one controlled pair; find_annotation_echoes()
+# now decodes the whole 36-byte echo record structurally (see FORMAT_SPEC.md
+# Sec 5.4) by scanning for its own header rather than needing a diff. This
+# check reproduces the same rotation values via that general parser, and
+# additionally checks CAP-C33-ANNOTATION - a capture never used to derive the
+# structure - to confirm it generalizes rather than overfitting to the pair.
+annot_zip = os.path.join(CAPS, 'CAP-C33-INTERNAL-TYPES', 'CAP-C33-ANNOTATION.zip')
+if os.path.isfile(rota_zip) and os.path.isfile(rotb_zip) and os.path.isfile(annot_zip):
+    import math as _math
+    echoes_a = ap.find_annotation_echoes(am.list_zip(rota_zip)['piece'][0]['data'])
+    echoes_b = ap.find_annotation_echoes(am.list_zip(rotb_zip)['piece'][0]['data'])
+    echoes_annot = ap.find_annotation_echoes(am.list_zip(annot_zip)['piece'][0]['data'])
+    checks = [
+        ('ROTA has 1 echo at 0 deg', len(echoes_a) == 1 and abs(echoes_a[0]['rotation_degrees']) < 1e-6),
+        ('ROTB has 1 echo at 45 deg', len(echoes_b) == 1 and abs(echoes_b[0]['rotation_degrees'] - 45) < 1e-6),
+        ('ANNOTATION has 3 echoes (TEST once, ROT twice)',
+         len(echoes_annot) == 3 and sorted(e['text_length'] for e in echoes_annot) == [3, 3, 4]),
+        ('ANNOTATION: the length-4 echo (TEST) is at 0 deg',
+         any(e['text_length'] == 4 and abs(e['rotation_degrees']) < 1e-6 for e in echoes_annot)),
+        ('ANNOTATION: both length-3 echoes (ROT) are at 45 deg',
+         all(abs(e['rotation_degrees'] - 45) < 1e-6 for e in echoes_annot if e['text_length'] == 3)),
+    ]
+    ok3 = all(v for _, v in checks)
+    print(f"   {'ok ' if ok3 else 'FAIL'} find_annotation_echoes  {[k for k, v in checks if not v] or 'all checks passed'}")
+    if not ok3: fails.append(f'find_annotation_echoes: failed {[k for k, v in checks if not v]}')
+else:
+    print('   --  find_annotation_echoes   (absent)')
+
 print('-- Bookmark: Define alone is a no-op on disk; edit-after-bookmark adds one extra stale record (skipped when absent)')
 # 2026-09-14: CAP-C80-BOOKMARK - settles FORMAT_SPEC.md Sec 11's "is Region
 # C's snapshot1/snapshot2 pair a Bookmark->Restore cache" question: NO.

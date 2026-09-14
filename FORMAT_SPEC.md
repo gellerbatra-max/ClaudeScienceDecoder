@@ -1907,16 +1907,39 @@ account for:
   (`CAP-C34-SEAM-CURVED-NEG/POS`, all six `CAP-C36-SEAM-CORNERS`
   fixtures, `CAP-C37-SEAM-SWAP`, `CAP-C35-SEAM-TAPER-TRUE`) - locked in
   by a dedicated `selftest.py` check naming all 12 samples and their
-  expected pass/fail, not just an aggregate count. **Still open**:
+  expected pass/fail, not just an aggregate count. **Still open, but its
+  own structure now precisely characterized [V, 2026-09-14]**:
   `CAP-C30-SEAM-UNEVEN`/`CAP-C31-SEAM-TAPER` (both already flagged
-  elsewhere as not fitting a plain per-corner offset model - their
-  "uneven"/"tapered" seam corners are presumably why re-anchoring on a
-  plain corner match doesn't fully resolve them either) don't validate
-  even after re-anchoring - left open rather than force-fit. The
-  seam-corner structure itself remains uncharacterized (`unclassified_gap`'s
-  own `v40`/`n_perimeter_a+non_mirror_objs` formula, §11, doesn't hold on
-  these seamed blocks either - excluded from that check pending its own
-  investigation, not silently passed). **A second, distinct trigger for
+  elsewhere as not fitting a plain per-corner offset model) fail even
+  after re-anchoring, because the anchor search finds the true
+  perimeter-echo point too - but each of the four corners sits inside
+  its own **46-byte extended record**, not the plain 15-byte one every
+  other seamed/unseamed sample uses, and `parse_point`'s own
+  self-reported size (15) under-advances by exactly 31 bytes per point.
+  Confirmed identical in shape on both samples, hex-dump-verified: `id/
+  x/y/f1/f2/attr` (the ordinary 15-byte point, matching real perimeter
+  exactly), immediately followed by a second, independently-valid
+  15-byte point record at the **same corner's own array index** but a
+  **different `x`** (`CAP-C30`: real `(3938, 78815)` vs this second
+  reading's `(1, 78815)`; `CAP-C31`: real `(1969, 78685)` vs `(0,
+  78685)` - always `y` unchanged, `x` collapsed near zero, on the one
+  corner checked closely in each sample), then a fixed 16-byte tail -
+  byte-for-byte **identical on both samples**: `02 00 00 00 02 00 00 00
+  02 00 00 00 00 02 00 00`. The middle 15-byte reading and the constant
+  tail are both plausible candidates for genuine per-corner uneven-seam
+  data (a corner-specific override value, and a repeated small
+  type/flag code) rather than corruption, given how consistent they are
+  across two independent samples - but neither is decoded yet, and
+  `parse_point_snapshot` isn't taught the 46-byte stride, so this is
+  left as a precisely-scoped open item rather than a guessed fix: any
+  future attempt should read each snapshot2 point as this 46-byte
+  compound record on a piece with uneven/tapered seam corners, rather
+  than trying another single 4-byte shift. The seam-corner structure
+  found on the other 10 samples (a smaller, one-off fragment, not this
+  repeating 46-byte-per-corner one) remains separately uncharacterized
+  too - `unclassified_gap`'s own `v40`/`n_perimeter_a+non_mirror_objs`
+  formula, §11, doesn't hold on any seamed block, excluded from that
+  check pending its own investigation, not silently passed. **A second, distinct trigger for
   the same class of bug, unaffected by this fix**: `CAP-C33-ANNOTATION`
   (a piece with a text Annotation object, §5.4) desyncs Region C's
   `snapshot1` from its very first point - the parser reads straight into

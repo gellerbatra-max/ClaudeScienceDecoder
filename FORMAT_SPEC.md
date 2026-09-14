@@ -1024,10 +1024,24 @@ separated by: zero-padded u32s, a nonzero **marker value 10000**, more zero
 padding, a second marker (also 10000) — the padding can precede the *first*
 marker too, not only sit between the two (`CAP-C00-BASE`: `marker1 = 0` at
 the position right after snapshot1, with the real 10000 further on) — **and
-then a third, narrower tag** (`marker3`: a single **u16**, not a u32 like
-the other two; value **1** on every sample checked so far) immediately
-before snapshot2's first point **[V, corrected 2026-09-11]**. This third
-tag was the actual root cause of the original snapshot2-is-garbage finding:
+then a third, narrower tag** (`record_state`: a single **u16**, not a u32
+like the other two) immediately before snapshot2's first point **[V,
+corrected 2026-09-11, meaning confirmed 2026-09-14]**. Renamed from the
+original placeholder `marker3` once its role was pinned down by a
+corpus-wide sweep (65/65 `region_c`-bearing blocks match, the sole
+exception - `CAP-C80-BOOKMARK-RESTORED` - being the already-diagnosed
+marker-scan misread below, not a counter-example to this field itself):
+**`record_state` = 0 whenever this block is a stale/pre-edit duplicate
+(`piece_records` index > 0, §8), 1 for the live/current block when the
+piece has no seam defined, 2 for the live/current block when it does**
+(`seam_flag` nonzero on ≥1 segment) - i.e. it's a small per-block status
+flag, not a scale/percentage constant like `marker1`/`marker2`. One
+loose end: `CAP-C34-SEAM-CURVED-POS`'s live block reads `record_state=2`
+correctly, but its own `marker1` reads `2` instead of the otherwise-
+universal `1` every other seamed sample has — an open, low-priority,
+single-sample curiosity about `marker1`/`marker2`'s own meaning, not
+`record_state`'s. This third tag was the actual root cause of the
+original snapshot2-is-garbage finding:
 it is only 2 bytes, so a reader that (like this module, before the fix)
 treats the gap after `marker2` as one more 4-byte value consumes half of
 snapshot2's own first point's id/x field along with it, misaligning every
@@ -1568,9 +1582,10 @@ quick corpus sweep this same session found `marker1 != marker2` on every
 seamed-corner/seam-swap fixture in `captures/`, a separately-unexplained
 detail also not chased further here). A second `Restore Defined` sample
 with different geometry would let a general fix be verified rather than
-guessed from n=1. `marker3`'s role is similarly unconfirmed **[?]**. See
-CAPTURE_LOG.md's `CAP-C80-BOOKMARK` entry for the full byte-level
-comparison.
+guessed from n=1. See CAPTURE_LOG.md's `CAP-C80-BOOKMARK` entry for the
+full byte-level comparison. (`marker3`/`record_state`'s own role - a
+separate field, upstream of this misread - was resolved the same day; see
+this section's own corpus-wide sweep above.)
 
 Immediately after snapshot2, on a piece with more than one piece record
 (`piece_records > 1`, i.e. it has been edited at least once, §8) an

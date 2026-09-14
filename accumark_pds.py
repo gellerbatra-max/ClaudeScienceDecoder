@@ -494,10 +494,22 @@ def parse_point_snapshot(d, o, n):
 
 def parse_region_c(d, o, n_perimeter, category_name, table_start=None):
     """Region C: snapshot1, a SNAPSHOT_MARKER pair around a zero gap, a
-    third tag - **a single u16, value 1 on every sample checked so far
-    (CAP-C00-BASE, CAP-C10-PENT [V]; not the same width as marker1/marker2,
-    role unknown - kept and reported as `marker3` rather than silently
-    skipped)** - then snapshot2, then - immediately before the line table -
+    third tag - a single u16, now understood: **`record_state`, 0/1/2
+    depending on this block's own status** (confirmed 2026-09-14 across
+    65 of 66 corpus blocks with `region_c`, the 66th being
+    `CAP-C80-BOOKMARK-RESTORED`'s already-diagnosed marker-scan misread -
+    see below and CAPTURE_LOG.md): **0** on a stale/pre-edit block
+    (`piece_records` index > 0), **1** on the live/current block when no
+    seam is defined on the piece, **2** on the live/current block when a
+    seam *is* defined (`Sec.seam_flag` nonzero on at least one segment).
+    One single-sample exception noted, not yet explained: the live block
+    of `CAP-C34-SEAM-CURVED-POS` reads `record_state=2` like every other
+    seamed piece, but its sibling `marker1` (below) reads `2` instead of
+    the otherwise-universal `1` every other seamed sample has - an open,
+    low-priority curiosity, not `record_state`'s own meaning. `marker1`/
+    `marker2` themselves stay a matched pair (`10000`/`10000` unseamed,
+    `1`/`2` seamed) whose own meaning beyond "seamed or not" is still
+    unconfirmed - then snapshot2, then - immediately before the line table -
     a **second, undelimited copy of the piece's own category name**
     (CAP-C10-PENT [V]: the 12-byte string 'CAP-C10-PENT' sits right at the
     line table's doorstep, with no length prefix or terminator, found by
@@ -528,13 +540,13 @@ def parse_region_c(d, o, n_perimeter, category_name, table_start=None):
         return u32(d, p), p, p+4           # value, start offset, end offset
     marker1, marker1_off, p = _next_nonzero_u32(p)   # zero-padding before marker1 varies (CAP-C00-BASE [V])
     marker2, marker2_off, p = _next_nonzero_u32(p)
-    marker3_off, p2 = p, p+2
-    marker3 = u16(d, p)                    # [V] u16, value 1 on every sample checked; role unknown
+    record_state_off, p2 = p, p+2
+    record_state = u16(d, p)               # [V] 0=stale block, 1=live/unseamed, 2=live/seamed
     if p2+6 <= len(d) and COORD_LO < i32(d, p2+2) < COORD_HI and COORD_LO < i32(d, p2+6) < COORD_HI:
-        marker3_size, p = 2, p2
+        record_state_size, p = 2, p2
     else:
-        marker3, marker3_off, p = _next_nonzero_u32(p)  # fallback: the old (pre-fix) reading
-        marker3_size = 4
+        record_state, record_state_off, p = _next_nonzero_u32(p)  # fallback: the old (pre-fix) reading
+        record_state_size = 4
     snap2, p = parse_point_snapshot(d, p, n_perimeter)
     name_bytes = category_name.encode('latin1')
     name_at = d.find(name_bytes, p, p+400)
@@ -553,14 +565,14 @@ def parse_region_c(d, o, n_perimeter, category_name, table_start=None):
         unclassified_gap = d[p:p]
     end = name_at + len(name_bytes) if name_at != -1 else p
     return dict(snapshot1=snap1, marker1=marker1, snapshot2=snap2, marker2=marker2,
-                marker3=marker3,
+                record_state=record_state,
                 # offsets/widths of the three marker fields themselves (not
                 # just their values) - so coverage()'s _block_ranges can mark
                 # these known-but-unexplained-role bytes 'identified' rather
                 # than leaving them 'unknown' now that the snapshots
                 # surrounding them no longer accidentally over-read into them.
                 marker1_offset=marker1_off, marker2_offset=marker2_off,
-                marker3_offset=marker3_off, marker3_size=marker3_size,
+                record_state_offset=record_state_off, record_state_size=record_state_size,
                 unclassified_gap_offset=p, unclassified_gap=unclassified_gap,
                 name_echo_offset=name_at, end=end), end
 
@@ -944,7 +956,7 @@ def _block_ranges(d, m, objs, pstart, block_end, tail, internal_terminator_offse
         # rather than let them read as regressed 'unknown' coverage.
         r.append((rc['marker1_offset'], rc['marker1_offset']+4))
         r.append((rc['marker2_offset'], rc['marker2_offset']+4))
-        r.append((rc['marker3_offset'], rc['marker3_offset']+rc['marker3_size']))
+        r.append((rc['record_state_offset'], rc['record_state_offset']+rc['record_state_size']))
         # rc['end'] is computed from wherever snapshot2 parsing actually
         # stopped, so it inherits the same runaway risk snapshot2 itself
         # does - gated the same way.

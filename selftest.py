@@ -301,6 +301,44 @@ if os.path.isfile(control_zip) and os.path.isfile(base_zip) and os.path.isfile(m
 else:
     print('   --  CAP-C80-BOOKMARK          (absent)')
 
+print('-- Region C record_state (0=stale/1=live-unseamed/2=live-seamed), corpus-wide')
+# 2026-09-14: resolves the long-open "[?] marker3's role is unconfirmed"
+# from parse_region_c's own docstring - a corpus sweep found record_state
+# tracks exactly one thing: whether THIS block is a stale pre-edit
+# duplicate (0), or the live/current block with (2) or without (1) a
+# seam defined on it (seam_flag nonzero on >=1 segment). The one known
+# exception is CAP-C80-BOOKMARK-RESTORED, whose marker-scan misread is
+# already root-caused separately (see FORMAT_SPEC.md Sec 11) - excluded
+# here by name, not silently swallowed.
+record_state_mismatches = []
+record_state_checked = 0
+for folder in glob.glob(os.path.join(HERE, 'CAP-C*')) + glob.glob(os.path.join(HERE, 'captures', 'CAP-C*')):
+    for zpath in glob.glob(os.path.join(folder, '*.[zZ][iI][pP]')):
+        try:
+            pieces = am.list_zip(zpath).get('piece', [])
+        except Exception:
+            continue
+        for obj in pieces:
+            if obj['name'] == 'CAP-C80-BOOKMARK-RESTORED':
+                continue
+            try:
+                blocks = ap.decode(obj['data'])['blocks']
+            except Exception:
+                continue
+            for i, b in enumerate(blocks):
+                tail = b.get('tail')
+                if not tail or 'error' in tail or not tail.get('region_c'):
+                    continue
+                record_state_checked += 1
+                state = tail['region_c']['record_state']
+                any_seam = any((sg.get('seam_flag') or 0) != 0 for sg in (b.get('segments') or []))
+                want = 0 if i > 0 else (2 if any_seam else 1)
+                if state != want:
+                    record_state_mismatches.append(f"{obj['name']}[{i}]: record_state={state} want={want}")
+ok = record_state_checked > 0 and not record_state_mismatches
+print(f"   {'ok ' if ok else 'FAIL'} {record_state_checked} blocks checked, {len(record_state_mismatches)} mismatched")
+if not ok: fails.extend(record_state_mismatches or ['record_state: no blocks with region_c found'])
+
 print('-- shared seam-corner topology and quantized curve point')
 corner_counts = {}
 corner_example = None

@@ -242,8 +242,9 @@ print('-- Fold Keep mirrors by genuine reflection, not bbox completion (skipped 
 # completion cannot produce, since there is no rectangle to complete.
 # That axis comes from the line table's own kind=2 record positionally
 # aligned with the 'mirror' internal tag - NOT from the independently
-# decoded mirrors_in field, which reports a different line entirely on
-# this sample (a real, separate, still-open discrepancy - see Sec 10.3).
+# decoded mirrors_in field, which (2026-09-14, resolved) turns out to be
+# answering a different question ("which two corners bound the fold",
+# not "what's the axis") - see the mirrors_in check below and Sec 10.3.
 oblique_zip = os.path.join(CAPS, 'CAP-C82-FOLD-OBLIQUE', 'CAP-C82-FOLD-OBLIQUE.zip')
 if os.path.isfile(oblique_zip):
     obj = am.list_zip(oblique_zip)['piece'][0]
@@ -270,6 +271,21 @@ if os.path.isfile(oblique_zip):
     print(f"   {'ok ' if ok else 'FAIL'} CAP-C82-FOLD-OBLIQUE   id7 reflected={tuple(round(v,1) for v in r7)} "
           f"vs id3 stored={pts[3]}; residual={residual} native units")
     if not ok: fails.append(f'CAP-C82-FOLD-OBLIQUE: reflection residual {residual} > 1')
+
+    # 2026-09-14: mirrors_in resolved - it's a verbatim echo of the two
+    # perimeter corners (id5/id8) where Fold Keep's drawn fold line
+    # crossed the piece's original edges, not the reflection axis. Checked
+    # field-by-field (coords, attr, rule_ref), not just coordinates, since
+    # a coordinate-only match could be coincidental.
+    perimeter_by_coord = {(p['x'], p['y']): p for p in block['perimeter']}
+    mirror_internal = next(seg for seg, kind in zip(block['internal_lines'], block['internal_kinds']) if kind == 'mirror')
+    field_matches = []
+    for ipt in mirror_internal:
+        ppt = perimeter_by_coord.get((ipt['x'], ipt['y']))
+        field_matches.append(bool(ppt) and ppt.get('attr') == ipt.get('attr') and ppt.get('rule_ref') == ipt.get('rule_ref'))
+    ok2 = len(mirror_internal) == 2 and all(field_matches)
+    print(f"   {'ok ' if ok2 else 'FAIL'} CAP-C82-FOLD-OBLIQUE   mirrors_in is a verbatim id5/id8 echo (coord+attr+rule_ref): {field_matches}")
+    if not ok2: fails.append(f'CAP-C82-FOLD-OBLIQUE: mirrors_in field-match {field_matches}')
 else:
     print('   --  CAP-C82-FOLD-OBLIQUE      (absent)')
 

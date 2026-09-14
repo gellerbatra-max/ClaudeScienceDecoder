@@ -230,25 +230,35 @@ reflection produces it. This settles the question the axis-aligned
 `CAP-C61-MIRROR` sample couldn't: Mirror Piece performs true reflection
 across a fold axis, not a bounding-box shortcut.
 
-**Surprise, honestly flagged rather than smoothed over**: the line
-carrying that axis, `(89464,6392)`-`(41537,6392)`, is *not* the piece's
-own independently-decoded `mirror` internal line - `mirrors_in` reports
-a completely different segment, `(1,12782)`-`(83074,1)`, which is
-exactly the perimeter's own `id5`-`id8` edge, not a plausible reflection
-axis at all (reflecting `id3`/`id6`/`id7` across it lands nowhere near
-any other stored point). The two live at the same file position in the
-internal-line-list/line-table pairing (`grain` then `mirror`, confirmed
-by header offset order), so this looks like the line-table's own
-`mirror`-slot echo genuinely diverging from the internal-line-list's own
-`mirror` entry on this Fold-Keep-generated piece - a real, new,
-unexplained discrepancy, distinct from the already-documented
-`internal_curve_table_extra` pattern (that one is a small ~(15,22)-unit
-shift, not a different line entirely). One point in this file's own
-line table (the un-numbered end of that echo) is correctly left
-`unexplained` by `classify_line_table()` as a result - a small new gap,
-not a threat to the reflection finding above, which rests on independent
-arithmetic (the `id3`/`id7` pairing), not on `mirrors_in` agreeing with
-anything.
+**Surprise, flagged then fully resolved (2026-09-14, same day)**: the
+line carrying that axis, `(89464,6392)`-`(41537,6392)`, is *not* the
+piece's own independently-decoded `mirror` internal line - `mirrors_in`
+reports a completely different segment, `(1,12782)`-`(83074,1)`, which
+is exactly the perimeter's own `id5`-`id8` edge, not a plausible
+reflection axis at all (reflecting `id3`/`id6`/`id7` across it lands
+nowhere near any other stored point). **Resolved: `mirrors_in` was never
+answering the "what's the fold axis" question in the first place - it
+answers a different one.** Checked field-by-field, not just by
+coordinate: the `mirror`-tagged internal line's two raw points are a
+byte-for-byte copy of perimeter points `id5` `(1,12782)` and `id8`
+`(83074,1)` - same `x`/`y`, same `attr=9`, same placeholder
+`rule_ref=10001` - not independently-stored axis geometry at all, but a
+verbatim echo of two of the piece's own numbered corners. Those two
+corners are exactly the ones Fold Keep creates where the drawn internal
+fold line crossed the piece's original edges (§ Fold Keep discussion,
+`CAPTURE_LOG.md`'s `CAP-C82-FOLD-OBLIQUE` entry: the fold line was drawn
+from a point on the top edge to a point near the bottom-right corner -
+`id5`/`id8` are the resulting intersection corners). So the `mirror`
+internal-line-list entry marks **which two perimeter corners bound the
+fold/split**, not the reflection axis itself; the true axis is a
+genuinely separate piece of geometry with no perimeter-point identity of
+its own, stored only in the line table's own `kind=2` echo. Two
+different, both-correct pieces of information sharing one `mirror` tag,
+not a discrepancy between two measurements of the same thing. The one
+point in this file's own line table left `unexplained` by
+`classify_line_table()` (the un-numbered end of that echo) is therefore
+expected, not a gap - it's the axis's own un-numbered endpoint, which
+was never going to match a perimeter point since the axis isn't one.
 
 **Darts are cut directly into the perimeter, not stored as an internal line
 [V]** (round 2, `CAP-C62-DART`): Advanced tab → Darts → Add on a plain
@@ -871,25 +881,28 @@ non-axis-aligned fold, two of the piece's stored points reflect onto each
 other across a shared axis to a residual of 1 native unit (0.0001 in) - a
 result "complete the bounding box" cannot produce, since there is no
 rectangle to complete. Mirror Piece performs true geometric reflection.
-(§4 also flags a real, separate surprise: that axis is *not* the same
-line the piece's own `mirrors_in` field reports - a distinct, still-open
-question about this sample's `mirror` internal-line echo.)
+(§4 also resolves a real surprise found along the way: that axis is
+*not* the same line the piece's own `mirrors_in` field reports - now
+explained as `mirrors_in` answering a different question, "which two
+corners bound the fold," not "what's the axis." See §4 and §10.3.)
 
 ### 10.3 Still open
 
-- **`CAP-C82-FOLD-OBLIQUE`'s `mirror`-slot line-table echo doesn't match
-  the internal-line-list's own `mirrors_in` entry.** `mirrors_in` reports
-  `(1,12782)`-`(83074,1)` (the perimeter's own `id5`-`id8` edge); the
-  line table's positionally-corresponding kind=2 record instead stores
-  `(89464,6392)`-`(41537,6392)` - a completely different line, not a
-  small drift like the already-documented `internal_curve_table_extra`
-  pattern. The second line is real, in the sense that it's exactly the
-  axis two other stored points (`id3`/`id7`) genuinely reflect across
-  (§10.2), so it isn't simply garbage - but why the line table's own
-  `mirror` echo diverges from the internal-line-list's own `mirror` entry
-  on this specific Fold-Keep-generated piece is unexplained. One point
-  from this echo (`(41537,6392)`) is correctly left `unexplained` by
-  `classify_line_table()` as a direct consequence.
+- ~~`CAP-C82-FOLD-OBLIQUE`'s `mirror`-slot line-table echo doesn't match
+  the internal-line-list's own `mirrors_in` entry.`~~ **Resolved
+  2026-09-14.** `mirrors_in` reports `(1,12782)`-`(83074,1)`; checked
+  field-by-field (not just coordinates), this is a verbatim copy of
+  perimeter points `id5`/`id8` - same `x`/`y`, `attr=9`, placeholder
+  `rule_ref=10001` - the two corners Fold Keep created where the drawn
+  fold line crossed the piece's original edges. It was never the
+  reflection axis; it identifies the fold's boundary corners, a
+  different (and equally real) piece of information sharing the same
+  `mirror` internal-line tag. The genuine axis, `(89464,6392)`-
+  `(41537,6392)`, lives only in the line table's own `kind=2` echo, with
+  no perimeter-point identity of its own - which is also why one point
+  of that echo (`(41537,6392)`) is correctly left `unexplained` by
+  `classify_line_table()`: it was never going to match a numbered
+  perimeter point, since the axis isn't one. See §4.
 
 - **The `07 2d` notch-attribute payload, byte-diffed across `CAP-C40-NOTCH-
   TYPES`'s four notches (Types 2, 4, 5, 1 in perimeter order — see §4;

@@ -1657,12 +1657,36 @@ account for:
 
 - **The real Region-C runaway-snapshot bug: `CAP-C30-SEAM-UNEVEN`/`CAP-
   C31-SEAM-TAPER`/`TASK2-SEAM1CM`, plus 18 of 156 production blocks show
-  the identical signature [V, found 2026-09-11]**: `id=512, x=65536` at
-  the first desynced point, cascading into impossible coordinates. Where
-  it hits, one or both Region C snapshots are true `unknown` bytes now
-  (previously mis-marked `identified` by a coverage() bug fixed the same
-  session - see below), typically hundreds to tens of thousands of bytes.
-  Root cause open **[?]**.
+  the identical signature [V, found 2026-09-11] - scope corrected
+  2026-09-14: it's universal to every seamed live block, not a rare
+  outlier signature**: `id=512, x=65536` (or the same bytes reflected
+  through a slightly different field alignment, e.g. `id=0, x=512,
+  y=65537`) at the first desynced point, cascading into impossible
+  coordinates. Checked directly rather than assumed: every one of 10
+  additional seamed-live-block samples on hand this session
+  (`CAP-C34-SEAM-CURVED-NEG/POS`, all six `CAP-C36-SEAM-CORNERS`
+  fixtures, `CAP-C37-SEAM-SWAP`, `CAP-C35-SEAM-TAPER-TRUE`) fails
+  `check_region_c` with this exact signature - so the previous "18 of 156
+  production blocks" framing understated the scope: this isn't a handful
+  of unlucky outliers, it's what every live seamed block does. Blast
+  radius (how much garbage the misalignment cascades into before
+  something stops it) still varies by piece, which is likely why only 18
+  of 156 production blocks were flagged as visibly "runaway" before -
+  the rest may fail more quietly. **Partial root-cause progress, not yet
+  a fix**: on `CAP-C30-SEAM-UNEVEN` specifically, byte-searching located
+  the true first snap2 point exactly 4 bytes later than the current code
+  reads it, at an offset that lines up with `record_state` genuinely
+  being a 2-byte field here too (matching every unseamed sample) followed
+  by one more not-yet-understood 4-byte value (itself `512`, i.e. the
+  very same "ghost id" value the desynced read produces one field early)
+  before snap2's real first point. That specific 4-byte-shift reading did
+  **not** reproduce cleanly on `CAP-C36-SLANT`/`CAP-C35-SEAM-TAPER-TRUE`
+  when tested the same way (searching nearby offsets for a coordinate
+  pair matching either the live perimeter or the seam/cut-line's own
+  `line_geometry` points found no clean match), so whatever sits between
+  `record_state` and snap2's true start on a seamed live block is more
+  structured than a single fixed-width extra field - left open rather
+  than force-fit from one working example. Root cause open **[?]**.
 - **`_locate_tail()`'s fixed search window, found and fixed the same
   pass [V, found and fixed 2026-09-11]**: 132 of 156 production blocks
   (108 of 126 pieces' own primary record) were failing to find `tail` -

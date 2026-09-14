@@ -494,6 +494,20 @@ assigning one (*"To edit line types: use the Edit Line Info function"*)
 was never tried for this specific purpose, since every earlier attempt at
 this item was hunting for the MicroMark taxonomy instead.
 
+**A pattern in the five known tags, checked once the full letter-code
+list was on hand: the tag byte is literally the ASCII code of the
+manual's own letter.** `D`=0x44='D', `G`=0x47='G', `H`=0x48='H',
+`I`=0x49='I', `M`=0x4d='M' - five for five, exact, no exceptions. This
+was always sitting in plain sight across five separate discovery
+sessions but only became visible once the manual's complete letter list
+made the comparison possible. It predicts, with high confidence but
+**not yet empirically confirmed**, what the four still-uncaptured tags
+would be if a live sample is ever built: `A`→`0x41`, `B`→`0x42`,
+`C`→`0x43`, `P`→`0x50`, `T`→`0x54` (`S`→`0x53` would follow the same
+rule too, if seam were ever stored as an internal-line-list entry -
+which it isn't). Any future capture of one of these features is a
+one-line confirmation against a firm prediction, not a fresh unknown.
+
 ## 6. Line records — name-*terminated*
 
 The 3-byte ASCII label `L%02d` follows the field group it names, so the label

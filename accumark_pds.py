@@ -115,6 +115,15 @@ def parse_object_records(d, start, n, n_rows=5):
     return recs
 
 # internal point lists after the perimeter: term(u16) tag(u16) count(u16) flag(u32)
+# [V, 2026-09-14] each tag byte is literally the ASCII code of AccuMark's own
+# single-letter "Internal Line Label" (PDS_Users_PE.pdf p.217-218): D='D'
+# drill hole, G='G' grain, H='H' internal cutout, I='I' user-defined
+# internal, M='M' mirror line - 5/5 exact, no exceptions. The manual lists
+# six more codes never captured in this corpus (A/B annotation, C opstop,
+# P fixed piecing, S seam - already known to live elsewhere, not here, T
+# grid line); this pattern predicts their tags would be 0x41/0x42/0x43/
+# 0x50/0x54 respectively, not yet empirically confirmed. See FORMAT_SPEC.md
+# Sec 5.4.
 INTERNAL_TAGS = {0x47: 'grain', 0x44: 'drill', 0x49: 'internal',
                  0x48: 'internal_cutout', 0x4d: 'mirror'}
 # 0x0000/0x47 grain line, 0xFFFF/0x44 drill points. 0xFFFF/0x49 was first seen

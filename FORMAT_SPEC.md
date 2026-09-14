@@ -1537,15 +1537,40 @@ bookmarked piece produces **`piece_records=3`** (one live + *two* full
 copies of the pre-edit geometry), one more stale record than the
 already-documented generic post-save-edit mechanism (§8) produces on its
 own — a genuine, bookmark-specific extra duplicate, just not the one this
-hypothesis originally guessed. Also newly found: the piece `Restore
-Defined` creates fails `region_c_consistent` (`snapshot2` decodes as
-garbage-huge coordinates, the same signature as the three already-known
-desynced-snapshot outliers) even though its own perimeter and line table
-are fine - left open, not yet known whether this is a genuine PDS write
-quirk of that specific operation or a decoder offset assumption that
-doesn't generalize to it. `marker3`'s role is similarly unconfirmed
-**[?]**. See CAPTURE_LOG.md's `CAP-C80-BOOKMARK` entry for the full
-byte-level comparison.
+hypothesis originally guessed. Also newly found, then root-caused
+(2026-09-14, same day, offline follow-up): the piece `Restore Defined`
+creates fails `region_c_consistent` (`snapshot2` decodes as garbage-huge
+coordinates, the same signature as the three already-known desynced-
+snapshot outliers) even though its own perimeter and line table are
+fine. **Root cause found by a direct byte diff against the unedited
+`CAP-C80-BOOKMARK` piece (same geometry, same offsets everywhere else):
+`CAP-C80-BOOKMARK-RESTORED` has two new, genuinely non-zero 4-byte
+fields - `289104` at offset 676 and `132567` at offset 680 - sitting in
+what is plain zero-padding on every other sample, immediately before the
+real `marker1`/`marker2` pair (both `10000`, byte-identical to
+`CAP-C80-BOOKMARK`, at the *same* offsets 684/696 in both files).** This
+is a genuine new PDS-written trace specific to `Restore Defined`'s own
+output, not surrounding-data corruption - but it breaks
+`parse_region_c`'s `_next_nonzero_u32` heuristic, which just grabs the
+first non-zero word it finds and has no way to know these two fields
+aren't the marker pair; that single misread cascades into every
+downstream offset (`marker3`, `snapshot2`) landing on the wrong bytes,
+producing the "garbage" values. **Not fixed yet, deliberately**: the two
+new fields' own meaning is unconfirmed (289104/132567 as 0.0001in units
+= 28.9104in/13.2567in - close to but not exactly on this piece's own
+21.6-36.2in × 7.8-18.7in bounding box, so "restore placement anchor" is
+a plausible but unverified guess), and patching the marker-scan off a
+single sample risks a fragile heuristic that breaks some other fixture's
+genuinely-different-but-valid marker1/marker2 pair (seamed pieces, e.g.
+`CAP-C36-SLANT`, legitimately have small non-equal values like `1`/`2`
+there, so "markers must be equal" isn't a safe general rule either - a
+quick corpus sweep this same session found `marker1 != marker2` on every
+seamed-corner/seam-swap fixture in `captures/`, a separately-unexplained
+detail also not chased further here). A second `Restore Defined` sample
+with different geometry would let a general fix be verified rather than
+guessed from n=1. `marker3`'s role is similarly unconfirmed **[?]**. See
+CAPTURE_LOG.md's `CAP-C80-BOOKMARK` entry for the full byte-level
+comparison.
 
 Immediately after snapshot2, on a piece with more than one piece record
 (`piece_records > 1`, i.e. it has been edited at least once, §8) an

@@ -323,13 +323,21 @@ project's own empirical work: `G`=`0x47` grain, `D`=`0x44` drill,
 5.3). `S` (seam) is already fully decoded too, but via a structurally
 different mechanism (`seam_flag`/`begin`/`end` on perimeter segments, not
 an internal-line-list object) - not a missing tag, a different field
-entirely. **Genuinely still uncaptured, if ever worth pursuing**: `A`/`B`
-(annotation lines), `C` (opstop), `P` (fixed piecing), `T` (grid line) -
-none seen in this corpus yet, each would need its own targeted capture
-(the manual's own "To edit line types: use the Edit Line Info function"
-is the one candidate PDS control, not yet tried for this specific purpose
-since the earlier search was hunting for the wrong taxonomy). See
-FORMAT_SPEC.md §5.3.
+entirely. **`A`/`B` (annotation lines) checked and ruled out for the
+modern `Create→Annotation` path (§5.4). `C`/`P`/`T` checked and ruled
+out for two more candidate controls [V, 2026-09-14, second pass]**:
+`Create→Line→2-Point`'s own "Use Line Label" dropdown (offers every
+letter A-Z, but selecting `C`/`P` had zero effect on the exported tag
+byte or even the line's own display name - unrelated mechanism), and
+`Edit→Line`'s "Tracking Information" panel, whose `Label:` field
+matches the manual's terminology and correctly *displays* the true tag
+letter but doesn't let it be *edited* (changes never persisted to the
+exported file) - it's a live tracking readout, not the manual's "Edit
+Line Info function," which wasn't otherwise found as a distinct control
+in the ribbon. `C`/`P`/`T` remain genuinely uncaptured; a future attempt
+would need either a digitizing-based workflow or a still-undiscovered
+modal line-properties dialog, not the paths already ruled out here. See
+FORMAT_SPEC.md §5.4.
 
 **CAP-C32-SEAM-REMOVE — DONE (2026-09-13).** Took `CAP-C30-SEAM-UNEVEN`
 and set its seam allowance to 0 (Advanced → Seam → Define, whole piece).

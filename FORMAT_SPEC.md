@@ -487,12 +487,32 @@ Five of the eleven are already matched to their native hex tags by this
 project's own empirical work, independent of the manual. `S` isn't a gap
 in that mapping - it was never going to be an internal-line-list tag,
 since seam allowance is a property of perimeter segments, not a drawn
-internal line. **Genuinely still open, if ever worth a targeted capture**:
-`C` (opstop), `P` (fixed piecing), `T` (grid line) - none seen in this
-corpus. The manual's own candidate control for assigning one (*"To edit
-line types: use the Edit Line Info function"*) was never tried for this
-specific purpose, since every earlier attempt at this item was hunting
-for the MicroMark taxonomy instead.
+internal line. **Genuinely still open - `C` (opstop), `P` (fixed
+piecing), `T` (grid line); two live GUI mechanisms tried and ruled out
+[V, 2026-09-14, second pass]**: (1) `Create→Line→2-Point`'s own "Use
+Line Label" dropdown, which offers every letter A-Z and digit as an
+apparent line-type choice - selecting `C`, then separately `P`, had no
+effect on the exported tag byte at all (still `0x49`/`'I'`, the generic
+internal-line default in both cases) and didn't even change the line's
+own displayed *name* (still an auto-numbered `L04`/`L08` either way);
+this dropdown turns out to be unrelated to internal-line typing
+entirely - likely some other naming/cross-reference field. (2)
+`Edit→Line`'s own "Tracking Information" panel, which shows
+`Label:`/`Name:`/`Seam Amount:` fields matching the manual's own
+terminology exactly, and correctly *displays* each line's true tag as a
+single letter (`I` for a generic internal line, `G` for grain) -
+editing the `Label:` field and clicking `Apply`, or pressing Enter,
+never persisted: exporting straight after showed the tag byte
+byte-for-byte unchanged (`CAP-C33-LINELABEL-C-EDITED`), and the field
+itself reverted to whatever line the cursor was last near, confirming
+this panel is a live tracking/HUD readout rather than an edit surface,
+despite its labeled fields. The manual's own candidate control ("To
+edit line types: use the Edit Line Info function") was not found as a
+distinct modal dialog anywhere else in the ribbon during this pass - if
+one exists, it wasn't this panel. `C`/`P`/`T` remain unmapped; a future
+attempt should look for a genuinely separate "Line Info" dialog (not
+this docked Tracking panel) or try a digitizing-based workflow instead
+of the modern `Create`/`Edit` ribbon paths already ruled out here.
 
 **`A`/`B` (annotation lines) checked directly (`CAP-C33-ANNOTATION`,
 2026-09-14) and ruled out for the modern `Create→Annotation` path
@@ -511,8 +531,10 @@ path doesn't exercise, or may not be creatable through the standard
 `Annotation` dialog at all - genuinely still open, but the ASCII-code
 prediction for these two specific letters is now known not to fire from
 ordinary annotation creation, so a future attempt should look elsewhere
-(digitizing tools, or `Edit Line Info` applied to an existing line)
-rather than repeating this same recipe.
+(digitizing tools) rather than repeating this same recipe - the
+`Edit→Line` Tracking-Information panel that looked like a candidate
+"Edit Line Info" surface was tried and ruled out for `C`/`P`/`T` just
+above, and would presumably fail the same way here.
 
 **A previously-undocumented record type found along the way, now fully
 decoded structurally, including an exact, general-purpose confirmation

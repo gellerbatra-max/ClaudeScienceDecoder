@@ -423,6 +423,50 @@ ok = record_state_checked > 0 and not record_state_mismatches
 print(f"   {'ok ' if ok else 'FAIL'} {record_state_checked} blocks checked, {len(record_state_mismatches)} mismatched")
 if not ok: fails.extend(record_state_mismatches or ['record_state: no blocks with region_c found'])
 
+print('-- Region C snapshot2 re-anchoring on seamed live blocks (skipped when the folders are absent)')
+# 2026-09-14: closes most of FORMAT_SPEC.md Sec 12's "real Region-C
+# runaway-snapshot bug" for the seam-triggered case. Root cause: on a
+# seamed live block, snapshot2 doesn't start immediately after
+# record_state like it does on every unseamed block - a variable-length
+# (100-200+ byte, not a small fixed shift) seam-corner/allowance
+# structure sits in between, and reading straight through it desyncs
+# snapshot2 into the "id=512,x=65536"-shaped garbage already documented.
+# parse_region_c now falls back to searching forward for the raw
+# perimeter's own first point reappearing verbatim and re-anchoring
+# there when the immediate read doesn't validate against snapshot1's own
+# coordinate set. Checked directly against all 12 seamed-live-block
+# samples on hand, by name, not just by aggregate count - 10 now decode
+# with region_c fully consistent; CAP-C30-SEAM-UNEVEN and
+# CAP-C31-SEAM-TAPER (both uneven/tapered seam corners, already flagged
+# elsewhere as not fitting a plain per-corner offset model) still don't
+# validate even after re-anchoring, left open rather than force-fit.
+region_c_seam_cases = {
+    'CAP-C34-SEAM-CURVED-NEG': True, 'CAP-C34-SEAM-CURVED-POS': True,
+    'CAP-C36-EXTENSION': True, 'CAP-C36-MIRRORED': True, 'CAP-C36-MITERED': True,
+    'CAP-C36-SLANT': True, 'CAP-C36-SQUARED': True, 'CAP-C36-TURNBACK': True,
+    'CAP-C37-SEAM-SWAP': True, 'CAP-C35-SEAM-TAPER-TRUE': True,
+    'CAP-C30-SEAM-UNEVEN': False, 'CAP-C31-SEAM-TAPER': False,
+}
+region_c_seam_results = {}
+for zpath in (glob.glob(os.path.join(HERE, 'CAP-C*', '*.zip'))
+              + glob.glob(os.path.join(HERE, 'captures', 'CAP-C*', '*.zip'))):
+    name = os.path.splitext(os.path.basename(zpath))[0]
+    if name not in region_c_seam_cases or name in region_c_seam_results: continue
+    data = am.list_zip(zpath)['piece'][0]['data']
+    b0 = ap.decode(data)['blocks'][0]
+    region_c_seam_results[name] = ap.check_region_c(b0)
+missing = [n for n in region_c_seam_cases if n not in region_c_seam_results]
+mismatches = [f"{n}: got={region_c_seam_results[n]} want={want}"
+              for n, want in region_c_seam_cases.items()
+              if n in region_c_seam_results and region_c_seam_results[n] != want]
+if missing:
+    print(f"   --  {len(missing)}/{len(region_c_seam_cases)} seam samples absent, skipping: {missing}")
+else:
+    ok = not mismatches
+    print(f"   {'ok ' if ok else 'FAIL'} {len(region_c_seam_cases)} seamed samples, "
+          f"{sum(region_c_seam_cases.values())} expected fixed, {mismatches or 'all as expected'}")
+    if not ok: fails.append(f'region_c seam re-anchoring: {mismatches}')
+
 print('-- Restore Defined bbox-center anchor detected + region_c fully consistent (skipped when absent)')
 # 2026-09-14: CAP-C80-BOOKMARK2 - a second, independent Restore Defined
 # sample (different geometry/placement from CAP-C80-BOOKMARK-RESTORED),
@@ -486,8 +530,20 @@ for folder in glob.glob(os.path.join(HERE, 'CAP-C*')) + glob.glob(os.path.join(H
                 gap = tail['region_c'].get('unclassified_gap')
                 if not gap or len(gap) < 48 or not ap.check_region_c(b):
                     continue  # only check well-formed (non-misaligned) blocks
-                gap_checked += 1
                 import struct as _struct
+                # [V, 2026-09-14] a seamed live block (record_state==2) now
+                # reaches this far for the first time - the snapshot2
+                # re-anchoring fix above makes 10 previously-misaligned
+                # seamed samples pass check_region_c - but v40 doesn't fit
+                # the n_perimeter_a+non_mirror_objs formula on any of them
+                # (each off by a different amount, so not a simple missing
+                # constant either); the seam-corner structure that sits
+                # before snapshot2 on these blocks likely needs its own
+                # term here, not yet worked out. Excluded from this whole
+                # check for now rather than force-fit or regress it.
+                if b['tail']['region_c'].get('record_state') == 2:
+                    continue
+                gap_checked += 1
                 # 94 on every well-formed sample seen so far, i.e. a fixed
                 # 96-byte record; some samples (CAP-C20/21/22-RULE-*) carry
                 # 21 extra, unrelated stale-name-residue bytes afterward

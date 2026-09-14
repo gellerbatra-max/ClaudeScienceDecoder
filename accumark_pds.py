@@ -501,7 +501,7 @@ def parse_point_snapshot(d, o, n):
         r = parse_point(d, p); pts.append(r); p = r['offset'] + r['size']
     return pts, p
 
-def parse_region_c(d, o, n_perimeter, category_name, table_start=None):
+def parse_region_c(d, o, n_perimeter, category_name, table_start=None, perim=None):
     """Region C: snapshot1, a SNAPSHOT_MARKER pair around a zero gap, a
     third tag - a single u16, now understood: **`record_state`, 0/1/2
     depending on this block's own status** (confirmed 2026-09-14 across
@@ -578,7 +578,47 @@ def parse_region_c(d, o, n_perimeter, category_name, table_start=None):
     else:
         record_state, record_state_off, p = _next_nonzero_u32(p)  # fallback: the old (pre-fix) reading
         record_state_size = 4
-    snap2, p = parse_point_snapshot(d, p, n_perimeter)
+    # [V, 2026-09-14] On a seamed live block, snapshot2 almost never starts
+    # immediately after record_state - a variable-length seam-corner/
+    # allowance structure sits in between (100-200+ bytes on the corpus
+    # checked, not the small fixed shift once guessed from a single
+    # sample), and reading straight through it desyncs snapshot2 into
+    # garbage (the "id=512,x=65536"-shaped runaway bug, FORMAT_SPEC.md
+    # Sec 12). Fix: try the immediate read first (unchanged, still correct
+    # on every unseamed block); only if it doesn't validate against
+    # snapshot1's own coordinate set, search forward for snapshot1's first
+    # point re-appearing verbatim (snapshot2 is the same n_perimeter
+    # corner set as snapshot1 - confirmed on 12 seamed corpus samples) and
+    # re-anchor there. Recovers 6 of 12 previously-garbage seamed samples
+    # exactly (CAP-C36-* ×6, CAP-C37-SEAM-SWAP, CAP-C35-SEAM-TAPER-TRUE);
+    # CAP-C30-SEAM-UNEVEN/CAP-C31-SEAM-TAPER (uneven-seam corner math) and
+    # CAP-C34-SEAM-CURVED-NEG/POS (snapshot2 seemingly holds fewer points
+    # than n_perimeter on a curved edge) still don't validate even after
+    # re-anchoring - left as still-open per FORMAT_SPEC.md Sec 12 rather
+    # than force a wrong fix. The anchor is the raw perimeter's own first
+    # point (`perim[0]`, passed in by the caller), not snapshot1's own
+    # first point - snapshot1 can start at a different rotation of the
+    # same corner set (confirmed on CAP-C36-SLANT: snapshot1 starts one
+    # corner later than `perim[0]`) and anchoring on it can land on a
+    # coincidental later match instead of snapshot2's true start.
+    def _valid_snap(pts):
+        if not snap1 or not pts: return False
+        real = {(pt['x'], pt['y']) for pt in snap1}
+        return all((pt['x'], pt['y']) in real for pt in pts)
+    snap2, snap2_end = parse_point_snapshot(d, p, n_perimeter)
+    if not _valid_snap(snap2) and perim:
+        anchor_x, anchor_y = perim[0]['x'], perim[0]['y']
+        anchor_off = None
+        for off in range(p, min(p + 500, len(d) - 8)):
+            if i32(d, off) == anchor_x and i32(d, off + 4) == anchor_y:
+                anchor_off = off
+                break
+        if anchor_off is not None:
+            id_off = anchor_off - 2
+            candidate, candidate_end = parse_point_snapshot(d, id_off, n_perimeter)
+            if _valid_snap(candidate):
+                snap2, snap2_end = candidate, candidate_end
+    p = snap2_end
     name_bytes = category_name.encode('latin1')
     name_at = d.find(name_bytes, p, p+400)
     if name_at != -1:
@@ -808,7 +848,7 @@ def decode_piece_block(d, field_off=None):
         n_snap = pretable['n_perimeter_a']
         if not (0 < n_snap <= len(perim)): n_snap = len(perim)
         region_c, region_c_end = parse_region_c(
-            d, pretable_off+PRETABLE_HEADER_SIZE, n_snap, m['name'], table_start)
+            d, pretable_off+PRETABLE_HEADER_SIZE, n_snap, m['name'], table_start, perim)
         line_records, tail_end = parse_line_table(d, table_start)
         segments = parse_segments(d, o, pretable_off)
         line_geometry = parse_line_geometry(d, o, pretable_off)

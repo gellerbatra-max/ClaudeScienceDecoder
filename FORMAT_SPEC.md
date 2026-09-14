@@ -1876,51 +1876,64 @@ the base corner set," not that it's specific to darts.
 Remaining `unknown` bytes, roughly in order of how much of the file they
 account for:
 
-- **The real Region-C runaway-snapshot bug: `CAP-C30-SEAM-UNEVEN`/`CAP-
-  C31-SEAM-TAPER`/`TASK2-SEAM1CM`, plus 18 of 156 production blocks show
-  the identical signature [V, found 2026-09-11] - scope corrected
-  2026-09-14: it's universal to every seamed live block, not a rare
-  outlier signature**: `id=512, x=65536` (or the same bytes reflected
-  through a slightly different field alignment, e.g. `id=0, x=512,
-  y=65537`) at the first desynced point, cascading into impossible
-  coordinates. Checked directly rather than assumed: every one of 10
-  additional seamed-live-block samples on hand this session
+- **The real Region-C runaway-snapshot bug: seam-triggered case, mostly
+  fixed [V, found 2026-09-11, fixed 2026-09-14]**: `id=512, x=65536` (or
+  the same bytes reflected through a slightly different field alignment,
+  e.g. `id=0, x=512, y=65537`) at the first desynced point of
+  `snapshot2`, cascading into impossible coordinates on every seamed
+  live block, not a rare outlier signature. **Root cause, found by
+  hex-dumping the desynced region directly rather than guessing offsets
+  further**: `snapshot2` does not start immediately after `record_state`
+  on a seamed live block, the way it reliably does on every unseamed
+  one - a variable-length structure (100-200+ bytes on the corpus
+  checked, not a small fixed shift as first guessed from one sample)
+  sits in between, containing what looks like genuine seam-corner/
+  allowance data (e.g. one real point offset from a perimeter corner by
+  a plausible seam-allowance-sized delta, `10000`/`10000`-shaped
+  constants) that the byte-search in the earlier, narrower investigation
+  never covered. Reading straight through it at the old fixed offset
+  desyncs `snapshot2` the same way `parse_point_snapshot` used to
+  desync on a variable-size point before that fix (§ above) - same bug
+  shape, different field. **Fix**: `parse_region_c` now tries the
+  immediate read first (unchanged, so every unseamed block is untouched);
+  if the result doesn't validate against `snapshot1`'s own coordinate
+  set, it searches forward (bounded, 500 bytes) for the raw perimeter's
+  own first point (`perim[0]`, not `snapshot1[0]` - `snapshot1` can
+  start at a different rotation of the same corner set, confirmed on
+  `CAP-C36-SLANT`, and anchoring on it risks a coincidental later match)
+  reappearing verbatim, and re-anchors `snapshot2` there. Checked
+  directly against all 12 seamed-live-block samples on hand, by name:
+  **10 now decode with `region_c` fully consistent**
   (`CAP-C34-SEAM-CURVED-NEG/POS`, all six `CAP-C36-SEAM-CORNERS`
-  fixtures, `CAP-C37-SEAM-SWAP`, `CAP-C35-SEAM-TAPER-TRUE`) fails
-  `check_region_c` with this exact signature - so the previous "18 of 156
-  production blocks" framing understated the scope: this isn't a handful
-  of unlucky outliers, it's what every live seamed block does. Blast
-  radius (how much garbage the misalignment cascades into before
-  something stops it) still varies by piece, which is likely why only 18
-  of 156 production blocks were flagged as visibly "runaway" before -
-  the rest may fail more quietly. **Partial root-cause progress, not yet
-  a fix**: on `CAP-C30-SEAM-UNEVEN` specifically, byte-searching located
-  the true first snap2 point exactly 4 bytes later than the current code
-  reads it, at an offset that lines up with `record_state` genuinely
-  being a 2-byte field here too (matching every unseamed sample) followed
-  by one more not-yet-understood 4-byte value (itself `512`, i.e. the
-  very same "ghost id" value the desynced read produces one field early)
-  before snap2's real first point. That specific 4-byte-shift reading did
-  **not** reproduce cleanly on `CAP-C36-SLANT`/`CAP-C35-SEAM-TAPER-TRUE`
-  when tested the same way (searching nearby offsets for a coordinate
-  pair matching either the live perimeter or the seam/cut-line's own
-  `line_geometry` points found no clean match), so whatever sits between
-  `record_state` and snap2's true start on a seamed live block is more
-  structured than a single fixed-width extra field - left open rather
-  than force-fit from one working example. **A second, distinct trigger
-  for the same class of bug found the same day**: `CAP-C33-ANNOTATION`
+  fixtures, `CAP-C37-SEAM-SWAP`, `CAP-C35-SEAM-TAPER-TRUE`) - locked in
+  by a dedicated `selftest.py` check naming all 12 samples and their
+  expected pass/fail, not just an aggregate count. **Still open**:
+  `CAP-C30-SEAM-UNEVEN`/`CAP-C31-SEAM-TAPER` (both already flagged
+  elsewhere as not fitting a plain per-corner offset model - their
+  "uneven"/"tapered" seam corners are presumably why re-anchoring on a
+  plain corner match doesn't fully resolve them either) don't validate
+  even after re-anchoring - left open rather than force-fit. The
+  seam-corner structure itself remains uncharacterized (`unclassified_gap`'s
+  own `v40`/`n_perimeter_a+non_mirror_objs` formula, §11, doesn't hold on
+  these seamed blocks either - excluded from that check pending its own
+  investigation, not silently passed). **A second, distinct trigger for
+  the same class of bug, unaffected by this fix**: `CAP-C33-ANNOTATION`
   (a piece with a text Annotation object, §5.4) desyncs Region C's
   `snapshot1` from its very first point - the parser reads straight into
   the annotation record's own bytes (`snapshot1`'s bogus first point
   literally decodes the ASCII text "TEST" as coordinates). Not the same
   root cause as the seam case (this is a different, not-yet-understood
   record type sitting somewhere in the byte range the snapshot parser
-  doesn't expect it), but the same failure signature and the same
-  practical handling: `check_region_c()` correctly reports `False`, and
-  both `selftest.py`'s corpus-wide `record_state` and `unclassified_gap`
-  checks gate on it, so this doesn't need a name-based exclusion the way
-  the once-broken `CAP-C80-BOOKMARK-RESTORED` case briefly did. Root
-  cause of both triggers open **[?]**.
+  doesn't expect it, and it corrupts `snapshot1` rather than
+  `snapshot2`, so the fix above - which trusts `snapshot1` as its
+  validation reference - can't help here), but the same failure
+  signature and the same practical handling: `check_region_c()`
+  correctly reports `False`, and both `selftest.py`'s corpus-wide
+  `record_state` and `unclassified_gap` checks gate on it, so this
+  doesn't need a name-based exclusion the way the once-broken
+  `CAP-C80-BOOKMARK-RESTORED` case briefly did. Root cause of both
+  remaining gaps (the two uneven-seam samples, and the Annotation
+  trigger) open **[?]**.
 - **`_locate_tail()`'s fixed search window, found and fixed the same
   pass [V, found and fixed 2026-09-11]**: 132 of 156 production blocks
   (108 of 126 pieces' own primary record) were failing to find `tail` -

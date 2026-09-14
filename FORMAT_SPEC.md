@@ -594,13 +594,47 @@ This closes the Annotation record structure out to the point of general
 reuse - any future capture's rotation can now be read straight off its
 echo record by scanning for the `1,52` header and a `text_length` that
 matches a known annotation's string length, without needing a fresh
-controlled-pair diff. What's left, deliberately not chased further here:
-the primary record's own tail (the corner-point block, and what decides
-the short-vs-long tail form), and wiring this into `accumark_pds.py`'s
-`decode()` - these records are found by scanning rather than by a fixed
-position in the sequential cursor `decode()` already walks, so they stay
-a standalone lookup (`find_annotation_echoes()`) rather than a field in
-the main parse for now.
+controlled-pair diff.
+
+**The primary record's own "long tail" (the four tagged corner points),
+identified exactly [V, 2026-09-14, third pass]**: those four points are
+not the annotation text's own bounding box at all (checked and ruled
+out - identical byte-for-byte between `CAP-C33-ANNOT-ROTA` at 0° and
+`-ROTB` at 45°, which a rotated text quad could not be) - **they are the
+host piece's own perimeter corners, verbatim**, confirmed by direct
+comparison: `(180145, 78087)`, `(180145, 187046)`, `(361743, 187046)`,
+`(361743, 78087)` match `decode()`'s own `perimeter` field for that
+piece exactly, corner-for-corner (the record's own tags read `2, 3, 4,
+1`, a one-off rotation of the perimeter's own `1, 2, 3, 4` order - not a
+mismatch, just a different starting corner, the same kind of harmless
+rotation already seen on Region C's `snapshot1`, §12). Between the two
+corner listings sits a familiar pair: eight zero bytes, `10000`
+(`0x2710`), eight more zero bytes, `10000` again - the exact
+`marker1`/`marker2` value pair Region C already uses to mean "unseamed"
+(§11), re-embedded here rather than a new constant. So the primary
+record's tail is best understood as a **compact, self-contained
+echo of the host piece's own Region-C-style snapshot** (perimeter
+corners + a marker-pair), bundled inside the Annotation object itself -
+plausibly so the annotation can be relocated/validated against its
+host piece without a separate lookup. The corner listing then repeats a
+second time (matching the echo record's own "repeats per object, not a
+fixed rule" pattern, §above) - the second repeat's first three corners
+decode cleanly and match the first listing exactly, but its own
+trailing bytes (a handful of small integers - `1`, `5`, `1`, `1`, `18`
+- before the piece-name echo) don't fit a plain fourth 15-byte point
+the way the rest of this record does, and weren't force-fit into one.
+Not pursued further this pass: what specifically decides whether a
+primary record gets this long corner-echo tail versus the short
+`28`/`X`/`Y`/`14` form seen once on `"TEST"` (both were `0°`-rotation,
+plain `Create→Annotation` text, so rotation and tool choice are both
+ruled out as the deciding factor by this pair alone) - would need a
+dedicated pair of samples differing in one other property (font,
+character size, or annotation count on the piece) to isolate. Wiring
+either tail form into `accumark_pds.py`'s `decode()` is also still
+future work - these records are found by scanning rather than by a
+fixed position in the sequential cursor `decode()` already walks, so
+they stay a standalone lookup (`find_annotation_echoes()`) rather than
+a field in the main parse for now.
 
 **A pattern in the five known tags, checked once the full letter-code
 list was on hand: the tag byte is literally the ASCII code of the

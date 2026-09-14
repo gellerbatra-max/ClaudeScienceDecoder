@@ -350,6 +350,49 @@ if os.path.isfile(rota_zip) and os.path.isfile(rotb_zip) and os.path.isfile(anno
 else:
     print('   --  find_annotation_echoes   (absent)')
 
+print('-- Annotation primary record: corner-echo tail matches the host piece perimeter (skipped when absent)')
+# 2026-09-14 (third pass): resolves most of the primary record's own
+# "long tail" left undecoded above - the four tagged points in it are
+# not the annotation text's own bounding box (ruled out: byte-identical
+# between ROTA/ROTB, which a rotated quad could not be) but the host
+# piece's own perimeter corners, verbatim, just started from a different
+# corner (tags 2,3,4,1 instead of the perimeter's own 1,2,3,4 - the same
+# harmless rotation Region C's own snapshot1 already exhibits). Found by
+# scanning for the primary record's own header (const 1, const 52,
+# strlen, text) since - like the echo record - it isn't at a fixed
+# offset, then reading 4 plain 15-byte points immediately after the
+# text and comparing them to decode()'s own perimeter as a set (order-
+# and rotation-independent, matching check_region_c's own convention).
+def _find_annotation_corners(data, text):
+    import struct as _struct
+    text_bytes = text.encode('latin1')
+    n = len(data)
+    for off in range(0, n - 10):
+        if _struct.unpack_from('<I', data, off)[0] != 1: continue
+        if _struct.unpack_from('<I', data, off + 4)[0] != 52: continue
+        strlen = _struct.unpack_from('<H', data, off + 8)[0]
+        if strlen != len(text_bytes): continue
+        if data[off+10:off+10+strlen] != text_bytes: continue
+        p = off + 10 + strlen
+        pts = []
+        for _ in range(4):
+            pt = ap.parse_point(data, p)
+            pts.append((pt['x'], pt['y']))
+            p = pt['offset'] + pt['size']
+        return pts
+    return None
+
+if os.path.isfile(rota_zip):
+    data_a = am.list_zip(rota_zip)['piece'][0]['data']
+    b0 = ap.decode(data_a)['blocks'][0]
+    corners = _find_annotation_corners(data_a, 'SAME')
+    real_perim = {(p['x'], p['y']) for p in b0['perimeter']}
+    ok4 = bool(corners) and len(corners) == 4 and set(corners) == real_perim
+    print(f"   {'ok ' if ok4 else 'FAIL'} CAP-C33-ANNOT-ROTA  corners={corners} perimeter={sorted(real_perim)}")
+    if not ok4: fails.append(f'annotation corner-echo: corners={corners} perimeter={real_perim}')
+else:
+    print('   --  CAP-C33-ANNOT-ROTA      (absent)')
+
 print('-- Bookmark: Define alone is a no-op on disk; edit-after-bookmark adds one extra stale record (skipped when absent)')
 # 2026-09-14: CAP-C80-BOOKMARK - settles FORMAT_SPEC.md Sec 11's "is Region
 # C's snapshot1/snapshot2 pair a Bookmark->Restore cache" question: NO.

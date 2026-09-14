@@ -1604,9 +1604,48 @@ Immediately after snapshot2, on a piece with more than one piece record
 **undelimited second copy of the piece's own category name string** sits
 right at the line table's doorstep — found by searching for the
 already-known name rather than assuming a fixed gap size. A never-edited
-piece (`piece_records == 1`) has no such echo. The zero-padded bytes between
-snapshot2's end and the name echo (or the line table, if there is no echo)
-are captured as `unclassified_gap` and are not yet understood **[?]**.
+piece (`piece_records == 1`) has no such echo. The bytes between
+snapshot2's end and the name echo (or the line table, if there is no
+echo) are captured as `unclassified_gap` - **partially resolved
+2026-09-14, not just "zero-padded" as first assumed**: on 56 of 62
+corpus blocks checked (the exceptions being the already-documented
+seamed-live-block Region-C misalignment above, which corrupts where
+this gap is even measured from, plus 3 samples with unrelated trailing
+name residue - see below), it is a clean **u16-length-prefixed record**:
+a 2-byte length (`94` on every sample seen, i.e. a fixed 96-byte total
+size) followed by that many payload bytes. Within the payload, two
+fields are now pinned down by direct corpus comparison: a **u32 at
+payload offset 38 (absolute offset 40) equal to `n_perimeter_a +` the
+count of the piece's own internal-line-list objects that are **not**
+`mirror`-tagged** (the same "corners minus notches/dart-apex" count
+already established for Region C's own snapshot sizing, plus 1 for
+grain, plus 1 more per drill/cutout/internal-line object - a
+`mirror`-tagged Fold Keep echo does **not** add to this count, matching
+this same session's other finding that `mirror` internal lines are
+corner echoes rather than genuine independent objects) - confirmed
+exactly on 58 of 59 corpus blocks checked, spanning plain rectangles, a
+pentagon, a hexagon, a dart, every notch/drill/cutout/fold variant
+tried, and multi-object pieces (`CAP-C60-CUTOUT`, `CAP-C50-DRILL1`,
+`CAP-C12-TWOINTLINES`). The one exception, `CAP-C82-FOLD-OBLIQUE` (whose
+own embedded category name happens to read `CAP-C80-BOOKMARK`, a
+leftover from before that piece's pre-export rename - see
+`CAPTURE_LOG.md`), reads `7` where the formula predicts `6`
+(`n_perimeter_a=5`, one non-mirror object) - left as an honest,
+unexplained single-sample exception rather than force-fit. Immediately
+after this field sits a **constant u32 `1`** (absolute offset 44), true
+on every sample checked including the exception above. Two more fields
+follow (absolute offsets 48 and 50, u16 each)
+that vary with the piece (`0` on a plain rectangle or a Fold-Keep
+mirror-only piece, `1` on anything with an extra internal object,
+notch, or dart) but whose exact meaning isn't pinned down yet - left
+open rather than guessed from a partial pattern. Separately, 3 samples
+built by grading an already-`piece_records>1` piece
+(`CAP-C20/21/22-RULE-*`) carry a genuine, unrelated 21 extra bytes after
+this 96-byte record, ending in visible ASCII (`...EDIT`) - a second,
+stale category-name fragment the current `d.find(name_bytes, p, p+400)`
+search doesn't catch because it's searching for the piece's *current*
+name, not whatever name was live when this residue was written; not
+chased further this pass.
 
 ## 12. Coverage and remaining gaps
 
@@ -1965,10 +2004,14 @@ account for:
   matching a *specific* production endpoint to one of those named styles,
   not the styles' own encoding. The controlled C30/C31 tapered intersections
   are resolved.
-- **§11's `unclassified_gap` bytes themselves remain unidentified [?]** —
-  the raw zero-padded region between Region C's snapshot2 and the name
-  echo/line table (§11) is still not marked `identified` by `coverage()`
-  and still not understood byte-for-byte. Two related items that used to
+- **§11's `unclassified_gap` bytes: partially resolved, not fully [?]** —
+  the region between Region C's snapshot2 and the name echo/line table
+  (§11) is a confirmed u16-length-prefixed 96-byte record with two pinned
+  fields (`n_perimeter_a + 1`, then a constant `1`) but two more fields
+  (absolute offsets 48/50) whose exact meaning isn't identified yet, plus
+  a separate, unrelated 21-byte stale-name-residue tail seen on 3 graded
+  samples - still not marked `identified` by `coverage()` pending a full
+  field-by-field decode. Two related items that used to
   be catalogued alongside it are resolved and no longer open: Region C's
   `n_perimeter` mismatch on `CAP-C14-ANNOT`/`CAP-C62-DART`/notch pieces
   (explained by `n_perimeter_a`, the "corners minus notches/dart-apex"

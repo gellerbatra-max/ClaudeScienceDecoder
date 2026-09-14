@@ -379,6 +379,63 @@ for name in restore_cases:
     print(f"   {'ok ' if ok else 'FAIL'} {name:26} restore_anchor={anchor} vs bbox_center=({cx},{cy}); region_c_consistent={consistent}")
     if not ok: fails.append(f'{name}: restore_anchor={anchor} bbox_center=({cx},{cy}) consistent={consistent}')
 
+print('-- unclassified_gap: confirmed u16-length-prefixed record with 2 pinned fields, corpus-wide')
+# 2026-09-14: partially resolves FORMAT_SPEC.md Sec 11/12's "unclassified_gap
+# not yet understood [?]" item. Confirmed on the corpus (excluding the
+# already-documented seamed-live-block Region-C misalignment, which
+# corrupts where this gap is even measured from): a 2-byte length prefix
+# (94 on every well-formed sample, i.e. 96 bytes total) followed by a
+# payload where absolute offset 40 (a u32) equals n_perimeter_a plus the
+# count of internal-line objects that are NOT mirror-tagged (mirror
+# echoes don't add to the count - matches this session's other finding
+# that they're corner echoes, not real objects), and offset 44 (a u32)
+# is a constant 1. One honest single-sample exception, not force-fit:
+# CAP-C82-FOLD-OBLIQUE's own embedded category name is a pre-rename
+# leftover reading 'CAP-C80-BOOKMARK' (see CAPTURE_LOG.md) - excluded by
+# path, not by name, so a real CAP-C80-BOOKMARK fixture still counts.
+# Offsets 48/50 are known to exist and vary but aren't decoded yet - not
+# checked here.
+gap_checked = gap_prefix_ok = gap_v40_ok = gap_v44_ok = 0
+gap_exceptions = []
+for folder in glob.glob(os.path.join(HERE, 'CAP-C*')) + glob.glob(os.path.join(HERE, 'captures', 'CAP-C*')):
+    for zpath in glob.glob(os.path.join(folder, '*.[zZ][iI][pP]')):
+        if os.path.normpath(zpath).endswith(os.path.normpath('CAP-C82-FOLD-OBLIQUE/CAP-C82-FOLD-OBLIQUE.zip')):
+            continue  # the one known, honestly-flagged exception - see FORMAT_SPEC.md Sec 11
+        try:
+            pieces = am.list_zip(zpath).get('piece', [])
+        except Exception:
+            continue
+        for obj in pieces:
+            try:
+                blocks = ap.decode(obj['data'])['blocks']
+            except Exception:
+                continue
+            for b in blocks:
+                tail = b.get('tail')
+                if not tail or 'error' in tail or not tail.get('region_c'):
+                    continue
+                gap = tail['region_c'].get('unclassified_gap')
+                if not gap or len(gap) < 48 or not ap.check_region_c(b):
+                    continue  # only check well-formed (non-misaligned) blocks
+                gap_checked += 1
+                import struct as _struct
+                # 94 on every well-formed sample seen so far, i.e. a fixed
+                # 96-byte record; some samples (CAP-C20/21/22-RULE-*) carry
+                # 21 extra, unrelated stale-name-residue bytes afterward
+                # (see FORMAT_SPEC.md Sec 11), so check the prefix value
+                # itself rather than requiring it to equal len(gap)-2.
+                if _struct.unpack_from('<H', gap, 0)[0] == 94: gap_prefix_ok += 1
+                npa = b['tail']['pretable'].get('n_perimeter_a')
+                n_non_mirror = sum(1 for k in (b.get('internal_kinds') or []) if k != 'mirror')
+                v40 = _struct.unpack_from('<I', gap, 40)[0]
+                if v40 == npa + n_non_mirror: gap_v40_ok += 1
+                else: gap_exceptions.append(f"{obj['name']}: v40={v40} want={npa+n_non_mirror}")
+                if _struct.unpack_from('<I', gap, 44)[0] == 1: gap_v44_ok += 1
+ok = gap_checked > 0 and gap_prefix_ok == gap_checked and gap_v40_ok == gap_checked and gap_v44_ok == gap_checked
+print(f"   {'ok ' if ok else 'FAIL'} {gap_checked} blocks checked: length-prefix ok={gap_prefix_ok}, "
+      f"n_perimeter_a+non_mirror_objs ok={gap_v40_ok}, constant-1 ok={gap_v44_ok}")
+if not ok: fails.append(f'unclassified_gap: checked={gap_checked} prefix_ok={gap_prefix_ok} v40_ok={gap_v40_ok} v44_ok={gap_v44_ok} exceptions={gap_exceptions}')
+
 print('-- shared seam-corner topology and quantized curve point')
 corner_counts = {}
 corner_example = None

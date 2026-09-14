@@ -514,23 +514,35 @@ ordinary annotation creation, so a future attempt should look elsewhere
 (digitizing tools, or `Edit Line Info` applied to an existing line)
 rather than repeating this same recipe.
 
-**A previously-undocumented record type found along the way, not fully
-decoded**: each Annotation object is stored as its own length-prefixed
-record - a `u32` constant `52`, a `u16` string length, the raw text
-bytes (no padding to a fixed boundary - a 3-character string is
-followed immediately by the next field, confirmed on `"ROT"`), then a
-`u32` constant `28`, an `i32` X and `i32` Y position, then more fields
-not yet identified (a `u32` `14`, a `u32` that reads `0` on both samples
-despite one having a genuine 45° rotation, so rotation is stored
-somewhere else in this record or a sibling one - not yet located). Each
-annotation's own record appears to repeat a second time immediately
-after the first (matching the "Annotation Library" panel visible in the
-`Create→Annotation` dialog, which lists reusable annotation text) - not
-confirmed. This is a **new, distinct, genuinely undecoded structure**,
-flagged honestly rather than force-fit from two samples; a dedicated
-follow-up with more samples (different string lengths, a controlled
-rotation sweep, single vs. reused annotations) would be needed to
-decode it properly.
+**A previously-undocumented record type found along the way, partially
+decoded, including a clean confirmation of the rotation field**: each
+Annotation object is stored as its own length-prefixed record - a `u32`
+constant `52`, a `u16` string length, the raw text bytes (no padding to
+a fixed boundary - a 3-character string is followed immediately by the
+next field, confirmed on `"ROT"`), then a `u32` constant `28`, an `i32`
+X and `i32` Y position, then a `u32` constant `14`, then a `u32` that is
+`0` at 0° rotation. **Rotation itself, resolved by a controlled pair
+(`CAP-C33-ANNOT-ROTA`/`-ROTB`, 2026-09-14): identical text ("SAME"),
+placed at the same clicked position, differing only in Font Rotation (0°
+vs. 45°) - byte-diffing the two exports to 17 total differing bytes
+isolates it exactly**: an 8-byte field elsewhere in the record (all-zero
+at 0°) holds `18 2d 44 54 fb 21 e9 3f` at 45° - an **IEEE-754
+double-precision float equal to `0.7853981633974483`, which is exactly
+`radians(45)`**, bit-for-bit. **Rotation is stored as a double, in
+radians**, not degrees or a fixed-point integer. Its exact byte offset
+relative to the record's own other fields isn't pinned down yet (found
+via absolute-position diffing of two otherwise-identical files, not by
+walking the record structure field-by-field), and a second occurrence of
+each annotation's own text was seen further into the file on the
+original two-annotation sample but did not reproduce at the expected
+relative position on this controlled pair - the "repeats a second time,
+maybe an Annotation Library echo" hypothesis is accordingly still
+unconfirmed, not walked back. This is a **new, distinct structure**,
+now anchored by one exactly-decoded field (rotation) plus several
+still-unlabeled ones; a dedicated follow-up (varying string length,
+sweeping rotation across more angles, and pinning the field's offset
+relative to the record start rather than by absolute position) would be
+needed to close it out completely.
 
 **A pattern in the five known tags, checked once the full letter-code
 list was on hand: the tag byte is literally the ASCII code of the

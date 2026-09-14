@@ -289,6 +289,37 @@ if os.path.isfile(oblique_zip):
 else:
     print('   --  CAP-C82-FOLD-OBLIQUE      (absent)')
 
+print('-- Annotation rotation is an IEEE-754 double in radians (skipped when absent)')
+# 2026-09-14: CAP-C33-ANNOT-ROTA/-ROTB - a controlled pair (identical text
+# "SAME" at the same clicked position, differing only in Font Rotation 0
+# vs 45) isolates the rotation field by direct byte diff: an 8-byte field
+# reads all-zero at 0 degrees and reads exactly radians(45) as a
+# little-endian IEEE-754 double at 45 degrees. See FORMAT_SPEC.md Sec 5.4.
+rota_zip = os.path.join(CAPS, 'CAP-C33-INTERNAL-TYPES', 'CAP-C33-ANNOT-ROTA.zip')
+rotb_zip = os.path.join(CAPS, 'CAP-C33-INTERNAL-TYPES', 'CAP-C33-ANNOT-ROTB.zip')
+if os.path.isfile(rota_zip) and os.path.isfile(rotb_zip):
+    import struct as _struct, math as _math
+    data_a = am.list_zip(rota_zip)['piece'][0]['data']
+    data_b = am.list_zip(rotb_zip)['piece'][0]['data']
+    diff_offsets = [i for i, (x, y) in enumerate(zip(data_a, data_b)) if x != y]
+    # the rotation field is the one differing offset where A reads all-zero
+    # and B decodes as a plausible angle in radians (0 < angle <= 2*pi)
+    candidates = []
+    for off in diff_offsets:
+        if _struct.unpack_from('<Q', data_a, off)[0] != 0:
+            continue
+        try:
+            angle = _struct.unpack_from('<d', data_b, off)[0]
+        except Exception:
+            continue
+        if 0 < angle <= 2 * _math.pi:
+            candidates.append((off, angle))
+    ok = len(candidates) == 1 and abs(candidates[0][1] - _math.radians(45)) < 1e-9
+    print(f"   {'ok ' if ok else 'FAIL'} CAP-C33-ANNOT-ROTA/B  candidates={candidates} want=(?, {_math.radians(45)})")
+    if not ok: fails.append(f'CAP-C33-ANNOT-ROTA/B: candidates={candidates}')
+else:
+    print('   --  CAP-C33-ANNOT-ROTA/B      (absent)')
+
 print('-- Bookmark: Define alone is a no-op on disk; edit-after-bookmark adds one extra stale record (skipped when absent)')
 # 2026-09-14: CAP-C80-BOOKMARK - settles FORMAT_SPEC.md Sec 11's "is Region
 # C's snapshot1/snapshot2 pair a Bookmark->Restore cache" question: NO.

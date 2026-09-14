@@ -467,28 +467,32 @@ print(f"   {'ok ' if ok else 'FAIL'} {record_state_checked} blocks checked, {len
 if not ok: fails.extend(record_state_mismatches or ['record_state: no blocks with region_c found'])
 
 print('-- Region C snapshot2 re-anchoring on seamed live blocks (skipped when the folders are absent)')
-# 2026-09-14: closes most of FORMAT_SPEC.md Sec 12's "real Region-C
-# runaway-snapshot bug" for the seam-triggered case. Root cause: on a
-# seamed live block, snapshot2 doesn't start immediately after
-# record_state like it does on every unseamed block - a variable-length
-# (100-200+ byte, not a small fixed shift) seam-corner/allowance
-# structure sits in between, and reading straight through it desyncs
-# snapshot2 into the "id=512,x=65536"-shaped garbage already documented.
-# parse_region_c now falls back to searching forward for the raw
-# perimeter's own first point reappearing verbatim and re-anchoring
-# there when the immediate read doesn't validate against snapshot1's own
-# coordinate set. Checked directly against all 12 seamed-live-block
-# samples on hand, by name, not just by aggregate count - 10 now decode
-# with region_c fully consistent; CAP-C30-SEAM-UNEVEN and
-# CAP-C31-SEAM-TAPER (both uneven/tapered seam corners, already flagged
-# elsewhere as not fitting a plain per-corner offset model) still don't
-# validate even after re-anchoring, left open rather than force-fit.
+# 2026-09-14: closes FORMAT_SPEC.md Sec 12's "real Region-C
+# runaway-snapshot bug" for the seam-triggered case, all 12 of 12 known
+# samples. Root cause: on a seamed live block, snapshot2 doesn't start
+# immediately after record_state like it does on every unseamed block -
+# a variable-length (100-200+ byte, not a small fixed shift) seam-
+# corner/allowance structure sits in between, and reading straight
+# through it desyncs snapshot2 into the "id=512,x=65536"-shaped garbage
+# already documented. parse_region_c now falls back to searching
+# forward for the raw perimeter's own first point reappearing verbatim
+# and re-anchoring there when the immediate read doesn't validate - and
+# critically, tries EVERY occurrence in the search window, not just the
+# first (the first one or two occurrences on CAP-C30-SEAM-UNEVEN/
+# CAP-C31-SEAM-TAPER and CAP-C33-ANNOTATION are coincidental partial
+# matches inside an unrelated per-corner seam-value/Annotation
+# structure, each producing exactly 1 good point before desyncing again
+# - only a later occurrence is the true, fully-valid list start).
+# Checked directly against all 12 seamed-live-block samples on hand, by
+# name, not just by aggregate count - all 12 now decode with region_c
+# fully consistent (up from 0 before this fix, 10 with the first,
+# single-candidate version of it).
 region_c_seam_cases = {
     'CAP-C34-SEAM-CURVED-NEG': True, 'CAP-C34-SEAM-CURVED-POS': True,
     'CAP-C36-EXTENSION': True, 'CAP-C36-MIRRORED': True, 'CAP-C36-MITERED': True,
     'CAP-C36-SLANT': True, 'CAP-C36-SQUARED': True, 'CAP-C36-TURNBACK': True,
     'CAP-C37-SEAM-SWAP': True, 'CAP-C35-SEAM-TAPER-TRUE': True,
-    'CAP-C30-SEAM-UNEVEN': False, 'CAP-C31-SEAM-TAPER': False,
+    'CAP-C30-SEAM-UNEVEN': True, 'CAP-C31-SEAM-TAPER': True,
 }
 region_c_seam_results = {}
 for zpath in (glob.glob(os.path.join(HERE, 'CAP-C*', '*.zip'))

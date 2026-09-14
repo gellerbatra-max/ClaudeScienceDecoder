@@ -501,6 +501,31 @@ def parse_point_snapshot(d, o, n):
         r = parse_point(d, p); pts.append(r); p = r['offset'] + r['size']
     return pts, p
 
+def _reanchor_point_list(d, search_start, search_end, n_perimeter, anchor_x, anchor_y, valid_set):
+    """[V, 2026-09-14] Shared re-anchoring search used by parse_region_c
+    for both snapshot1 and snapshot2 when the immediate read doesn't
+    validate: scan the window for every occurrence of (anchor_x,
+    anchor_y) as a consecutive i32 pair, and for EACH one, try reading
+    n_perimeter points from 2 bytes earlier (the point's own id field)
+    and check if the WHOLE list validates against valid_set - not just
+    stopping at the first coordinate match. The first match found isn't
+    always the true list start (confirmed on CAP-C33-ANNOTATION: the
+    first two occurrences of the perimeter's own first point are
+    coincidental partial matches inside unrelated Annotation-record
+    bytes, each producing 1 good point followed by 3 garbage ones: the
+    third occurrence is the true, fully-valid snapshot). Returns
+    (points, end_offset) for the first fully-valid candidate, or
+    (None, None)."""
+    search_end = min(search_end, len(d) - 8)
+    off = search_start
+    while off < search_end:
+        if i32(d, off) == anchor_x and i32(d, off + 4) == anchor_y:
+            candidate, candidate_end = parse_point_snapshot(d, off - 2, n_perimeter)
+            if all((pt['x'], pt['y']) in valid_set for pt in candidate):
+                return candidate, candidate_end
+        off += 1
+    return None, None
+
 def parse_region_c(d, o, n_perimeter, category_name, table_start=None, perim=None):
     """Region C: snapshot1, a SNAPSHOT_MARKER pair around a zero gap, a
     third tag - a single u16, now understood: **`record_state`, 0/1/2
@@ -544,6 +569,22 @@ def parse_region_c(d, o, n_perimeter, category_name, table_start=None, perim=Non
     COORD_LO/COORD_HI): fall back to the old marker2-style nonzero-u32 scan
     rather than emit a snapshot2 the caller can't tell is wrong."""
     snap1, p = parse_point_snapshot(d, o, n_perimeter)
+    # [V, 2026-09-14] A piece with an Annotation object (Sec 5.4) also
+    # desyncs snapshot1 itself, not just snapshot2 - tried the same
+    # re-anchoring fix as snapshot2's own seam-triggered desync below,
+    # but reverted it: the Annotation record's own tail independently
+    # contains an exact echo of the SAME perimeter corners (Sec 5.4's
+    # corner-echo finding), so a generic "search for perim[0]" scan
+    # cannot tell Region C's own true snapshot1 apart from a coincidental
+    # match inside that unrelated Annotation structure - confirmed by a
+    # second signal disagreeing even when the coordinate match looked
+    # clean: record_state read 0 (stale) on 5 known-live single-block
+    # samples once snapshot1 was re-anchored this way, which cannot be
+    # right for a piece with only one block. Left as an open, precisely
+    # scoped gap rather than ship a fix validated by too weak an oracle
+    # (coordinate-subset-of-perimeter alone isn't enough once a second,
+    # independent copy of that same perimeter exists elsewhere in the
+    # file) - see FORMAT_SPEC.md Sec 12.
     def _next_nonzero_u32(p):
         while p+4 <= len(d) and u32(d, p) == 0: p += 4
         return u32(d, p), p, p+4           # value, start offset, end offset
@@ -607,17 +648,11 @@ def parse_region_c(d, o, n_perimeter, category_name, table_start=None, perim=Non
         return all((pt['x'], pt['y']) in real for pt in pts)
     snap2, snap2_end = parse_point_snapshot(d, p, n_perimeter)
     if not _valid_snap(snap2) and perim:
-        anchor_x, anchor_y = perim[0]['x'], perim[0]['y']
-        anchor_off = None
-        for off in range(p, min(p + 500, len(d) - 8)):
-            if i32(d, off) == anchor_x and i32(d, off + 4) == anchor_y:
-                anchor_off = off
-                break
-        if anchor_off is not None:
-            id_off = anchor_off - 2
-            candidate, candidate_end = parse_point_snapshot(d, id_off, n_perimeter)
-            if _valid_snap(candidate):
-                snap2, snap2_end = candidate, candidate_end
+        real_perim = {(pt['x'], pt['y']) for pt in perim}
+        candidate, candidate_end = _reanchor_point_list(
+            d, p, p + 2000, n_perimeter, perim[0]['x'], perim[0]['y'], real_perim)
+        if candidate is not None:
+            snap2, snap2_end = candidate, candidate_end
     p = snap2_end
     name_bytes = category_name.encode('latin1')
     name_at = d.find(name_bytes, p, p+400)

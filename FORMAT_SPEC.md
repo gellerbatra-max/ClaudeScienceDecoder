@@ -488,11 +488,49 @@ project's own empirical work, independent of the manual. `S` isn't a gap
 in that mapping - it was never going to be an internal-line-list tag,
 since seam allowance is a property of perimeter segments, not a drawn
 internal line. **Genuinely still open, if ever worth a targeted capture**:
-`A`/`B` (annotation lines), `C` (opstop), `P` (fixed piecing), `T` (grid
-line) - none seen in this corpus. The manual's own candidate control for
-assigning one (*"To edit line types: use the Edit Line Info function"*)
-was never tried for this specific purpose, since every earlier attempt at
-this item was hunting for the MicroMark taxonomy instead.
+`C` (opstop), `P` (fixed piecing), `T` (grid line) - none seen in this
+corpus. The manual's own candidate control for assigning one (*"To edit
+line types: use the Edit Line Info function"*) was never tried for this
+specific purpose, since every earlier attempt at this item was hunting
+for the MicroMark taxonomy instead.
+
+**`A`/`B` (annotation lines) checked directly (`CAP-C33-ANNOTATION`,
+2026-09-14) and ruled out for the modern `Create→Annotation` path
+specifically**: placed two annotation text objects on a plain rectangle,
+one at the tool's default 0° rotation ("TEST"), one with the Font
+Rotation field explicitly set to 45° ("ROT") - the manual's own wording
+("Determines the width and spacing of characters" / "...width, height,
+and rotation...") reads exactly like a rotated annotation should need
+the 3-point (`B`) form. Neither produced any internal-line-list entry
+at all (`internal_kinds` stayed `['grain']` in both cases) - **modern
+PDS stores annotation text as its own dedicated record, not via the
+internal-line-list mechanism**, confirmed independent of rotation. This
+narrows rather than fully answers the open question: `A`/`B` may only
+ever have applied to a legacy digitizing-based workflow this modern GUI
+path doesn't exercise, or may not be creatable through the standard
+`Annotation` dialog at all - genuinely still open, but the ASCII-code
+prediction for these two specific letters is now known not to fire from
+ordinary annotation creation, so a future attempt should look elsewhere
+(digitizing tools, or `Edit Line Info` applied to an existing line)
+rather than repeating this same recipe.
+
+**A previously-undocumented record type found along the way, not fully
+decoded**: each Annotation object is stored as its own length-prefixed
+record - a `u32` constant `52`, a `u16` string length, the raw text
+bytes (no padding to a fixed boundary - a 3-character string is
+followed immediately by the next field, confirmed on `"ROT"`), then a
+`u32` constant `28`, an `i32` X and `i32` Y position, then more fields
+not yet identified (a `u32` `14`, a `u32` that reads `0` on both samples
+despite one having a genuine 45° rotation, so rotation is stored
+somewhere else in this record or a sibling one - not yet located). Each
+annotation's own record appears to repeat a second time immediately
+after the first (matching the "Annotation Library" panel visible in the
+`Create→Annotation` dialog, which lists reusable annotation text) - not
+confirmed. This is a **new, distinct, genuinely undecoded structure**,
+flagged honestly rather than force-fit from two samples; a dedicated
+follow-up with more samples (different string lengths, a controlled
+rotation sweep, single vs. reused annotations) would be needed to
+decode it properly.
 
 **A pattern in the five known tags, checked once the full letter-code
 list was on hand: the tag byte is literally the ASCII code of the
@@ -1799,7 +1837,20 @@ account for:
   `line_geometry` points found no clean match), so whatever sits between
   `record_state` and snap2's true start on a seamed live block is more
   structured than a single fixed-width extra field - left open rather
-  than force-fit from one working example. Root cause open **[?]**.
+  than force-fit from one working example. **A second, distinct trigger
+  for the same class of bug found the same day**: `CAP-C33-ANNOTATION`
+  (a piece with a text Annotation object, §5.4) desyncs Region C's
+  `snapshot1` from its very first point - the parser reads straight into
+  the annotation record's own bytes (`snapshot1`'s bogus first point
+  literally decodes the ASCII text "TEST" as coordinates). Not the same
+  root cause as the seam case (this is a different, not-yet-understood
+  record type sitting somewhere in the byte range the snapshot parser
+  doesn't expect it), but the same failure signature and the same
+  practical handling: `check_region_c()` correctly reports `False`, and
+  both `selftest.py`'s corpus-wide `record_state` and `unclassified_gap`
+  checks gate on it, so this doesn't need a name-based exclusion the way
+  the once-broken `CAP-C80-BOOKMARK-RESTORED` case briefly did. Root
+  cause of both triggers open **[?]**.
 - **`_locate_tail()`'s fixed search window, found and fixed the same
   pass [V, found and fixed 2026-09-11]**: 132 of 156 production blocks
   (108 of 126 pieces' own primary record) were failing to find `tail` -

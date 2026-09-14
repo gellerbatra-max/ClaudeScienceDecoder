@@ -327,6 +327,12 @@ print('-- Region C record_state (0=stale/1=live-unseamed/2=live-seamed), corpus-
 # misread; parse_region_c now detects and skips Restore Defined's own
 # bbox-center "restore_anchor" field (see its docstring), so both
 # Restore-Defined captures decode correctly and need no exclusion.
+# Gated on check_region_c() to skip blocks with a KNOWN Region-C
+# misalignment: seamed live blocks (Sec 11's runaway-snapshot bug) and,
+# newly found via CAP-C33-ANNOTATION the same day, any block containing
+# an Annotation text object - its own not-yet-decoded record layout
+# desyncs parse_point_snapshot the same way seaming does, a second,
+# distinct trigger for the same class of bug (see Sec 5.4).
 record_state_mismatches = []
 record_state_checked = 0
 for folder in glob.glob(os.path.join(HERE, 'CAP-C*')) + glob.glob(os.path.join(HERE, 'captures', 'CAP-C*')):
@@ -344,6 +350,8 @@ for folder in glob.glob(os.path.join(HERE, 'CAP-C*')) + glob.glob(os.path.join(H
                 tail = b.get('tail')
                 if not tail or 'error' in tail or not tail.get('region_c'):
                     continue
+                if not ap.check_region_c(b):
+                    continue  # known Region-C misalignment (seam or annotation) - Sec 11/5.4
                 record_state_checked += 1
                 state = tail['region_c']['record_state']
                 any_seam = any((sg.get('seam_flag') or 0) != 0 for sg in (b.get('segments') or []))

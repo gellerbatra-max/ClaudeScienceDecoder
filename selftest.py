@@ -306,10 +306,11 @@ print('-- Region C record_state (0=stale/1=live-unseamed/2=live-seamed), corpus-
 # from parse_region_c's own docstring - a corpus sweep found record_state
 # tracks exactly one thing: whether THIS block is a stale pre-edit
 # duplicate (0), or the live/current block with (2) or without (1) a
-# seam defined on it (seam_flag nonzero on >=1 segment). The one known
-# exception is CAP-C80-BOOKMARK-RESTORED, whose marker-scan misread is
-# already root-caused separately (see FORMAT_SPEC.md Sec 11) - excluded
-# here by name, not silently swallowed.
+# seam defined on it (seam_flag nonzero on >=1 segment). Originally
+# CAP-C80-BOOKMARK-RESTORED was excluded here as a known marker-scan
+# misread; parse_region_c now detects and skips Restore Defined's own
+# bbox-center "restore_anchor" field (see its docstring), so both
+# Restore-Defined captures decode correctly and need no exclusion.
 record_state_mismatches = []
 record_state_checked = 0
 for folder in glob.glob(os.path.join(HERE, 'CAP-C*')) + glob.glob(os.path.join(HERE, 'captures', 'CAP-C*')):
@@ -319,8 +320,6 @@ for folder in glob.glob(os.path.join(HERE, 'CAP-C*')) + glob.glob(os.path.join(H
         except Exception:
             continue
         for obj in pieces:
-            if obj['name'] == 'CAP-C80-BOOKMARK-RESTORED':
-                continue
             try:
                 blocks = ap.decode(obj['data'])['blocks']
             except Exception:
@@ -338,6 +337,31 @@ for folder in glob.glob(os.path.join(HERE, 'CAP-C*')) + glob.glob(os.path.join(H
 ok = record_state_checked > 0 and not record_state_mismatches
 print(f"   {'ok ' if ok else 'FAIL'} {record_state_checked} blocks checked, {len(record_state_mismatches)} mismatched")
 if not ok: fails.extend(record_state_mismatches or ['record_state: no blocks with region_c found'])
+
+print('-- Restore Defined bbox-center anchor detected + region_c fully consistent (skipped when absent)')
+# 2026-09-14: CAP-C80-BOOKMARK2 - a second, independent Restore Defined
+# sample (different geometry/placement from CAP-C80-BOOKMARK-RESTORED),
+# captured specifically to verify parse_region_c's restore_anchor fix
+# generalizes rather than being tuned to one example. Both samples'
+# anchor values match their own block's bbox center to within 0.5 native
+# units (float rounding) - confirms the fields are genuinely the piece's
+# own bounding-box center, not a coincidence.
+restore_cases = ['CAP-C80-BOOKMARK-RESTORED', 'CAP-C80-BOOKMARK2-RESTORED']
+for name in restore_cases:
+    rzip = os.path.join(CAPS, 'CAP-C80-BOOKMARK', f'{name}.zip')
+    if not os.path.isfile(rzip):
+        print(f'   --  {name:26} (absent)'); continue
+    obj = am.list_zip(rzip)['piece'][0]
+    block = ap.decode(obj['data'])['blocks'][0]
+    rc = block['tail']['region_c']
+    xs = [p['x'] for p in block['perimeter']]; ys = [p['y'] for p in block['perimeter']]
+    cx, cy = (min(xs)+max(xs))/2, (min(ys)+max(ys))/2
+    anchor = rc.get('restore_anchor')
+    anchor_ok = anchor is not None and abs(anchor[0]-cx) <= 1 and abs(anchor[1]-cy) <= 1
+    consistent = ap.check_region_c(block)
+    ok = anchor_ok and consistent
+    print(f"   {'ok ' if ok else 'FAIL'} {name:26} restore_anchor={anchor} vs bbox_center=({cx},{cy}); region_c_consistent={consistent}")
+    if not ok: fails.append(f'{name}: restore_anchor={anchor} bbox_center=({cx},{cy}) consistent={consistent}')
 
 print('-- shared seam-corner topology and quantized curve point')
 corner_counts = {}

@@ -1551,41 +1551,40 @@ bookmarked piece produces **`piece_records=3`** (one live + *two* full
 copies of the pre-edit geometry), one more stale record than the
 already-documented generic post-save-edit mechanism (§8) produces on its
 own — a genuine, bookmark-specific extra duplicate, just not the one this
-hypothesis originally guessed. Also newly found, then root-caused
-(2026-09-14, same day, offline follow-up): the piece `Restore Defined`
-creates fails `region_c_consistent` (`snapshot2` decodes as garbage-huge
-coordinates, the same signature as the three already-known desynced-
-snapshot outliers) even though its own perimeter and line table are
-fine. **Root cause found by a direct byte diff against the unedited
-`CAP-C80-BOOKMARK` piece (same geometry, same offsets everywhere else):
-`CAP-C80-BOOKMARK-RESTORED` has two new, genuinely non-zero 4-byte
-fields - `289104` at offset 676 and `132567` at offset 680 - sitting in
-what is plain zero-padding on every other sample, immediately before the
-real `marker1`/`marker2` pair (both `10000`, byte-identical to
-`CAP-C80-BOOKMARK`, at the *same* offsets 684/696 in both files).** This
-is a genuine new PDS-written trace specific to `Restore Defined`'s own
-output, not surrounding-data corruption - but it breaks
-`parse_region_c`'s `_next_nonzero_u32` heuristic, which just grabs the
-first non-zero word it finds and has no way to know these two fields
-aren't the marker pair; that single misread cascades into every
-downstream offset (`marker3`, `snapshot2`) landing on the wrong bytes,
-producing the "garbage" values. **Not fixed yet, deliberately**: the two
-new fields' own meaning is unconfirmed (289104/132567 as 0.0001in units
-= 28.9104in/13.2567in - close to but not exactly on this piece's own
-21.6-36.2in × 7.8-18.7in bounding box, so "restore placement anchor" is
-a plausible but unverified guess), and patching the marker-scan off a
-single sample risks a fragile heuristic that breaks some other fixture's
-genuinely-different-but-valid marker1/marker2 pair (seamed pieces, e.g.
-`CAP-C36-SLANT`, legitimately have small non-equal values like `1`/`2`
-there, so "markers must be equal" isn't a safe general rule either - a
-quick corpus sweep this same session found `marker1 != marker2` on every
-seamed-corner/seam-swap fixture in `captures/`, a separately-unexplained
-detail also not chased further here). A second `Restore Defined` sample
-with different geometry would let a general fix be verified rather than
-guessed from n=1. See CAPTURE_LOG.md's `CAP-C80-BOOKMARK` entry for the
-full byte-level comparison. (`marker3`/`record_state`'s own role - a
-separate field, upstream of this misread - was resolved the same day; see
-this section's own corpus-wide sweep above.)
+hypothesis originally guessed. Also newly found, then root-caused, then
+**resolved with a verified fix** (all 2026-09-14, same day): the piece
+`Restore Defined` creates initially failed `region_c_consistent`
+(`snapshot2` decoded as garbage-huge coordinates, the same signature as
+the three already-known desynced-snapshot outliers) even though its own
+perimeter and line table were fine. **Root cause, found by a direct byte
+diff against the unedited `CAP-C80-BOOKMARK` piece (same geometry, same
+offsets everywhere else)**: `CAP-C80-BOOKMARK-RESTORED` has two new,
+genuinely non-zero 4-byte fields sitting in what is plain zero-padding on
+every other sample, immediately before the real `marker1`/`marker2` pair
+(both `10000`, byte-identical to `CAP-C80-BOOKMARK`, at the *same*
+offsets in both files) — breaking `parse_region_c`'s `_next_nonzero_u32`
+scan, which just grabs the first non-zero word with no way to know these
+two extra fields aren't the marker pair, cascading into every downstream
+offset (`record_state`, `snapshot2`) landing on the wrong bytes. **The
+two fields' own meaning was then identified, not just worked around**: a
+second, independently-built `Restore Defined` sample with different
+geometry and a different canvas placement (`CAP-C80-BOOKMARK2-RESTORED`)
+was captured specifically to test this, and confirmed both fields are
+this block's own **bounding-box center** (`cx`, `cy`, each rounded to the
+nearest native unit) — matching to within 0.5 units (float rounding) on
+both samples (`(289104, 132567)` vs bbox center `(289104.0, 132566.5)`;
+`(360811, 72394)` vs `(360810.5, 72394.0)`). `parse_region_c` now
+computes this same bbox center from its own already-parsed `snapshot1`
+and skips the field (named `restore_anchor`, `None` when absent) when it
+matches, before reading the true `marker1`/`marker2`/`record_state` trio
+— safe against ever misfiring on a genuine small marker pair (seamed
+pieces' `1`/`2`, unseamed pieces' `10000`/`10000`), since neither is ever
+geometry-scale. Both Restore-Defined captures now decode with
+`region_c_consistent=True` and no special-casing needed anywhere else.
+See CAPTURE_LOG.md's `CAP-C80-BOOKMARK` entry for the full byte-level
+comparison and the second sample's capture notes. (`marker3`/
+`record_state`'s own role - a separate field, upstream of this fix - was
+resolved the same day; see this section's own corpus-wide sweep above.)
 
 Immediately after snapshot2, on a piece with more than one piece record
 (`piece_records > 1`, i.e. it has been edited at least once, §8) an
@@ -1948,7 +1947,9 @@ across the corpus; they are catalogued here as the specific, named targets
 for Phase B (arithmetic/byte-diff analysis against the existing corpus) and
 Phase C (targeted captures) in the decode plan. `CAP-C80-BOOKMARK` (§11's
 snapshot hypothesis) is now done - it settled the "is Region C a bookmark
-cache" question (no) and surfaced two new specifics instead (the
-bookmark-specific 3rd piece_record; `Restore Defined`'s own
-`region_c_consistent=no` anomaly); `CAP-C81-MEASURE` remains open if
+cache" question (no), found a genuine bookmark-specific 3rd
+`piece_record` on edit, and its `Restore Defined`-specific
+`region_c_consistent=no` anomaly is fully fixed (the two extra bytes are
+Restore Defined's own `restore_anchor` bbox-center field, now parsed and
+skipped correctly - see §11). `CAP-C81-MEASURE` remains open if
 anything's left after that.

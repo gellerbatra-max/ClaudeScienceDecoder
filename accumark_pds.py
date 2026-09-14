@@ -540,6 +540,28 @@ def parse_region_c(d, o, n_perimeter, category_name, table_start=None):
         return u32(d, p), p, p+4           # value, start offset, end offset
     marker1, marker1_off, p = _next_nonzero_u32(p)   # zero-padding before marker1 varies (CAP-C00-BASE [V])
     marker2, marker2_off, p = _next_nonzero_u32(p)
+    # [V, 2026-09-14] Restore Defined writes a genuine extra field here,
+    # not corruption: a piece created by Edit->Bookmark->Restore Defined
+    # carries its own bounding-box CENTER (cx, cy, each rounded to the
+    # nearest native unit) in this exact slot, which is plain zero-padding
+    # on every other sample. Confirmed on 2 independent Restore-Defined
+    # captures (CAP-C80-BOOKMARK-RESTORED, CAP-C80-BOOKMARK2-RESTORED),
+    # both matching the block's own snapshot1 bbox center to within 0.5
+    # units (float rounding). Undetected before this fix broke every
+    # downstream offset (record_state/snapshot2 all misaligned by these
+    # same 8 bytes) - matched against snap1's own bbox rather than a
+    # hardcoded value, so it can't collide with a real marker1/marker2
+    # pair (always tiny enum-like values: 10000/10000 or 1/2, never
+    # geometry-scale coordinates).
+    restore_anchor = None
+    if snap1:
+        xs = [pt['x'] for pt in snap1]; ys = [pt['y'] for pt in snap1]
+        cx, cy = (min(xs) + max(xs)) / 2, (min(ys) + max(ys)) / 2
+        if abs(marker1 - cx) <= 1 and abs(marker2 - cy) <= 1:
+            restore_anchor = (marker1, marker2)
+            restore_anchor_off = marker1_off
+            marker1, marker1_off, p = _next_nonzero_u32(p)
+            marker2, marker2_off, p = _next_nonzero_u32(p)
     record_state_off, p2 = p, p+2
     record_state = u16(d, p)               # [V] 0=stale block, 1=live/unseamed, 2=live/seamed
     if p2+6 <= len(d) and COORD_LO < i32(d, p2+2) < COORD_HI and COORD_LO < i32(d, p2+6) < COORD_HI:
@@ -565,7 +587,8 @@ def parse_region_c(d, o, n_perimeter, category_name, table_start=None):
         unclassified_gap = d[p:p]
     end = name_at + len(name_bytes) if name_at != -1 else p
     return dict(snapshot1=snap1, marker1=marker1, snapshot2=snap2, marker2=marker2,
-                record_state=record_state,
+                record_state=record_state, restore_anchor=restore_anchor,
+                restore_anchor_offset=(restore_anchor_off if restore_anchor else None),
                 # offsets/widths of the three marker fields themselves (not
                 # just their values) - so coverage()'s _block_ranges can mark
                 # these known-but-unexplained-role bytes 'identified' rather
@@ -954,6 +977,8 @@ def _block_ranges(d, m, objs, pstart, block_end, tail, internal_terminator_offse
         # swept up by the pre-fix snapshot boundary bug overshooting into
         # them; now that the boundaries are correct, mark them explicitly
         # rather than let them read as regressed 'unknown' coverage.
+        if rc.get('restore_anchor') is not None:
+            r.append((rc['restore_anchor_offset'], rc['restore_anchor_offset']+8))
         r.append((rc['marker1_offset'], rc['marker1_offset']+4))
         r.append((rc['marker2_offset'], rc['marker2_offset']+4))
         r.append((rc['record_state_offset'], rc['record_state_offset']+rc['record_state_size']))

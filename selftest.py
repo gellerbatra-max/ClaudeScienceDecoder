@@ -1054,6 +1054,36 @@ if src:
     print(f"   {'ok ' if not raised else 'FAIL'} table walkers stay in bounds on junk / truncated input")
     if raised: fails.append('table walkers raised: ' + '; '.join(raised))
 
+print('-- marker byte map (v4.4, see accumark_marker.marker_coverage)')
+# Every byte owned by a section a parser reads must be classified (identified /
+# raw / zero_pad / opaque) - only the envelope, the header scalars, sections 2-5,
+# section 10's 6-byte lead and the trailer may hold unknown bytes. This is the
+# measurable form of "fully decoded" for the marker: a parser change that loses
+# a section moves its bytes to `unknown` and fails here.
+PARSED_SECTIONS = {6, 11, 12, 13, 14, 15, 21, 30}
+n_mk = 0; leaks = []; unk = []; tot = Counter()
+for zp in sorted(glob.glob(os.path.join(HERE, 'markers', '**', '*.zip'), recursive=True)):
+    try: mos = am.list_zip(zp).get('marker', [])
+    except Exception: continue
+    for o in mos:
+        n_mk += 1; cv = am.marker_coverage(o['data'])
+        leaks += [f"{o['name']}: bytes {a}-{b} in section {k}" for a, b, k in cv['unknown_runs'] if k in PARSED_SECTIONS]
+        unk.append(cv['counts']['unknown']); tot.update(cv['counts'])
+ok = n_mk and not leaks
+print(f"   {'ok ' if ok else 'FAIL'} {n_mk} markers: every byte in sections {sorted(PARSED_SECTIONS)} is classified"
+      + (f"; unknown bytes per marker {min(unk)}-{max(unk)}, {100*tot['unknown']/sum(tot.values()):.2f}% overall "
+         f"(identified {100*tot['identified']/sum(tot.values()):.1f}%, raw {100*tot['raw']/sum(tot.values()):.1f}%, "
+         f"zero_pad {100*tot['zero_pad']/sum(tot.values()):.1f}%, opaque {100*tot['opaque']/sum(tot.values()):.1f}%)" if n_mk else '')
+      + ('  ' + '; '.join(leaks[:3]) if leaks else ''))
+if not ok: fails.append('marker byte map: ' + '; '.join(leaks[:5]))
+# and it can fail: break section 11's first name length and the model list's bytes must fall out of the map
+src = _mk(('5683D-SS21-UNLAID', '5683D-BD 168 SS21.zip'), '5683D-BD 168 SS21')
+if src:
+    b = bytearray(src[0]['data']); struct.pack_into('<H', b, src[1]['sections'][am.SEC_MODELS][0] - 6, 0)
+    cv = am.marker_coverage(bytes(b)); lost = [r for r in cv['unknown_runs'] if r[2] == am.SEC_MODELS]
+    print(f"   {'ok ' if lost else 'FAIL'} mutation: a broken model list surfaces as unknown bytes in section 11 ({sum(r[1]-r[0] for r in lost)} B)")
+    if not lost: fails.append('marker byte map: a broken model list did not surface as unknown bytes')
+
 print('-- coverage (informational only - see accumark_pds.coverage();'
       ' 0 unknown_bytes everywhere is the Phase D sign-off target, not'
       ' enforced here yet)')

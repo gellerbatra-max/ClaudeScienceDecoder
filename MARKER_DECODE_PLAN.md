@@ -1,5 +1,27 @@
 # Marker decode plan — AccuMark native marker export
 
+> ## STATUS 2026-09-21 (v4.3 / v4.4) - the unplaced case is fuzzed; the marker has a byte map
+>
+> **v4.3.** No marker seed was ever unlaid and the marker canon only listed
+> placements, so an unlaid marker passed Oracle A/C vacuously; the canon now
+> serialises slots / records / sizes / models / order copy / buffers / laid state /
+> inventory and two unlaid seeds are fuzzed (robustness 303 -> 474, every
+> corruption detected). The dataset's `reused` branch used to return True without
+> looking; it now asserts.
+>
+> **v4.4.** `marker_coverage(d)` classifies every byte (identified / raw /
+> zero_pad / opaque / unknown). Over 18 markers: sections 6, 11-15, 21, 30 leak no
+> unknown byte (asserted in the selftest); **unknown = 1,187-1,829 bytes per
+> marker, 1.38% overall, the same count on a 3 KB marker as on a 280 KB one**;
+> opaque 91.3% = section 14's attribute stream + the type-10 object (bounded on
+> purpose). The unknown set lives in the trailer, section 1 (only six doubles of
+> 372 B read), sections 2-5 and the envelope, and is mostly constant across
+> markers (section 1: 271 of 316 aligned positions identical, 45 vary). Detail and
+> the honest limits (`raw` is located, not understood): `CHANGELOG.md` v4.4.
+>
+> `python selftest.py` -> SELFTEST PASS; `dataset_test.py` 36/36;
+> `robustness/run.py` 474/474.
+
 > ## STATUS 2026-09-21 (v4.2) - the unplaced job spec: a never-laid marker now reads as a cut order
 >
 > `python accumark_marker.py <zip> --inventory` prints what a never-laid marker

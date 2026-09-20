@@ -792,6 +792,136 @@ def check_marker(mk):
                     f'{len(mk["block_buffers"])} entries for {len(mk["pieces"])} pieces'))
     return out
 
+# ------------------------------------------------------------ byte map
+COVERAGE_CLASSES = ('identified', 'raw', 'zero_pad', 'opaque', 'unknown')
+_LEAD = 6      # every list section's chain starts 6 bytes before its directory offset
+
+def marker_coverage(d, mk=None):
+    """v4.4: classify EVERY byte of a marker object, the marker-side sibling
+    of accumark_pds.coverage() - the measurable form of "fully decoded".
+
+      identified  a field whose position AND meaning are known
+      raw         position and extent known, meaning still open (e.g. the
+                  flag bytes of a piece row, the slot's constant sentinels)
+      zero_pad    a run of zeros the structure guarantees
+      opaque      a blob whose extent is known and whose content is bounded
+                  on purpose, not chased: section 14's per-point attribute
+                  stream and the embedded type-10 object (topology-only
+                  scratch, see MARKER_DECODE_PLAN.md)
+      unknown     nothing decodes it
+
+    A byte is claimed by the parser that reads it, ordered so a narrower field
+    overrides the broad region around it. -> dict(size, counts, pct,
+    sections [{section, start, end, counts}], unknown_runs [(start, end,
+    section)], where `section` is the directory slot whose chain span
+    [dir[k] - 6, dir[k+1] - 6) holds the run - 0 for the envelope / directory,
+    -1 for the trailer). `pct['understood']` = identified + zero_pad."""
+    mk = mk or parse_marker(d)
+    n = len(d); cls = ['unknown'] * n; own = [0] * n
+    dirs = mk['directory']; sec = mk['sections']
+    def mark(a, b, label):
+        for i in range(max(0, a), min(n, b)): cls[i] = label
+    # ownership: the chain span of each used section (the trailer is section -1)
+    used = sorted((v, k) for k, v in enumerate(dirs[:DIR_OFFSETS]) if v not in (0, 0xffffffff) and v < n)
+    tr0 = n - TRAILER
+    for j, (off, k) in enumerate(used):
+        a = off - (0 if k == SEC_SCALARS else _LEAD)
+        b = (used[j+1][0] - _LEAD) if j+1 < len(used) else tr0
+        for i in range(max(0, a), min(n, b)): own[i] = k
+    for i in range(max(0, tr0), n): own[i] = -1
+    # -- envelope: magic, name, object type, payload length, directory
+    mark(0, 0x10, 'identified'); mark(0x15, d.index(b'\x00', 0x15) + 1, 'identified')
+    t = u16(d, 0x7a); mark(0x7a, 0x7c, 'identified'); mark(0x7e, 0x82, 'identified')
+    for o in (0x60, 0x68):                      # the u32 copy of the type sits at 0x60 or 0x68 by vintage
+        if u32(d, o) == t: mark(o, o+4, 'identified')
+    mark(DIR_OFF, DIR_OFF + 4*DIR_SLOTS, 'identified')
+    # -- section 1: the header scalars (width, length, area, placed area, util, @454)
+    if sec[SEC_SCALARS]:
+        for o in (396, 412, 422, 430, 446, 454): mark(o, o+8, 'identified')
+    # -- section 2 carries the marker's own name; section 5 the -PDSTEXT- label table
+    if sec[2]:
+        i = d.find(mk['name'].encode('latin1'), sec[2][0], sec[2][1])
+        if i >= 0: mark(i, i + len(mk['name']) + 1, 'identified')
+    if sec[5]:
+        for m in re.finditer(rb'-PDSTEXT-', d[sec[5][0]-_LEAD:sec[5][1]-_LEAD]):
+            a = sec[5][0] - _LEAD + m.start(); mark(a, a + 9, 'identified')
+            name = re.split(rb'[^\x20-\x7e]', d[a+12:a+140])[0]
+            mark(a + 12, a + 12 + len(name) + 1, 'identified')
+    # -- section 6: the block-buffer table, (pieces + 1) x 102 bytes
+    if sec[SEC_BUFFERS]:
+        for e in range(len(mk['block_buffers'])):
+            p = sec[SEC_BUFFERS][0] - _LEAD + e * BUFFER_ENTRY
+            mark(p, p + 2, 'raw'); mark(p + 2, p + 34, 'identified'); mark(p + 34, p + BUFFER_ENTRY, 'zero_pad')
+    # -- section 10: the piece list
+    if sec[SEC_PIECES]:
+        lo = sec[SEC_PIECES][0]
+        mark(lo, lo + PIECE_LIST_HEAD, 'raw'); mark(lo + 22, lo + PIECE_LIST_HEAD, 'identified')     # ... 'MARKER'
+        for p in mk['pieces']:
+            if 'fabric_types' not in p: continue        # the regex fallback has no row layout
+            r = p['offset'] - 28
+            mark(r, r + 4, 'identified'); mark(r + 4, r + 28, 'raw')
+            mark(r + 8, r + 10, 'identified'); mark(r + 22, r + 24, 'identified')                    # buffer index, fabric-type count
+            q = p['offset'] + len(p['name']) + len(p['fabric']); mark(p['offset'], q, 'identified')
+            for ft in p['fabric_types']: mark(q, q + 2 + len(ft), 'identified'); q += 2 + len(ft)
+    # -- section 11 (models), 12 (size table), 13 (record index)
+    if sec[SEC_MODELS]:
+        p = sec[SEC_MODELS][0] - _LEAD
+        for name in mk['models']: mark(p, p + 2 + len(name), 'identified'); p += 2 + len(name)
+    if sec[SEC_SIZES]:
+        p = sec[SEC_SIZES][0] - _LEAD
+        for r in mk['sizes']:
+            mark(p, p + 10, 'identified'); mark(p + 10, p + 14, 'raw')                               # the flags word is still open [?]
+            mark(p + SIZE_HDR, p + SIZE_HDR + len(r['size']), 'identified'); p += SIZE_HDR + len(r['size'])
+    if sec[SEC_INDEX] and mk['record_index']:
+        p = sec[SEC_INDEX][0] - _LEAD; mark(p, p + 4*len(mk['record_index']), 'identified')
+    # -- section 14: per record a 48-byte head, the label text, then the attribute stream
+    if sec[SEC_RECORDS]:
+        end14 = sec[SEC_RECORDS][1] - _LEAD; recs = mk['records']
+        for i, r in enumerate(recs):
+            o = r['offset']; start = o - 48; nxt = (recs[i+1]['offset'] - 48) if i + 1 < len(recs) else end14
+            mark(start, o, 'raw')                                                                    # 48-byte head ...
+            mark(o - 30, o - 14, 'identified')                                                       # ... area, perimeter
+            mark(o - 10, o - 8, 'identified'); mark(o - 8, o, 'zero_pad')                            # stream length, 8 zeros
+            t_end = o + len(r['text']) + 1; mark(o, t_end, 'identified'); mark(t_end, nxt, 'opaque')
+    # -- section 15: the order copy
+    if sec[SEC_ORDER_COPY]:
+        p = sec[SEC_ORDER_COPY][0] - _LEAD
+        for m in mk['order_copy']:
+            mark(p, p + MODEL_HEAD, 'raw'); mark(p, p + 2, 'identified'); mark(p + 8, p + 10, 'identified'); mark(p + 12, p + 16, 'identified')
+            p += MODEL_HEAD; mark(p, p + len(m['name']), 'identified'); p += len(m['name'])
+            for ft in m['fabric_types']: mark(p, p + 2 + len(ft), 'identified'); p += 2 + len(ft)
+            for s in m['sizes']:
+                mark(p, p + 4, 'identified'); mark(p + 4, p + 28, 'zero_pad'); mark(p + 28, p + 28 + len(s['size']), 'identified'); p += 28 + len(s['size'])
+    # -- section 21: the slots (the last 6 bytes of a slot body are the next slot's head)
+    if sec[SEC_SLOTS]:
+        for s in mk['slots']:
+            b = s['slot']
+            mark(b - SLOT_HEAD, b - SLOT_HEAD + 6, 'identified'); mark(b, b + SLOT, 'raw')
+            mark(b, b + 32, 'identified'); mark(b + 32, b + 34, 'identified'); mark(b + 42, b + 50, 'identified'); mark(b + 64, b + 68, 'identified')
+        if mk['slots']: mark(mk['slots'][-1]['slot'] + SLOT - SLOT_HEAD, mk['slots'][-1]['slot'] + SLOT, 'raw')
+    # -- section 30: the embedded type-10 object (topology-only scratch): bounded, not chased
+    if sec[SEC_GEOMETRY]: mark(sec[SEC_GEOMETRY][0] - _LEAD, tr0, 'opaque')
+    # -- trailer: the object's name, created / modified stamps, the two user names
+    mark(tr0 + 0x8a, tr0 + 0x8a + len(mk['name']) + 1, 'identified')
+    mark(tr0 + TRAILER_CREATED, tr0 + TRAILER_CREATED + 8, 'identified')
+    for o in (0x110, 0x162):
+        e = d.find(b'\x00', tr0 + o, tr0 + o + 0x52)
+        if e > tr0 + o and _printable(d[tr0+o:e]): mark(tr0 + o, e + 1, 'identified')
+    counts = Counter(cls); pct = {c: 100.0 * counts.get(c, 0) / n for c in COVERAGE_CLASSES}
+    pct['understood'] = pct['identified'] + pct['zero_pad']
+    sections = []
+    for k in sorted(set(own)):
+        idx = [i for i in range(n) if own[i] == k]; cc = Counter(cls[i] for i in idx)
+        sections.append(dict(section=k, start=idx[0], end=idx[-1] + 1, bytes=len(idx), counts={c: cc.get(c, 0) for c in COVERAGE_CLASSES}))
+    runs = []; i = 0
+    while i < n:
+        if cls[i] == 'unknown':
+            j = i
+            while j < n and cls[j] == 'unknown' and own[j] == own[i]: j += 1
+            runs.append((i, j, own[i])); i = j
+        else: i += 1
+    return dict(size=n, counts={c: counts.get(c, 0) for c in COVERAGE_CLASSES}, pct=pct, sections=sections, unknown_runs=runs)
+
 # ------------------------------------------------ type-10 object (research)
 # The marker's slot 30 embeds a second, complete XGGT object (its own magic,
 # name and 396-byte trailer) starting 26-58 bytes into the section - NOT at

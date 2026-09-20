@@ -1,5 +1,53 @@
 # Changelog
 
+## v4.4 (2026-09-21) - a byte map for the marker: "fully decoded" is now a number
+
+Same labelling rule: `__version__` stays `'3.0'`. Additive: `marker_coverage(d)`
+in `accumark_marker.py`, the marker-side sibling of `accumark_pds.coverage()`.
+
+Every byte of a marker object is classified: `identified` (position and meaning
+known), `raw` (position and extent known, meaning open), `zero_pad`, `opaque`
+(a blob whose extent is known and whose content is bounded on purpose) or
+`unknown`; each unknown run is attributed to the section whose chain span
+`[dir[k] - 6, dir[k+1] - 6)` holds it (0 = envelope / directory, -1 = trailer).
+
+**Result over the 18 fixture markers** (3 KB - 287 KB each):
+- Every byte owned by sections 6, 11, 12, 13, 14, 15, 21 and 30 is classified -
+  no parsed section leaks an unknown byte. The selftest asserts this, so a parser
+  change that loses a section fails; a mutation (a zeroed model-name length) makes
+  section 11's bytes fall out of the map.
+- **Unknown bytes: 1,187 - 1,829 per marker, 1.38% of all bytes overall, and about
+  the same count on a 3 KB marker as on a 280 KB one** - a fixed-size set, not a
+  share of the content. Overall: identified 4.1%, raw 2.4%, zero_pad 0.8%,
+  opaque 91.3%.
+- **The opaque 91.3% is two blobs, bounded on purpose:** section 14's per-point
+  attribute stream (extent fixed by section 13's index) and the embedded type-10
+  object (section 30; `MARKER_DECODE_PLAN.md`: its slot 39 is a function of piece
+  topology only - independent of layout, fabric cost, grading complexity).
+- **Where the unknown set lives**, summed over 18 markers: trailer 6,375 B,
+  section 1 (header scalars, of 372 B only six doubles are read) 5,688 B, section
+  2 (options + marker name) 5,106 B, section 3 4,444 B, section 5 (`-PDSTEXT-`
+  label table) 2,760 B, envelope 1,659 B, section 4 264 B, section 10's 6-byte
+  lead 98 B.
+- **Most of it is constant.** Position-aligned across the 18 markers, of section
+  1's 316 unknown byte positions 271 are byte-identical in every marker (45 vary);
+  of section 2's aligned positions 228 of 238; section 4 11 of 12; the trailer 222
+  of 338 (116 vary). Sections 3 and 5 are variable-length lists (most positions
+  are not present in every marker) and need a walker, not a constancy map. So the
+  work left is: the ~45 varying bytes of section 1, the varying part of the
+  trailer, and structure for sections 2-5 - a short list, each item with a
+  method (twin diff against a laid export of the same marker; correlate against
+  marker name length / piece count / fabric cost).
+
+**Not claimed.** `raw` is not "understood": the flag bytes of a piece row, a
+slot's constant sentinels (`+34..+41`, `+50..+63`, `+68..+87`), slot `u16 @88`
+(non-zero on never-laid markers, 0 on laid ones - meaning unknown) and the
+size-row `flags` word are counted `raw`, i.e. located but open. The map measures
+where knowledge ends; it does not extend it.
+
+**Verified.** `selftest.py` PASS (byte-map guard + mutation), `dataset_test.py`
+36/36, `robustness/run.py` 474/474 (no decoder behaviour changed).
+
 ## v4.3 (2026-09-21) - the unplaced case is fuzzed and asserted, not just decoded
 
 Same labelling rule: `__version__` stays `'3.0'`. Test infrastructure only; no

@@ -1,5 +1,35 @@
 # Changelog
 
+## v4.3 (2026-09-21) - the unplaced case is fuzzed and asserted, not just decoded
+
+Same labelling rule: `__version__` stays `'3.0'`. Test infrastructure only; no
+decoder behaviour changes.
+
+Three places where an unlaid marker used to pass because nothing looked:
+- **`robustness/`: no marker seed was ever unlaid.** Both marker seeds were laid,
+  and `canon_place_marker` fingerprinted a marker by its `placements` and
+  `outlines` - both empty on a never-laid one - so Oracle A could not have told
+  a wrong slot, record, size row or order line from a right one, and Oracle C
+  would have failed outright ("no provably-live offsets": an unlaid slot's x / y
+  are 0.0, and corrupting a 0.0 high byte still reads ~0). Now the canon
+  serialises slots, records, sizes, models, pieces, the order copy, block
+  buffers, laid state, header-sum modes and the inventory; `2303-BD137-UNLAID`
+  and `5683D-SS21-UNLAID` are seeds; and for a marker with nothing placed
+  Oracle C probes the bytes the decoder demonstrably reads on every slot (home
+  box, declared area, orientation word, bundle, the slot head) and per record
+  (declared area, perimeter). Result: **303 -> 474 checks, all pass** - Oracle A
+  84 rows on the two new seeds, Oracle C 87 probes (45 + 42), every one changed
+  the decode. Mutations that do not change the byte (a `zero` of a byte that is
+  already 0) are now skipped instead of counted as silent misses.
+- **`dataset_test.py`: the `reused` branch returned True unconditionally**, so
+  the dataset's own listed UNPLACED case (`2303-BD137-UNLAID`) asserted nothing.
+  It now requires no failing check row (bar any the manifest entry lists) and
+  every slot structurally bound; with the binding re-broken it fails.
+- (v4.2's `@430` row already caught the dataset generator; see v4.2.)
+
+**Verified.** `selftest.py` PASS, `dataset_test.py` 36/36, `robustness/run.py`
+(full) 474/474.
+
 ## v4.2 (2026-09-21) - the unplaced job spec: order lines, laid state, block buffers, and an inventory you can read
 
 Same labelling rule: `__version__` stays `'3.0'`. Purely additive - a diff of

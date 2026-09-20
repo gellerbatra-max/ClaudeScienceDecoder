@@ -36,6 +36,11 @@ SEEDS = [
     ('CAP-C62-DART', 'CAP-C62-DART/CAP-C62-DART.ZIP', 'piece'),
     ('CLAUDE-GRADE-MARKER', 'markers/CLAUDE-GRADE-MARKER/CLAUDE-GRADE-MARKER.zip', 'marker'),
     ('2303-BD137-PLACED', 'markers/2303-BD137-PLACED/2303-BD 137 PLACED.zip', 'marker'),
+    # v4.2: two NEVER-LAID markers. Before, every marker seed was laid, so a
+    # marker with nothing placed was never fuzzed at all and its canon (which
+    # only listed placements) could not have told a corrupt slot from a sound one.
+    ('2303-BD137-UNLAID', 'markers/2303-BD137-UNLAID/2303-BD 137.zip', 'marker'),
+    ('5683D-SS21-UNLAID', 'markers/5683D-SS21-UNLAID/5683D-BD 168 SS21.zip', 'marker'),
 ]
 QUICK_SEEDS = SEEDS[:2]
 
@@ -232,6 +237,18 @@ def _marker_slot_offsets(path):
     for s in occupied:
         for field_off in (0, 8, 16, 24, 42):
             live.append(s['slot'] + field_off + 7)
+    # v4.2: an UNLAID marker has no occupied slot (its x / y are 0.0, and a
+    # corrupted 0.0 high byte is still ~0 - not a live byte), so it used to
+    # yield NO probes and fail with 'no provably-live offsets'. What it does
+    # carry, and what the decoder demonstrably reads on EVERY slot: home box,
+    # declared area, orientation word, bundle, the slot head, and per record the
+    # declared area / perimeter and per order line the quantity.
+    if not occupied:
+        for s in mk['slots'][:10]:
+            live += [s['slot'] + 16 + 7, s['slot'] + 24 + 7, s['slot'] + 42 + 7, s['slot'] + 32, s['slot'] + 64,
+                     s['slot'] - 6, s['slot'] - 4, s['slot'] - 2]
+        for r in mk['records'][:6]:
+            live += [r['offset'] - 30 + 7, r['offset'] - 22 + 7]
     return d, live
 
 
@@ -262,6 +279,7 @@ def oracle_c(seeds, n_per_seed=15):
                                   ('zero', lambda b: 0x00),
                                   ('ff', lambda b: 0xFF)):
                 case = '%s/off=%#x/%s' % (label, off, mode)
+                if mutate(data[off]) & 0xFF == data[off]: continue   # a no-op is not a corruption
                 d = bytearray(data); d[off] = mutate(d[off]) & 0xFF; d = bytes(d)
                 try:
                     got_canon = redecode(d)

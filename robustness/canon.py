@@ -79,10 +79,39 @@ def canon_place_marker(res):
             ))
         outlines.sort(key=lambda r: json.dumps(r, sort_keys=True, default=str))
         checks = sorted([n, ok] for n, ok, _ in mkr['checks'])
+        # v4.2: everything an UNPLACED marker is made of. `placements` and
+        # `outlines` are empty on a never-laid marker, so without these the
+        # fingerprint of one degenerated to a header and a check list and
+        # Oracle A / C could not tell a corrupt slot, record, size row or
+        # order line from an intact one.
+        slots = [dict(index=s['index'], piece=s.get('piece'), size=s.get('size'), model=s.get('model'),
+                      bundle=s.get('bundle'), bundle_head=s.get('bundle_head'), record_index=s.get('record_index'),
+                      piece_index=s.get('piece_index'), empty=s.get('empty'), orient_code=s.get('orient_code'),
+                      area=_round(s.get('area')), home_x=_round(s.get('home_x')), home_y=_round(s.get('home_y')),
+                      x=_round(s.get('x')), y=_round(s.get('y')), binding=s.get('binding'),
+                      record=s['record']['offset'] if s.get('record') else None) for s in mk['slots']]
+        records = [dict(offset=r['offset'], text=r['text'], area=_round(r['area']), perimeter=_round(r['perimeter']),
+                        piece=r.get('piece'), cut=r.get('cut'), size=r.get('size')) for r in mk['records']]
+        inv = mkr.get('inventory') or {}
+        inventory = dict(order_lines=inv.get('order_lines'),
+                         totals={k: (_round(v) if isinstance(v, float) else v)
+                                 for k, v in (inv.get('totals') or {}).items()},
+                         slots=[dict(ordinal=s['ordinal'], pair=s['pair'], preset=s['preset'],
+                                     bbox_in=[_round(v) for v in s['bbox_in']], cut=s['cut'], copies=s['copies'],
+                                     outline=[[_round(x), _round(y)] for x, y in s['outline']] if s.get('outline') else None)
+                                for s in inv.get('slots', [])])
         markers.append(dict(
             name=mk['name'], width=_round(mk['width']), length=_round(mk['length']),
             util=_round(mk['util']), total_area=_round(mk['total_area']), laid=mk['laid'],
             placements=placements, outlines=outlines, checks=checks,
+            slots=slots, records=records, models=mk['models'],
+            sizes=[[r['size'], r['model_index'], r['n'], r['ordinal'], r['flags']] for r in mk['sizes']],
+            pieces=[[p['name'], p['fabric'], p['flag'], p.get('fabric_types'), p.get('buffer_index'), p['raw']] for p in mk['pieces']],
+            order_copy=[[m['name'], m['ordinal'], m['fabric_types'], [[s['size'], s['quantity']] for s in m['sizes']]]
+                        for m in mk.get('order_copy', [])],
+            block_buffers=[[_round(v) for v in b['sides']] for b in mk.get('block_buffers', [])],
+            laid_state=mk.get('laid_state'), placed_word=mk.get('placed_word'), placed_area=_round(mk.get('placed_area')),
+            header_sums=mk.get('header_sums'), inventory=inventory,
         ))
     markers.sort(key=lambda r: json.dumps(r, sort_keys=True, default=str))
     piece_errors = sorted(res.get('piece_errors', {}).keys())

@@ -107,8 +107,22 @@ def check_marker(entry):
             return False, 'placements %d != manifest %d' % (len(mkr['placed']), entry['placements'])
         return True, 'ok (%d placements)' % len(mkr['placed'])
     else:
-        return True, 'ok (reused fixture, %d markers, %d placements)' % (
-            len(res['markers']), len(mkr['placed']))
+        # v4.2: this branch used to return True unconditionally, so the
+        # dataset's listed UNPLACED case (2303-BD137-UNLAID) asserted nothing.
+        # A reused fixture is real data with no per-file expectations in the
+        # manifest, so hold it to the invariants every marker must satisfy: no
+        # check row fails (bar any the manifest entry lists as known), and every
+        # slot - placed or not - is bound structurally.
+        known = entry.get('pre_existing_failures') or []
+        bad = []
+        for m in res['markers']:
+            failing = [n for n, ok, _ in m['checks'] if not ok and n not in known]
+            if failing: bad.append('%s: failing checks %r' % (m['marker']['name'], failing))
+            unbound = sum(1 for s in m['marker']['slots'] if (s.get('binding') or {}).get('method') != 'structural')
+            if unbound: bad.append('%s: %d slots not bound structurally' % (m['marker']['name'], unbound))
+        if bad: return False, '; '.join(bad)
+        return True, 'ok (reused fixture, %d markers, %d placements, %d slots all structurally bound, %d checks pass)' % (
+            len(res['markers']), len(mkr['placed']), len(mkr['marker']['slots']), len(mkr['checks']))
 
 
 def run(quick=False):

@@ -1,5 +1,41 @@
 # Marker decode plan — AccuMark native marker export
 
+> ## STATUS 2026-09-21 (v4.2) - the unplaced job spec: a never-laid marker now reads as a cut order
+>
+> `python accumark_marker.py <zip> --inventory` prints what a never-laid marker
+> states - width, order lines (model, size, quantity), pieces with cut and
+> mirrored pairs, area to lay, the fabric length a 100%-efficient lay would
+> need, the pre-set lay pattern - and ends `DECODED CLEANLY` or `NEEDS A LOOK:`.
+> A marker-only ZIP reports `geometry none` rather than looking complete. Full
+> write-up: `CHANGELOG.md` v4.2; purely additive over v4.1 (all 18 fixture
+> markers' fields, placed outlines and existing checks byte-identical).
+>
+> **Section 15 = the order copy [V, 18/18]:** model blocks (48-byte header,
+> name, fabric types, size rows `<u16 len><u16 QUANTITY><24 x 00><name>`); the
+> QUANTITY equals the number of size-table rows for that (model, size), so the
+> marker carries its own quantities. **Section 6 = block buffers [V framing]:**
+> `(pieces + 1)` x 102 bytes, four f64 = 0.0591 in (1.5 mm); a piece's
+> `buffer_index` is its 1-based list position; side order [?]. **Laid state**
+> read from slots + directory word 40 + header (they agree on 18/18); `@430` =
+> the placed slots' summed area. **Header sums** reported as a mode (`all`,
+> `last_model`, `2x_all`), pinned per fixture.
+>
+> **First geometric check on an unlaid marker.** `2303-BD 137` unlaid with its
+> 18 pieces: 97/97 slot home boxes match the piece's own outline at the tiled
+> size (worst 0.0156 in), areas 66/66 pairs within 1%. July CP 150 (71 of 72
+> unplaced): x exact once the block buffer is subtracted; **y has a one-sided
+> excess up to 0.0786 in on 48/71 slots, unexplained [?]** (the DXF-verified
+> placed slot is exact). Found by the new checks: the dataset generator never
+> patched `@430` - fixed.
+>
+> **Next (needs live AccuMark, disposable `CLAUDE-UNP-*` markers only):** side
+> order of unequal block buffers; what sets the `0x0040` pair bit and the
+> pre-set rot180 alternation; slot `u16 @88` / `@52/@54/@60` via a never-laid vs
+> cleared twin; the CP 150 y excess; two models / two fabric types in one order.
+>
+> `python selftest.py` -> SELFTEST PASS; `dataset_test.py` 36/36;
+> `robustness/run.py` 303/303.
+
 > ## STATUS 2026-09-21 (v4.1) - unplaced markers: a slot is bound by its own structure, and the area rule it replaces was wrong on 2303
 >
 > Goal of this thread: read WHATEVER never-laid marker AccuMark produces (a cut

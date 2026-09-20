@@ -168,6 +168,22 @@ def facts(path, dxf=None, buffer_in=None):
         f['area_ok'] = sum(1 for r in arows if r[4] and abs(r[4]-1) <= 0.01)
         f['area_pairs'] = len(arows)
         f['area_worst'] = round(max([abs(r[4]-1) for r in arows if r[4]] or [0]), 4)
+        # v4.2: the same checks over the slots nothing is laid for, and the
+        # facts an unplaced marker is about (the marker's own block buffer is
+        # subtracted per piece; see accumark_marker.bbox_check)
+        one = dict(markers=[mkr], pieces=res['pieces'])
+        f['laid_state'] = mk['laid_state']
+        f['slots_bound'] = sum(1 for s in mk['slots'] if (s.get('binding') or {}).get('method') == 'structural')
+        f['unplaced'] = len(mkr['unplaced'])
+        f['order_cuts'] = sum(s['quantity'] for m in mk['order_copy'] for s in m['sizes'])
+        f['geometry'] = mkr['inventory']['marker']['geometry_available']
+        f['hdr_area_mode'] = mk['header_sums']['area']; f['hdr_perim_mode'] = mk['header_sums']['perimeter']
+        urows = am.bbox_check(one, which='unplaced')
+        f['bbox_ok_unplaced'] = sum(1 for r in urows if abs(r[2]) <= 0.02 and abs(r[3]) <= 0.02)
+        f['bbox_n_unplaced'] = len(urows)
+        f['bbox_worst_unplaced'] = round(max([max(abs(r[2]), abs(r[3])) for r in urows] or [0]), 4)
+        uarows = am.area_check(one, which='unplaced')
+        f['area_ok_unplaced'] = sum(1 for r in uarows if r[4] and abs(r[4]-1) <= 0.01); f['area_pairs_unplaced'] = len(uarows)
         f['folds'] = ';'.join(sorted({n for n, p in res['pieces'].items() if p and p.get('fold')}))
         f['notes'] = ';'.join(sorted({n for *_, n in mkr['placed'] if n and 'unfold' not in n}))
         if dxf:

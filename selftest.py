@@ -733,12 +733,24 @@ print('-- markers (markers/, skipped when absent) - see MARKER_DECODE_PLAN.md')
 # that header field.
 import verify_marker as vm
 MK = [  # folder, zip, {fact: want}, dxf folder or None
- ('2303-BD137-UNLAID', '2303-BD 137.zip', dict(laid='no', placements=0, slots=97, records=66, pieces_listed=12, bound=0), None),
+ # the unlaid twin with its 18 pieces bundled: the only never-laid marker whose slots can be checked against
+ # real geometry (v4.2) - every slot's home box vs the piece's own outline at the tiled size, no layout needed
+ ('2303-BD137-UNLAID', '2303-BD 137.zip', dict(laid='no', placements=0, slots=97, records=66, pieces_listed=12, bound=0,
+                                              laid_state='unlaid', slots_bound=97, unplaced=97, order_cuts=61, geometry='all',
+                                              hdr_area_mode='last_model', hdr_perim_mode='last_model',
+                                              bbox_ok_unplaced=97, bbox_n_unplaced=97, area_ok_unplaced=66, area_pairs_unplaced=66), None),
  ('2303-BD137-PLACED', '2303-BD 137 PLACED.zip', dict(laid='yes', placements=97, bundles=61, bound=97, identity='yes',
                                                     width_cm=137.0, length_cm=377.68, util_pct=71.51, bbox_ok=97, area_ok=66, area_pairs=66,
                                                     dxf_centres=97, dxf_outlines_checked=97, dxf_size_labels=97,
+                                                    laid_state='laid', unplaced=0, geometry='n/a', hdr_area_mode='all', hdr_perim_mode='last_model',
                                                     folds='2303-B1-A1- OUCF-SP24;2303-B1-A2- OUCF-SP24;2303-B1-DD2- OUCF-SP24;2303-B1-E3- OUCF-SP24'), 'dxf'),
- ('2303-CP150-JULY',   '2303-CP 150 CPL.zip', dict(laid='yes', placements=1, bound=1, identity='yes', dxf_centres=1, dxf_size_labels=1, area_ok=1, bbox_ok=4), 'dxf'),
+ # 1 placed of 72: 71 unplaced slots WITH pieces. x matches to 0.0001 in once the marker's own block buffer (section 6,
+ # 2 x 0.0591 in) is subtracted; the y axis carries a one-sided excess of up to 0.0786 in on 48 of 71 slots that
+ # nothing explains yet [?] (the DXF-verified placed slot is exact) - so the unplaced box is held to the 0.08 in
+ # curve band below, not 0.02, and bbox_ok_unplaced is deliberately not pinned.
+ ('2303-CP150-JULY',   '2303-CP 150 CPL.zip', dict(laid='yes', placements=1, bound=1, identity='yes', dxf_centres=1, dxf_size_labels=1, area_ok=1, bbox_ok=4,
+                                                   laid_state='partial', unplaced=71, geometry='all', bbox_n_unplaced=71,
+                                                   hdr_area_mode='all', hdr_perim_mode='last_model', area_ok_unplaced=36, area_pairs_unplaced=36), 'dxf'),
  # Controlled M3 test: a fresh rectangle assigned CAP-RULES-A (real,
  # non-placeholder per-size-break deltas), rule 1 applied to only 2 of 4
  # corners so the other 2 rely on graded_outline()'s chain-interpolation
@@ -769,6 +781,7 @@ for folder, zname, want, dxf in MK:
     for f, _ in results:
         bad = [f'{k}={f.get(k)}!={v}' for k, v in want.items() if str(f.get(k)) != str(v)]
         if dxf and f.get('dxf_outline_max', 9) > 0.08: bad.append(f"dxf_outline_max={f.get('dxf_outline_max')}")
+        if f.get('bbox_worst_unplaced', 0) > 0.08: bad.append(f"bbox_worst_unplaced={f.get('bbox_worst_unplaced')}")
         # 0.0015 in, not the July markers' 0.001: a cm-vintage drawn DXF
         # (2303-BD137-PLACED) round-trips through a /2.54 conversion the
         # inch-native July DXFs don't, costing a little precision - not a
@@ -886,19 +899,19 @@ if not n_mk or bad_all: fails.append('binding rows: ' + '; '.join(bad_all))
 # pair, so 2], and whether the header's @422 / @454 equal the sums over ALL
 # slots (every never-laid marker except 2303-BD 137, whose header holds other
 # sums - see CHANGELOG v4.1).
-UNLAID = [  # parts, marker, {piece: slots per size}, header sums == all-slot sums?
- (('1825D-SS21-UNLAID', '1825D-BD 180 SS21.zip'), '1825D-GT 168 SS21', {'1825D IGUS 061020': 1}, True),
+UNLAID = [  # parts, marker, {piece: slots per size}, header sums == all-slot sums?, cuts (the order's total quantity), block-buffer entries
+ (('1825D-SS21-UNLAID', '1825D-BD 180 SS21.zip'), '1825D-GT 168 SS21', {'1825D IGUS 061020': 1}, True, 9, 2),
  (('1825D-SS21-UNLAID', '1825D-BD 180 SS21.zip'), '1825D-BD 180 SS21',
-  {'1825D FROT 061020': 1, '1825D OGUS 061020': 1, '1825D BACK 061020': 1}, True),
+  {'1825D FROT 061020': 1, '1825D OGUS 061020': 1, '1825D BACK 061020': 1}, True, 9, 4),
  (('5683D-SS21-UNLAID', '5683D-BD 168 SS21.zip'), '5683D-BD 168 SS21',
-  {'5683D OGUS 210920': 1, '5683D IGUSE 210920': 1, '5683D BACK 210920': 1, '5683D FROT 210920': 1}, True),
+  {'5683D OGUS 210920': 1, '5683D IGUSE 210920': 1, '5683D BACK 210920': 1, '5683D FROT 210920': 1}, True, 6, 0),
  (('2591A-SS21-UNLAID', '2591A-BD 157 AW SS21.zip'), '2591A-BD 157 AW SS21',
-  {'2591A POUTH 170920': 2, '2591A BPNL170920': 1, '2591A LEG 170920': 2}, True),
- (('418T-SHAPESHIFTER-UNLAID', '418T-BD 160 SHAPESHIFTER.zip'), '418T-BD 160 SHAPESHIFTER', {'0418T TRS 190421': 2}, True),
- (('2303-BD137-UNLAID', '2303-BD 137.zip'), '2303-BD 137', None, False),
+  {'2591A POUTH 170920': 2, '2591A BPNL170920': 1, '2591A LEG 170920': 2}, True, 7, 0),
+ (('418T-SHAPESHIFTER-UNLAID', '418T-BD 160 SHAPESHIFTER.zip'), '418T-BD 160 SHAPESHIFTER', {'0418T TRS 190421': 2}, True, 11, 2),
+ (('2303-BD137-UNLAID', '2303-BD 137.zip'), '2303-BD 137', None, False, 61, 0),
 ]
 from collections import Counter
-for parts, name, mult, sums in UNLAID:
+for parts, name, mult, sums, cuts, n_buf in UNLAID:
     got = _mk(parts, name)
     if got is None:
         print(f'   --  {name:30} (absent)'); continue
@@ -910,6 +923,10 @@ for parts, name, mult, sums in UNLAID:
     if sums:
         if abs(mk['total_area'] - sum(s['area'] for s in mk['slots'])) > 1e-9: bad.append('@422 != sum(all slot areas)')
         if abs(mk['unknown_454'] - sum(s['record']['perimeter'] for s in mk['slots'])) > 1e-9: bad.append('@454 != sum(all slot record perimeters)')
+    if sum(s['quantity'] for m in mk['order_copy'] for s in m['sizes']) != cuts: bad.append('order copy total quantity != %d' % cuts)
+    if len(mk['block_buffers']) != n_buf: bad.append('%d block-buffer entries != %d' % (len(mk['block_buffers']), n_buf))
+    if sums and mk['header_sums'] != dict(area='all', perimeter='all'): bad.append('header sums %s not all/all' % mk['header_sums'])
+    if not sums and mk['header_sums'] != dict(area='last_model', perimeter='last_model'): bad.append('header sums %s not last_model' % mk['header_sums'])
     if mult is not None:
         per = Counter((s['piece'], s['size']) for s in mk['slots'])
         got_mult = {}
@@ -945,8 +962,46 @@ if src:
     for desc, kw, row in MUT:
         r = _rows(**kw)
         if r.get(row, False): bad.append(f'"{desc}" did not fail "{row}"')
-    print(f"   {'ok ' if not bad else 'FAIL'} mutation tests: {len(MUT)} byte patches each break exactly the row that checks them  {'; '.join(bad)}")
+    # v4.2 rows: order copy, laid state, @430, block-buffer indices. Each byte
+    # offset is computed from the marker's own parse, not hard-coded.
+    n0 = sec[am.SEC_ORDER_COPY][0] - 6                       # the first model block
+    p = n0 + am.MODEL_HEAD + struct.unpack_from('<H', d0, n0)[0]
+    for _ in range(struct.unpack_from('<H', d0, n0 + 14)[0]): p += 2 + struct.unpack_from('<H', d0, p)[0]   # skip the fabric types
+    MUT2 = [
+     ('section 15: first size row quantity 1 -> 2', _patched(p + 2, '<H', 2), 'order copy tiles section 15; quantity == size-row count'),
+     ('directory word 40: placed word 0 -> 2', _patched(0x12a, '<H', 2), 'laid state: placed word, slot coordinates and header agree'),
+     ('header @430: placed area 0 -> 1', _patched(430, '<d', 1.0), 'header @430 == sum of placed slot areas'),
+    ]
+    for desc, patched, row in MUT2:
+        if _rows(patched).get(row, True): bad.append(f'"{desc}" did not fail "{row}"')
+    MUT += MUT2
+    # the block-buffer index needs a marker that HAS a section 6
+    src418 = _mk(('418T-SHAPESHIFTER-UNLAID', '418T-BD 160 SHAPESHIFTER.zip'), '418T-BD 160 SHAPESHIFTER')
+    if src418:
+        b = bytearray(src418[0]['data']); struct.pack_into('<H', b, src418[1]['sections'][am.SEC_PIECES][0] + am.PIECE_LIST_HEAD + 8, 2)
+        row = 'piece buffer indices == list positions'
+        if not {n: ok for n, ok, _ in am.check_marker(src418[1])}.get(row): bad.append('418T clean marker fails ' + row)
+        if {n: ok for n, ok, _ in am.check_marker(am.parse_marker(bytes(b)))}.get(row, True): bad.append('section 10: buffer index 1 -> 2 did not fail ' + row)
+        MUT.append(('section 10: buffer index 1 -> 2', None, row))
+    print(f"   {'ok ' if not bad else 'FAIL'} mutation tests (v4.1 + v4.2): {len(MUT)} byte patches each break exactly the row that checks them  {'; '.join(bad)}")
     if bad: fails.append('binding mutation tests: ' + '; '.join(bad))
+    # the unplaced inventory of a marker-only ZIP: the cut order, read from structure alone
+    inv_res = am.place_marker(os.path.join(HERE, 'markers', '2591A-SS21-UNLAID', '2591A-BD 157 AW SS21.zip'))
+    inv = inv_res['markers'][0]['inventory']; bad = []
+    if inv_res['geometry_available'] != 'none' or inv['marker']['geometry_available'] != 'none': bad.append('a marker-only ZIP must report geometry_available none')
+    if inv['marker']['laid_state'] != 'unlaid' or inv['totals']['slots'] != 35 or inv['totals']['placed'] != 0: bad.append('totals: %s' % inv['totals'])
+    if [(o['size'], o['quantity']) for o in inv['order_lines']] != [(s, 1) for s in ['6/7', '7/8', '8/9', '9/10', '11/12', '13/14', '15/16']]: bad.append('order lines')
+    pairs = {}
+    for s in inv['slots']:
+        if s['pair']: pairs.setdefault(s['pair']['group'], []).append((s['pair']['part'], s['preset']['mirror'], s['piece']))
+    if len(pairs) != 14 or any(sorted(p[0] for p in v) != ['A', 'B'] or [p[1] for p in sorted(v)] != [False, True] or len({p[2] for p in v}) != 1 for v in pairs.values()):
+        bad.append('the 14 `CUT X02` pairs should each be one piece, part A plain + part B mirrored: %d groups' % len(pairs))
+    a422 = inv_res['markers'][0]['marker']['total_area']      # == the sum over all slots on a never-laid marker
+    if abs(inv['totals']['area_to_lay'] - a422) > 1e-9 or abs(inv['totals']['min_length_in'] - a422 / inv['marker']['width_in']) > 1e-9: bad.append('area / minimum length')
+    if not inv_res['markers'][0]['inventory']['warnings'] or not any(w.startswith('no piece objects') for w in inv['warnings']): bad.append('no "no piece objects" warning')
+    if not am.inventory_report(inv, inv_res['markers'][0]['checks']).endswith('DECODED CLEANLY'): bad.append('report does not end DECODED CLEANLY')
+    print(f"   {'ok ' if not bad else 'FAIL'} unplaced_inventory on a marker-only ZIP (2591A: 35 slots, 14 mirrored pairs, geometry none)  {'; '.join(bad)}")
+    if bad: fails.append('unplaced_inventory: ' + '; '.join(bad))
 # and the answer key can fail: the old area rule against the drawn DXF labels
 zp = os.path.join(HERE, 'markers', '2303-BD137-PLACED', '2303-BD 137 PLACED.zip')
 dxf = os.path.join(HERE, 'markers', '2303-BD137-PLACED', '2303-BD 137 PLACED.DXF')

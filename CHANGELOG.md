@@ -1,5 +1,115 @@
 # Changelog
 
+## v4.2 (2026-09-21) - the unplaced job spec: order lines, laid state, block buffers, and an inventory you can read
+
+Same labelling rule: `__version__` stays `'3.0'`. Purely additive - a diff of
+every field, placed outline, geometry check and existing check row against the
+v4.1 commit, over all 18 fixture markers, is byte-identical.
+
+**What it is for.** A never-laid marker is a cut order: what must be laid, on
+what width, and nothing about where. `unplaced_inventory` turns the parts of
+the marker that say so into one structure a nesting run (or a person) can use,
+and `python accumark_marker.py <zip> --inventory` prints it as a cut order
+ending in `DECODED CLEANLY` or `NEEDS A LOOK:` plus every failing check and
+warning. On a marker-only ZIP (no pieces) it reports `geometry none` instead
+of looking like "all fine" - the old `piece_errors == {}` was the same for
+"all decoded" and "there were none".
+
+- **Section 15 is the ORDER copy [V: 18 of 18].** A chain of model blocks
+  closing exactly 6 bytes before section 21: a 48-byte header (name length @+0,
+  1-based model ordinal @+8, size count @+12, fabric-type count @+14), the model
+  name, its fabric types (`<u16 len><text>`), then per size a row `<u16 name
+  len><u16 QUANTITY><24 zero bytes><size name>`. The model names equal section
+  11's; **the QUANTITY equals the number of size-table rows for that (model,
+  size)** - each cut of a size is its own row and bundle (CLAUDE-QTY-TEST: 3
+  rows of size 8, quantity 3; AD1234: XS x2, S x4, M x4, L x2, XL x1) - and the
+  pairs cover the size table exactly. This is the per-size quantity the earlier
+  notes located in the Order object only; the marker carries its own copy, so a
+  marker-only ZIP still states its quantities.
+- **Section 6 is the block-buffer table [V framing; ? side order].**
+  `(pieces + 1)` entries of 102 bytes from `directory[6] - 6`: `<u16 0><4 x f64
+  inches><68 zero bytes>`; every double is 0.0591 in (1.5 mm) on the four
+  markers that have one (1825D x2, 418T, July CP 150). A piece row's
+  `buffer_index` (section 10, flag bytes 4..5) equals its 1-based position in
+  the piece list on all of them, so entry 0 is the marker-wide default and entry
+  k piece k's own. (An earlier reading - two u32 words, high word first - came
+  from a frame misaligned by four bytes.) It is what makes `home x 2` exceed a
+  piece's own bounding box: on the July CP 150 markers the x residual is
+  0.1182 in = 2 x 0.0591 with no buffer and 0.0000 with it. Which side each
+  double is cannot be told from the corpus - all four are equal - so the file
+  order is kept [?] and settled by a live capture with unequal buffers.
+- **Laid state, from three independent sources.** `mk['laid_state']` is
+  `unlaid | partial | laid` from the slots' own coordinates (what a nesting run
+  consumes); `laid_state_sources` also carries directory word 40 and the
+  header's length/utilisation, and a check row fails if they disagree (18 of
+  18 agree; the header alone cannot tell partial from laid - the July markers
+  have length and utilisation but 1 slot placed of 72). Header `@430` is the
+  summed declared area of the PLACED slots (= W x L x U / 100), 0 on a never-laid
+  marker [V: 18 of 18].
+- **Header sums are reported as a MODE, not a pass/fail.** `header_sums` says
+  whether `@422` / `@454` equal the sum over `all` slots, the `last_model`'s
+  slots, `2x_all`, or `other` (see v4.1 "Observed"): `all/all` on every never-laid
+  single-model marker, `last_model/last_model` on the unlaid 2303-BD 137,
+  `all/last_model` on its laid twin and on the July markers, `all/2x_all` on
+  LADIES-BLOUSE [?]. The selftest pins the mode per fixture, so a marker that fits
+  none of them is loud.
+- **`unplaced_inventory(mk, pieces=None, piece_errors=None)`** - per unplaced
+  slot: ordinal, bundle, model, size, piece, category, cut, copies, **pair**
+  (a `CUT X02` piece is a mirrored pair: two slots of one (bundle, record), the
+  plain one `A` and the `0x0080`-mirrored one `B` [V: 116 of 116 pairs]),
+  declared area, perimeter, `bbox_in` (home x 2 minus the piece's block buffer),
+  **preset** orientation (rot180 / mirror / the `0x0040` pair bit / other bits -
+  reported as a pre-set lay pattern, never counted as a placement), and with
+  pieces in the ZIP the outline, `bbox_dx/dy` and `area_ratio`; plus the order
+  lines (model, size, quantity, bundles), totals (area to lay, perimeter, the
+  length a 100%-efficient lay would need = area / width, counts by size and by
+  piece) and named warnings. `place_marker` returns it as `inventory` and the
+  slots' geometry as `unplaced` (the shape of `placed`, outline in the piece's
+  own frame) plus `geometry_available`; `bbox_check` / `area_check` take
+  `which='unplaced'`.
+- **First geometric check that runs on an unlaid marker.** With the corrected
+  sizes, `2303-BD 137` (unlaid, 18 pieces bundled): every one of 97 slots' home
+  boxes matches the piece's own outline at its tiled size to 0.0156 in (0.02 in
+  tolerance), and declared area matches the shoelace area within 1% on 66 of 66
+  (piece, size) pairs; `CLAUDE-QTY-TEST` 3/3 to 0.0001 in. The July CP 150
+  markers (71 of 72 unplaced, pieces bundled): x is exact once the block buffer
+  is subtracted (67 of 71 within 0.02 in), area 36 of 36 pairs, but **y carries a
+  one-sided excess of up to 0.0786 in on 48 of 71 slots (never negative)** that
+  nothing explains yet [?] - the one placed slot, verified against the drawn
+  DXF, is exact (0.0001 in) - so that fixture is held to the 0.08 in curve band
+  and its `bbox_ok_unplaced` is deliberately not pinned. Candidates: a notch or
+  curve extremum that the stored points understate, not tested.
+- **Found by the new checks, not by looking:** `dataset/build.py` patched the
+  generated marker's `@422` and utilisation but never `@430`, so the tracked
+  `GENERATED-SAMEBBOX-MARKER.zip` carried a stale placed-area double; the new
+  `@430 == sum of placed slot areas` row failed on it, the generator now patches
+  it, and the marker was regenerated (the 31 piece zips are unchanged).
+
+Added: `parse_order_copy`, `parse_block_buffers`, `unplaced_inventory`,
+`unplaced_slots`, `inventory_report`, `--inventory [--json]`; `mk` keys
+`order_copy`, `order_copy_end`, `block_buffers`, `placed_area`, `laid_state`,
+`laid_state_sources`, `header_sums`; four `check_marker` rows (`order copy tiles
+section 15; quantity == size-row count`, `laid state: placed word, slot
+coordinates and header agree`, `header @430 == sum of placed slot areas`, `piece
+buffer indices == list positions`); twelve `verify_marker.facts` keys
+(`laid_state`, `slots_bound`, `unplaced`, `order_cuts`, `geometry`,
+`hdr_area_mode`, `hdr_perim_mode`, `bbox_ok_unplaced`, `bbox_n_unplaced`,
+`bbox_worst_unplaced`, `area_ok_unplaced`, `area_pairs_unplaced`); selftest rows for all of it, four more mutation
+patches (section-15 quantity, directory word 40, `@430`, a block-buffer index -
+ten in all with v4.1's), and an inventory test on the marker-only 2591A ZIP
+(35 slots, 14 mirrored pairs, geometry none).
+
+**Verified before handing back.** `selftest.py` PASS, `dataset_test.py` 36/36,
+`robustness/run.py` (full) 303/303; old-vs-new (v4.1 commit vs working tree) over
+all 18 markers: fields, placed outlines by hash, placed bbox/area checks and every
+existing check row identical, 3-4 new rows per marker all passing.
+
+Not done, and why: the unequal-buffer side order, what sets the `0x0040` pair
+bit, and the CP 150 y excess all need a controlled AccuMark capture (a piece with
+a known notch / unequal block buffers / a flip option); slot `u16 @88` and
+`@52/@54/@60` need the cleared-vs-never-laid twin. They are next in the plan, not
+solved here.
+
 ## v4.1 (2026-09-21) - unplaced markers: slots bound by structure, not by area
 
 Same labelling rule as v4.0: `__version__` stays `'3.0'`.

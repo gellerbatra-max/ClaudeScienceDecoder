@@ -3052,7 +3052,10 @@
     "slot declared area == bound record area": true,
     "record text ends with the tiled size + G": true,
     "records == section-13 entries": true,
-    "piece list tiles section 10": true
+    "piece list tiles section 10": true,
+    "order copy tiles section 15; quantity == size-row count": true,
+    "laid state: placed word, slot coordinates and header agree": true,
+    "header @430 == sum of placed slot areas": true
    },
    "pre_existing_failures": [],
    "new_failures": [],

@@ -35,6 +35,7 @@ are walked from section 13's index instead of by regex.
     laid = am.place_marker('2303-BD 137 PLACED.zip')        # outlines in the marker frame
 """
 import math, re, struct, zipfile
+from collections import Counter
 import accumark_pds as ap
 from accumark_errors import (AccuMarkError, NotAnAccuMarkZip, NestedArchive,
     NotAnAccuMarkObject, TruncatedObject, WrongObjectType, NoSuchObject,
@@ -157,6 +158,7 @@ DIR_OFFSETS = 40
 SLOT = 96
 SLOT_HEAD = 6       # a slot's (record index, piece index, bundle) u16s sit 6 bytes BEFORE its body
 SEC_SCALARS, SEC_PIECES, SEC_MODELS, SEC_SIZES, SEC_INDEX, SEC_RECORDS, SEC_ORDER_COPY, SEC_SLOTS, SEC_GEOMETRY = 1, 10, 11, 12, 13, 14, 15, 21, 30
+SEC_BUFFERS = 6
 ROT180_BIT, MIRROR_BIT = 0x2000, 0x0080
 
 def directory(d):
@@ -346,6 +348,75 @@ def parse_pieces_section(d, lo, hi):
 def _printable(b):
     return all(32 <= c < 127 for c in b)
 
+MODEL_HEAD = 48
+BUFFER_ENTRY = 102
+
+def _walk_order_copy(d, lo, hi):
+    """-> ([model block, ...], offset where the walk ended, where it must end).
+
+    Section 15 is the marker's own copy of the ORDER: what is to be cut, per
+    model per size, with the quantity. A chain of model blocks starting 6 bytes
+    before the directory offset and closing exactly 6 bytes before section
+    21's [V: 18 of 18 corpus markers, both vintages]:
+
+        model block = <48-byte header> <name> <fabric types> <size rows>
+        header      u16 name length @+0, u16 model ordinal (1-based) @+8,
+                    u16 size count @+12, u16 fabric-type count @+14; the other
+                    header bytes stay raw
+        fabric type <u16 length><text>
+        size row    <u16 name length><u16 QUANTITY><24 zero bytes><size name>
+
+    The model names equal section 11's; the QUANTITY equals the number of size-
+    table (section 12) rows for that (model, size) - each cut of a size is its
+    own row and bundle - and the (model, size) pairs cover the size table
+    exactly, on all 18 markers."""
+    out = []; pos = lo - 6; stop = min(hi - 6, len(d))
+    while pos >= 0 and pos + MODEL_HEAD <= stop:
+        n, n_sizes, n_ft = u16(d, pos), u16(d, pos+12), u16(d, pos+14)
+        if n < 1 or pos + MODEL_HEAD + n > stop or not _printable(d[pos+MODEL_HEAD:pos+MODEL_HEAD+n]): break
+        name = d[pos+MODEL_HEAD:pos+MODEL_HEAD+n].decode('latin1'); p = pos + MODEL_HEAD + n
+        fabric_types = []; sizes = []; ok = True
+        for _ in range(n_ft):
+            if p + 2 > stop: ok = False; break
+            m = u16(d, p)
+            if p + 2 + m > stop or not _printable(d[p+2:p+2+m]): ok = False; break
+            fabric_types.append(d[p+2:p+2+m].decode('latin1')); p += 2 + m
+        for _ in range(n_sizes if ok else 0):
+            if p + 28 > stop: ok = False; break
+            m, q = u16(d, p), u16(d, p+2)
+            if p + 28 + m > stop or not _printable(d[p+28:p+28+m]): ok = False; break
+            sizes.append(dict(size=d[p+28:p+28+m].decode('latin1'), quantity=q)); p += 28 + m
+        if not ok: break
+        out.append(dict(name=name, ordinal=u16(d, pos+8), fabric_types=fabric_types, sizes=sizes,
+                        header=d[pos:pos+MODEL_HEAD].hex()))
+        pos = p
+    return out, pos, stop
+
+def parse_order_copy(d, lo, hi):
+    """Section 15 -> [{name, ordinal, fabric_types, sizes: [{size, quantity}]}],
+    one per model, in the order of section 11's model list (v4.2)."""
+    return _walk_order_copy(d, lo, hi)[0]
+
+def parse_block_buffers(d, lo, hi):
+    """Section 6 -> [{index, sides}] - the marker's block-buffer table, present
+    only on some markers (1825D, 418T, the July CP 150 markers; not 2303 Sept,
+    5683D, 2591A, CLAUDE-*). `(pieces + 1)` entries of 102 bytes starting 6
+    bytes before the directory offset: `<u16 0><4 x f64 buffer in inches><68
+    zero bytes>` [V: all 4 kinds present, every double 0.0591 in = 1.5 mm].
+    Entry 0 looks like the marker-wide default and entry k (1-based) piece k's
+    own buffer: each piece row's `buffer_index` (section 10, flag bytes 4..5)
+    equals its 1-based position in the piece list on every marker that has a
+    section 6 [V]. Which side each of the four doubles is cannot be told from
+    the corpus - all are equal - so `sides` keeps file order [?]. The buffer
+    is what makes home*2 exceed the piece's own bbox: 2 x 0.0591 on the July
+    markers, and 0 where there is no section 6."""
+    out = []; pos = lo - 6; stop = min(hi - 6, len(d))
+    if pos < 0: return out
+    while pos + BUFFER_ENTRY <= stop:
+        out.append(dict(index=len(out), sides=[f64(d, pos+2+8*j) for j in range(4)]))
+        pos += BUFFER_ENTRY
+    return out
+
 SIZE_HDR = 14
 
 def _walk_model_list(d, lo, hi):
@@ -522,7 +593,55 @@ def parse_marker(d, size_vocab=None, binding='structural'):
     mk['placements'] = placements
     mk['bundles'] = sorted({p['bundle'] for p in placements})
     mk['sum_slot_areas'] = sum(p['area'] for p in placements)
+    _add_order_and_state(d, mk, sec)
     return mk
+
+def _add_order_and_state(d, mk, sec):
+    """v4.2: the order copy (section 15), the block buffers (section 6), where
+    the marker stands (laid state) and how the header's two sums relate to its
+    slots. Everything here is additive - no v4.1 key changes."""
+    mk['order_copy'] = []; mk['order_copy_end'] = None
+    if sec[SEC_ORDER_COPY] and sec[SEC_SLOTS]:
+        models, end, stop = _walk_order_copy(d, sec[SEC_ORDER_COPY][0], sec[SEC_SLOTS][0])
+        mk['order_copy'] = models; mk['order_copy_end'] = (end, stop) if models else None
+    mk['block_buffers'] = parse_block_buffers(d, *sec[SEC_BUFFERS]) if sec[SEC_BUFFERS] else []
+    for i, p in enumerate(mk['pieces']):
+        p['buffer_ok'] = p.get('buffer_index') == i + 1 if mk['block_buffers'] else None
+    # header double @430 = the summed declared area of the PLACED slots
+    # (= W x L x U / 100) [V: 18 of 18]; 0 on a marker nothing is placed on
+    mk['placed_area'] = f64(d, 430)
+    # laid state, from three independent sources: directory word 40, the slot
+    # coordinates, and the header's own length / utilisation. The slots are
+    # authoritative (they are what a nesting run consumes); the others must agree
+    n, k = len(mk['slots']), len(mk['placements'])
+    by_slots = 'unlaid' if k == 0 else ('laid' if k == n else 'partial')
+    by_word = {0: 'unlaid', 1: 'partial', 2: 'laid'}.get(mk['placed_word'])
+    by_header = 'unlaid' if not mk['laid'] else 'laid or partial'
+    mk['laid_state'] = by_slots
+    mk['laid_state_sources'] = dict(slots=by_slots, placed_word=by_word, header=by_header,
+                                    agree=(by_word == by_slots and (by_header == 'unlaid') == (by_slots == 'unlaid')))
+    mk['header_sums'] = _header_sums(mk)
+
+def _header_sums(mk):
+    """How the header doubles @422 / @454 relate to the slots - a MODE per
+    double, not a pass/fail: 'all' (the sum over every slot's declared area /
+    record perimeter), 'last_model' (over the last model's slots only), '2x_all'
+    (twice the all-slot sum) or 'other'. Observed [V]: 'all' on every marker
+    nobody laid and on every single-model marker; on the multi-model 2303
+    markers @454 is 'last_model' everywhere and @422 is 'last_model' in the
+    unlaid export but 'all' in the laid one; LADIES-BLOUSE's @454 is '2x_all'
+    [?]. The cause of the last-model behaviour is unproven."""
+    slots = [s for s in mk['slots'] if s.get('record')]
+    if not slots or not mk['models']: return dict(area=None, perimeter=None)
+    last = mk['models'][-1]
+    def mode(header, per):
+        vals = {'all': sum(per(s) for s in slots), 'last_model': sum(per(s) for s in slots if s.get('model') == last),
+                '2x_all': 2 * sum(per(s) for s in slots)}
+        for name, v in vals.items():
+            if abs(header - v) <= 1e-6 * max(1.0, abs(v)): return name
+        return 'other'
+    return dict(area=mode(mk['total_area'], lambda s: s['area']),
+                perimeter=mode(mk['unknown_454'], lambda s: s['record']['perimeter']))
 
 def _area_ok(s, rec):
     return abs(rec['area'] - s['area']) <= max(0.05, 1e-3*s['area'])
@@ -650,6 +769,27 @@ def check_marker(mk):
     if mk.get('piece_list_end'):
         a, w = mk['piece_list_end']
         out.append(('piece list tiles section 10', a == w, f'walk end {hex(a)} want {hex(w)}'))
+    # v4.2: the order copy, the laid state and the block buffers
+    oc = mk.get('order_copy')
+    if oc:
+        end, stop = mk['order_copy_end']
+        rows = Counter((r['model'], r['size']) for r in mk['sizes'])
+        seen = Counter((m['name'], s['size']) for m in oc for s in m['sizes'])
+        qty_ok = all(rows[(m['name'], s['size'])] == s['quantity'] for m in oc for s in m['sizes'])
+        out.append(('order copy tiles section 15; quantity == size-row count',
+                    end == stop and [m['name'] for m in oc] == mk['models'] and qty_ok and set(seen) == set(rows),
+                    f'{len(oc)} models, {sum(s["quantity"] for m in oc for s in m["sizes"])} cuts, walk end {hex(end)} want {hex(stop)}'))
+    ls = mk.get('laid_state_sources')
+    if ls:
+        out.append(('laid state: placed word, slot coordinates and header agree', ls['agree'],
+                    f'{mk["laid_state"]} (word {ls["placed_word"]}, header {ls["header"]})'))
+        out.append(('header @430 == sum of placed slot areas',
+                    abs(mk['placed_area'] - mk['sum_slot_areas']) <= 1e-6 * max(1.0, mk['sum_slot_areas']),
+                    f'{mk["placed_area"]:.4f} vs {mk["sum_slot_areas"]:.4f}'))
+    if mk.get('block_buffers'):
+        out.append(('piece buffer indices == list positions',
+                    all(p.get('buffer_ok') for p in mk['pieces']) and len(mk['block_buffers']) == len(mk['pieces']) + 1,
+                    f'{len(mk["block_buffers"])} entries for {len(mk["pieces"])} pieces'))
     return out
 
 # ------------------------------------------------ type-10 object (research)
@@ -903,9 +1043,134 @@ def load_pieces(objs):
             pieces[o['name']] = None; errors[o['name']] = e
     return pieces, errors
 
+def _slot_geometry(s, pieces, piece_errors, use_grading):
+    """-> (piece name, size, outline in the PIECE's own frame or None, note)."""
+    piece = pieces.get(s['piece']) if s['piece'] else None
+    if piece is None:
+        if s['piece'] in piece_errors: note = 'piece failed to decode: %s' % piece_errors[s['piece']]
+        else: note = 'piece not in ZIP' if s['piece'] else 'unbound slot'
+        return s['piece'], s['size'], None, note
+    outline, note = piece_outline(piece, s['size'] if use_grading else None)
+    return s['piece'], s['size'], outline, note
+
+def unplaced_slots(mk, pieces, piece_errors, use_grading=True):
+    """The slots nothing has been laid for -> [(slot, piece, size, outline or
+    None, note)], the shape of `placed` but with the outline in the piece's own
+    frame (an unplaced slot has no position to transform it to)."""
+    out = []
+    for s in mk['slots']:
+        if s['empty']: out.append((s,) + _slot_geometry(s, pieces, piece_errors, use_grading))
+    return out
+
+def _buffer_sides(mk, piece_name):
+    """The block-buffer entry for a piece, (b0, b1, b2, b3) inches - its own
+    entry, else the marker-wide entry 0, else zeros where the marker has no
+    section 6 (see parse_block_buffers; side order is [?], every observed
+    value is equal)."""
+    bufs = mk.get('block_buffers') or []
+    if not bufs: return (0.0, 0.0, 0.0, 0.0)
+    row = next((p for p in mk['pieces'] if p['name'] == piece_name), None)
+    i = row.get('buffer_index') if row else None
+    return tuple(bufs[i]['sides'] if i is not None and 0 <= i < len(bufs) else bufs[0]['sides'])
+
+def _shoelace(p):
+    return abs(sum(p[i][0]*p[(i+1) % len(p)][1] - p[(i+1) % len(p)][0]*p[i][1] for i in range(len(p)))) / 2
+
+def unplaced_inventory(mk, pieces=None, piece_errors=None, use_grading=True, geometry=None):
+    """v4.2: the CUT ORDER an unplaced (or part-placed) marker states - what
+    is still to be laid, on what width, with nothing about where. Everything
+    comes from the marker's own structure; the outlines need the piece objects
+    in the same ZIP (`pieces` from load_pieces) and are absent - never guessed
+    - otherwise: `marker['geometry_available']` says which.
+
+    -> dict(
+      marker      name, width / length in inches and cm, laid_state, models,
+                  fabric_types, block_buffer_in (marker-wide entry, 4 sides),
+                  geometry_available 'all' | 'some' | 'none' | 'n/a'
+      order_lines [{model, size, quantity, bundles}]  one per (model, size)
+      slots       one per UNPLACED slot: ordinal, bundle, model, size, piece,
+                  category, cut, copies, pair {group, part 'A'|'B'} (a `CUT X02`
+                  piece is a mirrored pair), declared_area, perimeter,
+                  bbox_in (w, h: home x 2 minus the piece's block buffer),
+                  preset {rot180, mirror, pair_bit, other} - a PRE-SET lay
+                  pattern that is reported, never counted as a placement -
+                  and, with pieces: outline, checks {bbox_dx, bbox_dy,
+                  area_ratio}, note
+      totals      slots, placed, area_to_lay, perimeter, min_length_in (area to
+                  lay / width: the length a 100%-efficient lay would need),
+                  by_size, by_piece
+      warnings    every reason to distrust part of the above, by name)"""
+    pieces = pieces or {}; piece_errors = piece_errors or {}
+    if geometry is None: geometry = unplaced_slots(mk, pieces, piece_errors, use_grading)
+    warnings = []
+    # (bundle, record) groups of two are a mirrored pair: (plain, mirrored) [V: 116/116 pairs]
+    groups = {}
+    for s in mk['slots']: groups.setdefault((s['bundle'], s['record_index']), []).append(s)
+    pair_of = {}; g = 0
+    for members in groups.values():
+        if len(members) < 2: continue
+        g += 1
+        ordered = sorted(members, key=lambda s: (bool(s['orient_code'] & MIRROR_BIT), s['index']))
+        for part, s in zip('ABCDEFGH', ordered): pair_of[s['index']] = dict(group=g, part=part)
+    piece_row = {p['name']: p for p in mk['pieces']}
+    slots = []; n_geo = 0
+    for s, pname, size, outline, note in geometry:
+        rec = s.get('record') or {}
+        b = _buffer_sides(mk, pname)        # (b0, b1, b2, b3): x pair, then y pair [?]
+        entry = dict(ordinal=s['index'], bundle=s['bundle'], model=s.get('model'), size=size, piece=pname,
+                     category=(piece_row.get(pname) or {}).get('fabric'),
+                     cut=rec.get('cut'), copies=len(groups[(s['bundle'], s['record_index'])]),
+                     pair=pair_of.get(s['index']), declared_area=s['area'], perimeter=rec.get('perimeter'),
+                     bbox_in=(s['home_x']*2 - (b[0] + b[1]), s['home_y']*2 - (b[2] + b[3])),
+                     preset=dict(rot180=bool(s['orient_code'] & ROT180_BIT), mirror=bool(s['orient_code'] & MIRROR_BIT),
+                                 pair_bit=bool(s['orient_code'] & 0x0040),
+                                 other=s['orient_code'] & ~(ROT180_BIT | MIRROR_BIT | 0x0040)),
+                     note=note)
+        if outline:
+            xs = [p[0] for p in outline]; ys = [p[1] for p in outline]
+            entry.update(outline=outline, checks=dict(
+                bbox_dx=s['home_x']*2 - (max(xs)-min(xs)) - (b[0] + b[1]),
+                bbox_dy=s['home_y']*2 - (max(ys)-min(ys)) - (b[2] + b[3]),
+                area_ratio=_shoelace(outline) / s['area'] if s['area'] else None))
+            n_geo += 1
+        slots.append(entry)
+    # the order: per (model, size) the quantity, from section 15 (else the size table)
+    bundles = {}
+    for i, r in enumerate(mk['sizes']): bundles.setdefault((r['model'], r['size']), []).append(i)
+    if mk.get('order_copy'):
+        order_lines = [dict(model=m['name'], size=s['size'], quantity=s['quantity'], bundles=bundles.get((m['name'], s['size']), []))
+                       for m in mk['order_copy'] for s in m['sizes']]
+    else:
+        order_lines = [dict(model=k[0], size=k[1], quantity=len(v), bundles=v) for k, v in bundles.items()]
+        warnings.append('no order copy (section 15) read: order lines rebuilt from the size table')
+    n_bad = sum(1 for s in mk['slots'] if (s.get('binding') or {}).get('method') != 'structural')
+    if n_bad: warnings.append('%d of %d slots are not bound structurally' % (n_bad, len(mk['slots'])))
+    if not mk.get('laid_state_sources', {}).get('agree', True): warnings.append('laid-state sources disagree: %s' % mk['laid_state_sources'])
+    if 'other' in mk['header_sums'].values(): warnings.append('header @422/@454 sums fit no known mode: %s' % mk['header_sums'])
+    if slots and not pieces: warnings.append('no piece objects in the ZIP: no outlines, bounding boxes are the declared ones only')
+    for name in sorted(piece_errors): warnings.append('piece %r failed to decode: %s' % (name, piece_errors[name]))
+    W = mk['width']; area = sum(s['declared_area'] for s in slots)
+    by_size = Counter(s['size'] for s in slots); by_piece = Counter(s['piece'] for s in slots)
+    geo = 'n/a' if not slots else ('all' if n_geo == len(slots) else ('none' if not n_geo else 'some'))
+    return dict(
+        marker=dict(name=mk['name'], width_in=W, width_cm=W*2.54, length_in=mk['length'], laid_state=mk['laid_state'],
+                    models=list(mk['models']), fabric_types=sorted({t for p in mk['pieces'] for t in p.get('fabric_types', [])}),
+                    block_buffer_in=(mk['block_buffers'][0]['sides'] if mk.get('block_buffers') else None), geometry_available=geo),
+        order_lines=order_lines, slots=slots,
+        totals=dict(slots=len(slots), placed=len(mk['placements']), area_to_lay=area,
+                    perimeter=sum(s['perimeter'] or 0 for s in slots), min_length_in=area / W if W else None,
+                    by_size=dict(by_size), by_piece=dict(by_piece)),
+        warnings=warnings)
+
 def place_marker(path, use_grading=True):
     """Decode a marker ZIP: -> dict(marker, pieces, piece_errors, placed=[(slot,
-    piece, size, outline_in_marker_frame or None, note)])."""
+    piece, size, outline_in_marker_frame or None, note)]).
+
+    v4.2: every marker dict also carries `unplaced` (the same 5-tuples for the
+    slots nothing is laid for, outline in the piece's own frame) and
+    `inventory` (see unplaced_inventory); the result carries
+    `geometry_available` - 'none' when the ZIP holds no decodable piece for the
+    markers' slots, so a marker-only ZIP no longer reads like "all fine"."""
     objs = list_zip(path)
     if 'marker' not in objs: raise NoSuchObject('no marker object in zip', source=str(path))
     pieces, piece_errors = load_pieces(objs)
@@ -924,30 +1189,43 @@ def place_marker(path, use_grading=True):
                 placed.append((s, s['piece'], s['size'], None, note)); continue
             outline, note = piece_outline(piece, s['size'] if use_grading else None)
             placed.append((s, s['piece'], s['size'], transform(outline, s), note))
-        out.append(dict(marker=mk, placed=placed, checks=check_marker(mk)))
-    return dict(markers=out, pieces=pieces, piece_errors=piece_errors, objects=objs)
+        unplaced = unplaced_slots(mk, pieces, piece_errors, use_grading)
+        out.append(dict(marker=mk, placed=placed, unplaced=unplaced, checks=check_marker(mk),
+                        inventory=unplaced_inventory(mk, pieces, piece_errors, use_grading, geometry=unplaced)))
+    have = sum(1 for p in pieces.values() if p)
+    geo = 'none' if not have else ('all' if all(s.get('piece') in pieces and pieces[s['piece']] for m in out for s in m['marker']['slots']) else 'some')
+    return dict(markers=out, pieces=pieces, piece_errors=piece_errors, objects=objs, geometry_available=geo)
 
-def bbox_check(place_result, buffer_in=0.0):
+def bbox_check(place_result, buffer_in=0.0, which='placed'):
     """No-DXF geometry test: the slot's home centre is the bbox centre of
     the placed (graded) piece in its own frame, so home*2 == bbox + 2*buffer
-    on both axes [V dxfparser]. -> rows (piece, size, dx, dy) in inches."""
+    on both axes [V dxfparser]. -> rows (piece, size, dx, dy) in inches.
+
+    `which='unplaced'` (v4.2) runs it over the slots nothing is laid for; the
+    buffer is then the marker's OWN per-piece block buffer (section 6, zero
+    where there is none) and `buffer_in` is ignored."""
     rows = []
     for mkr in place_result['markers']:
-        for s, name, size, outline, note in mkr['placed']:
+        for s, name, size, outline, note in mkr[which]:
             if outline is None: continue
             base, _ = piece_outline(place_result['pieces'][name], size)
             xs = [p[0] for p in base]; ys = [p[1] for p in base]
             w, h = max(xs)-min(xs), max(ys)-min(ys)
-            rows.append((name, size, s['home_x']*2 - w - 2*buffer_in, s['home_y']*2 - h - 2*buffer_in))
+            if which == 'unplaced':
+                b = _buffer_sides(mkr['marker'], name)
+                rows.append((name, size, s['home_x']*2 - w - (b[0]+b[1]), s['home_y']*2 - h - (b[2]+b[3])))
+            else:
+                rows.append((name, size, s['home_x']*2 - w - 2*buffer_in, s['home_y']*2 - h - 2*buffer_in))
     return rows
 
-def area_check(place_result):
+def area_check(place_result, which='placed'):
     """Declared area (the slot's record) vs the shoelace area of our finished
-    outline at that size -> rows (piece, size, declared, ours, ratio)."""
+    outline at that size -> rows (piece, size, declared, ours, ratio).
+    `which='unplaced'` (v4.2) runs it over the slots nothing is laid for."""
     def shoelace(p): return abs(sum(p[i][0]*p[(i+1)%len(p)][1]-p[(i+1)%len(p)][0]*p[i][1] for i in range(len(p))))/2
     rows = []; seen = set()
     for mkr in place_result['markers']:
-        for s, name, size, outline, note in mkr['placed']:
+        for s, name, size, outline, note in mkr[which]:
             if outline is None or (name, size) in seen: continue
             seen.add((name, size))
             base, _ = piece_outline(place_result['pieces'][name], size)
@@ -955,12 +1233,49 @@ def area_check(place_result):
             rows.append((name, size, s['area'], a, a/s['area'] if s['area'] else None))
     return rows
 
+def inventory_report(inv, checks=()):
+    """A readable cut order for one marker (the CLI's --inventory). Ends with
+    DECODED CLEANLY, or NEEDS A LOOK plus every failing check and warning."""
+    m, t = inv['marker'], inv['totals']
+    state = {'unlaid': 'UNLAID (never laid)', 'partial': 'PARTLY LAID', 'laid': 'LAID'}[m['laid_state']]
+    lines = [f"== {m['name']} - {state} ==",
+             f"width {m['width_cm']:.1f} cm ({m['width_in']:.2f} in) | models {', '.join(m['models']) or '-'} | "
+             f"fabric types {', '.join(m['fabric_types']) or '-'} | block buffer "
+             f"{('%.4f in per side' % m['block_buffer_in'][0]) if m['block_buffer_in'] else 'none'}"]
+    n_cuts = sum(o['quantity'] for o in inv['order_lines'])
+    lines.append(f"ORDER: {n_cuts} cuts over {len(inv['order_lines'])} (model, size) lines")
+    for o in inv['order_lines']:
+        lines.append(f"   {o['model']:24} size {o['size']:>7}  x{o['quantity']}")
+    lines.append(f"TO LAY: {t['slots']} pieces ({t['placed']} already placed), area {t['area_to_lay']:.2f} sq in, "
+                 f"perimeter {t['perimeter']:.1f} in" + (f", at least {t['min_length_in']:.1f} in of fabric at 100% efficiency"
+                                                        if t['min_length_in'] else ''))
+    per = {}
+    for s in inv['slots']: per.setdefault((s['piece'], s['cut'], s['copies']), []).append(s)
+    for (piece, cut, copies), ss in per.items():
+        pair = ' (mirrored pair)' if copies == 2 and any(x['pair'] for x in ss) else ''
+        lines.append(f"   {piece}  [{ss[0]['category']}]  {cut}{pair}: {len(ss)} slots over {len({x['size'] for x in ss})} sizes")
+    pre = Counter((s['preset']['rot180'], s['preset']['mirror']) for s in inv['slots'])
+    if pre: lines.append("PRE-SET lay pattern (reported, not placements): " +
+                         ', '.join(f"{'rot180' if r else 'rot0'}{'+mirror' if mi else ''} x{n}" for (r, mi), n in sorted(pre.items())))
+    geo = m['geometry_available']
+    lines.append('GEOMETRY: ' + {'all': 'outlines for every slot', 'some': 'outlines for SOME slots', 'none': 'none - the ZIP holds no piece objects for these slots (declared areas / boxes only)',
+                                 'n/a': 'n/a - nothing left to lay'}[geo])
+    bad = [f'check failed: {n} ({d})' for n, ok, d in checks if not ok]
+    notes = [w for w in inv['warnings'] if not w.startswith('no piece objects')]
+    lines.append('DECODED CLEANLY' if not bad and not notes else 'NEEDS A LOOK:' + ''.join('\n   ' + x for x in bad + notes))
+    return '\n'.join(lines)
+
 if __name__ == '__main__':
-    import sys
-    for path in sys.argv[1:]:
+    import json, sys
+    args = [a for a in sys.argv[1:] if not a.startswith('--')]; flags = {a for a in sys.argv[1:] if a.startswith('--')}
+    for path in args:
         res = place_marker(path)
         for mkr in res['markers']:
             mk = mkr['marker']
+            if '--inventory' in flags:
+                print(json.dumps(mkr['inventory'], default=str, indent=1) if '--json' in flags
+                      else inventory_report(mkr['inventory'], mkr['checks']))
+                continue
             print(f"{mk['name']}: W {mk['width']*2.54:.2f} cm  L {mk['length']*2.54:.2f} cm  U {mk['util']:.2f}%  "
                   f"{'laid' if mk['laid'] else 'UNLAID'}  {len(mk['placements'])} placements, {len(mk['bundles'])} bundles, "
                   f"{len(mk['records'])} records, {len(mk['pieces'])} pieces listed")

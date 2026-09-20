@@ -771,6 +771,109 @@ for folder, zname, want, dxf in MK:
         print(f"   {'ok ' if not bad else 'FAIL'} {f['name']:30} {'; '.join(bad) if bad else 'as expected'}")
         if bad: fails.append(f"{f['name']}: " + '; '.join(bad))
 
+print('-- marker model list / size table / trailer stamps (v4, see CHANGELOG.md)')
+# markers/1825D-SS21-UNLAID is a foreign-origin sample: AccuMark "version 9
+# data" exported 2020-10-16 by another user (kids' sizes 2-3 .. 11-12, two
+# UNLAID markers, no piece/model/order objects). Its hyphenated sizes and the
+# 0-flag size rows exposed that the old regex reader found no sizes, the old
+# length-after reader found no model, and read_object's created/modified were
+# unaligned-scan junk. The corpus rows pin the same three fixes on markers
+# the old readers half-handled (2303: 3 of 11 models dropped; AD1234 and
+# LADIES-BLOUSE: no sizes at all; every single-model marker: no model).
+import datetime, struct
+def _utc(*a): return int(datetime.datetime(*a, tzinfo=datetime.timezone.utc).timestamp())
+SZ_1825D = ['2-3', '3-4', '4-5', '5-6', '6-7', '7-8', '8-9', '9-10', '11-12']
+CUT_1825D = {'1825D IGUS 061020': 'CUT X 01', '1825D FROT 061020': 'CUT X 01',
+             '1825D OGUS 061020': 'CUT X 01', '1825D BACK 061020': 'CUT X01'}
+def _mk(parts, name):
+    path = os.path.join(HERE, 'markers', *parts)
+    if not os.path.isfile(path): return None
+    o = next(o for o in am.list_zip(path)['marker'] if o['name'] == name)
+    return o, am.parse_marker(o['data'])
+V4_MARKERS = [  # zip path under markers/, marker name, {fact: want}
+ (('1825D-SS21-UNLAID', '1825D-BD 180 SS21.zip'), '1825D-GT 168 SS21',
+  dict(models=['CON2-1825D'], sizes=SZ_1825D, slots=9, records=9, pieces=1, width_cm=168.0,
+       created=_utc(2020, 10, 16, 6, 16, 15), modified=_utc(2020, 10, 16, 6, 16, 15))),
+ (('1825D-SS21-UNLAID', '1825D-BD 180 SS21.zip'), '1825D-BD 180 SS21',
+  dict(models=['CON2-1825D'], sizes=SZ_1825D, slots=27, records=27, pieces=3, width_cm=180.0,
+       created=_utc(2020, 10, 16, 6, 11, 35), modified=_utc(2020, 10, 16, 6, 11, 35))),
+ (('2303-BD137-UNLAID', '2303-BD 137.zip'), '2303-BD 137',      # 8 of 11 models before; the missing 3 were B1 7, OUCF DD, OUCF E
+  dict(n_models=11, last_model='2303 OUCF E', n_sizes=61, slots=97,
+       created=_utc(2026, 9, 8, 16, 29, 51), modified=_utc(2026, 9, 8, 16, 29, 51))),
+ (('2303-CP150-JULY', '2303-CP 150 CPL.zip'), '2303-CP 150 CPL LEFTBTM 26-47',   # 9 of 11 before
+  dict(n_models=11, last_model='2303 MOCUP B1 11', n_sizes=36, slots=72,
+       created=_utc(2026, 7, 29, 14, 4, 33), modified=_utc(2026, 7, 29, 14, 4, 33))),
+ (('misc-test-markers', 'AD1234 TEST 134.zip'), 'AD1234 TEST 134',                 # no sizes before
+  dict(models=['ID1005 - TOP'], sizes=['XS', 'XS', 'S', 'S', 'S', 'S', 'M', 'M', 'M', 'M', 'L', 'L', 'XL'], slots=13)),
+ (('misc-test-markers', 'LADIES-BLOUSE TEST-2.zip'), 'LADIES-BLOUSE TEST-2',       # no sizes before
+  dict(models=['LADIES-BLOUSE'], sizes=['10', '12', '12', '14', '14', '16'], slots=54)),
+ (('CLAUDE-GRADE-MARKER', 'CLAUDE-GRADE-MARKER.zip'), 'CLAUDE-GRADE-MARKER',       # single-model markers: no model before
+  dict(models=['CLAUDE-GRADE-MODEL'], sizes=['2', '18'], slots=2)),
+ (('CAP-C21-SEC14', 'CAP-C21-SEC14.zip'), 'CAP-C21-SEC14',
+  dict(models=['CAP-C21-MODEL'], sizes=['2', '18'], slots=2,
+       created=_utc(2026, 9, 10, 19, 32, 53), modified=_utc(2026, 9, 10, 19, 48, 3))),
+]
+for parts, name, want in V4_MARKERS:
+    got = _mk(parts, name)
+    if got is None:
+        print(f'   --  {name:30} (absent)'); continue
+    o, mk = got
+    have = dict(models=mk['models'], n_models=len(mk['models']), last_model=(mk['models'] or [None])[-1],
+                sizes=[r['size'] for r in mk['sizes']] if 'sizes' in want else None, n_sizes=len(mk['sizes']),
+                slots=len(mk['slots']), records=len(mk['records']), pieces=len(mk['pieces']),
+                width_cm=round(mk['width']*2.54, 2), created=o['created'], modified=o['modified'])
+    bad = [f'{k}={have[k]!r}!={v!r}' for k, v in want.items() if have[k] != v]
+    # the identities check_marker now enforces: tables tile sections 11-12, size rows tile the slot table
+    bad += [f'check failed: {n}' for n, ok, _ in am.check_marker(mk) if not ok and (n.startswith('model list') or n.startswith('size table'))]
+    if name.startswith('1825D'):
+        recs = mk['records']
+        if any(r['size'] not in SZ_1825D for r in recs): bad.append('a record size is not a real size name')
+        if any(r['cut'] != CUT_1825D[r['piece']] for r in recs): bad.append('a record cut description is wrong')
+        if any(s['size'] not in SZ_1825D for s in mk['slots']): bad.append('a slot is bound to a wrong size')
+        if abs(mk['total_area'] - sum(r['area'] for r in recs)) > 1e-9: bad.append('@422 != sum(record areas)')
+        if abs(mk['unknown_454'] - sum(r['perimeter'] for r in recs)) > 1e-9: bad.append('@454 != sum(record perimeters)')
+        if mk['laid'] or mk['placements']: bad.append('an unlaid marker was read as laid')
+    print(f"   {'ok ' if not bad else 'FAIL'} {name:30} {'; '.join(bad) if bad else 'as expected'}")
+    if bad: fails.append(f'{name}: ' + '; '.join(bad))
+# library tables copied between storage areas: created can be LATER than modified
+# (M-MARKER: 2023 vs 2013), and the notch table's 2004 creation date is outside
+# the old 2014-2039 window - both must be reported exactly as stored
+cp_zip = os.path.join(HERE, 'markers', '2303-CP150-JULY', '2303-CP 150 CPL.zip')
+if os.path.isfile(cp_zip):
+    ob = am.list_zip(cp_zip)
+    lib = {o['name']: (o['created'], o['modified']) for k in ('annotation', 'notch_table') for o in ob.get(k, [])}
+    want_lib = {'M-MARKER': (1674111116, 1383724864), 'V-NOTCH-ALL CUSTOMERS': (1073574632, 1746183410)}
+    bad = [f'{k}={lib.get(k)}!={v}' for k, v in want_lib.items() if lib.get(k) != v]
+    print(f"   {'ok ' if not bad else 'FAIL'} library-table stamps (2004 / 2013 / 2023) reported as stored  {'; '.join(bad) if bad else ''}")
+    if bad: fails.append('library-table stamps: ' + '; '.join(bad))
+# every object in every fixture ZIP carries both stamps (153 objects; the old
+# scan returned junk on ~89% of them, so a regression here is loud)
+n_obj = n_missing = 0
+for zp in glob.glob(os.path.join(HERE, 'markers', '**', '*.zip'), recursive=True):
+    for kind, lst in am.list_zip(zp).items():
+        if isinstance(lst, list) and lst and isinstance(lst[0], dict) and 'kind' in lst[0]:
+            for ob_ in lst:
+                n_obj += 1; n_missing += (ob_['created'] is None or ob_['modified'] is None)
+print(f"   {'ok ' if n_obj and not n_missing else 'FAIL'} {n_obj} fixture objects, {n_missing} missing a created/modified stamp")
+if not n_obj or n_missing: fails.append('fixture objects with a missing stamp: %d/%d' % (n_missing, n_obj))
+# read_object: stamps outside the plausibility window (zero / sentinel) -> None
+src = _mk(('1825D-SS21-UNLAID', '1825D-BD 180 SS21.zip'), '1825D-GT 168 SS21')
+if src:
+    d = bytearray(src[0]['data']); t0 = len(d) - am.TRAILER
+    struct.pack_into('<I', d, t0 + am.TRAILER_CREATED, 0); struct.pack_into('<I', d, t0 + am.TRAILER_MODIFIED, 0xffffffff)
+    r = am.read_object(bytes(d))
+    ok = r['created'] is None and r['modified'] is None
+    print(f"   {'ok ' if ok else 'FAIL'} zero / sentinel stamps read back as None")
+    if not ok: fails.append('read_object: implausible stamps not rejected')
+    # the table walkers must stay in bounds on truncated / junk input
+    junk = bytes(range(256)) * 4; raised = []
+    for fn in (am.parse_model_list, am.parse_sizes_section):
+        for lo, hi in ((0, 10), (3, 10**6), (len(junk)+50, len(junk)+80), (600, 200)):
+            try: fn(junk, lo, hi)
+            except Exception as e: raised.append(f'{fn.__name__}({lo},{hi}): {type(e).__name__}')
+    print(f"   {'ok ' if not raised else 'FAIL'} table walkers stay in bounds on junk / truncated input")
+    if raised: fails.append('table walkers raised: ' + '; '.join(raised))
+
 print('-- coverage (informational only - see accumark_pds.coverage();'
       ' 0 unknown_bytes everywhere is the Phase D sign-off target, not'
       ' enforced here yet)')

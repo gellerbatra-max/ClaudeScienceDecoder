@@ -1,5 +1,118 @@
 # Changelog
 
+## v4.0 (2026-09-21) - first foreign-origin marker: model list, size table and trailer stamps fixed
+
+v4 is the label for this round's decoder-improvement documentation only:
+`__version__` in `accumark_pds.py` / `accumark_marker.py` (and the assertion in
+`selftest.py`) deliberately stays `'3.0'`.
+
+**Trigger.** The first marker from outside this project's own AccuMark
+install: `1825D-BD 180 SS21.zip`, added as `markers/1825D-SS21-UNLAID/`
+(byte-identical copy, 22,297 bytes). It holds two UNLAID kids' markers -
+`1825D-GT 168 SS21` (168 cm, 1 piece x 9 sizes) and `1825D-BD 180 SS21` (180
+cm, 3 pieces x 9 sizes; sizes `2-3` ... `11-12`, model `CON2-1825D`) -
+exported 2020-10-16 by another user (`raveenl`; its own `comments.txt` says
+"version 9 data"), with no piece, model or order objects, so it carries no
+geometry to reconstruct. Run unmodified, the decoder opened it without error
+and read the header, all 36 piece/size records and all 36 slots correctly (the
+header's total area and `@454` equal the sums over the records to 1e-13), but
+returned `models=[]`, `sizes=[]`, a wrong size and cut description on every
+record (`3` / `CUT X 012-` for `2-3` / `CUT X 01`) and 2024 / 2022 for the
+trailer's created / modified stamps. Chasing those turned up three defects,
+and the model-list one had been silently wrong on production data all along.
+
+- **Size table (section 12) was never read correctly.** `parse_sizes_section`
+  was a regex (names shaped `\d{1,2}[A-Z]{0,3}`, delimited by `ff ff 00 00`)
+  that took the fields AFTER each name. The table is a chain of rows, each a
+  14-byte descriptor followed by its name:
+  `<u16 name length><u16 model index, 0-based><u16 pieces><u32 first slot>
+  <u32 flags><name>`. So (a) any name outside the old shape was invisible -
+  `2-3`, `11-12`, `XS`, `M`, `XL` - and AD1234 TEST 134 (13 rows),
+  LADIES-BLOUSE TEST-2 (6) and both 1825D markers (9 each) returned no sizes at
+  all; (b) rows whose flag word is 0 rather than `ff ff 00 00` had no
+  delimiter; (c) every row carried its successor's fields, which is why `f0`
+  (the long-open `[?]` in `MARKER_DECODE_PLAN.md`) looked unexplained - it is
+  the name length, seen one row early - and why the model index looked
+  1-based. Verified on all 15 distinct corpus markers (both vintages, 1-11
+  models, 2-61 rows): the walk from `directory[12] - 6` ends exactly at
+  `directory[13] - 6`; `sum(pieces) == len(slots)` (97 x2, 72 x4, 2 x4, 3, 13,
+  54, 9, 27); each `first slot` is the running sum of `pieces` from 0; model
+  indices are non-decreasing and index the model list; and the size names are
+  identical to the old regex's on the 11 markers it could read.
+- **Model list (section 11) dropped models.** `parse_marker` took models from
+  `_len_after_strings` ("the u16 after a name equals its length"). The list is
+  `<u16 length><name>` - length BEFORE - which passes that test only when the
+  next name happens to have the same length. It dropped `2303 MOCUP B1 7`,
+  `2303 OUCF DD` and `2303 OUCF E` (8 of 11) on 2303-BD 137, `2303 MOCUP B1 9`
+  and `B1 11` (9 of 11) on the four CP 150 markers, and returned nothing at all
+  for 9 of the 15 markers (every single-model one). New `parse_model_list`
+  walks the chain from `directory[11] - 6`; it closes exactly at the size
+  table's first row on 15/15, and on the 2303 markers all 11 names are the
+  model objects bundled in the same ZIP. `_len_after_strings` is removed.
+- **`created` / `modified` were junk on ~89% of objects.** `read_object`
+  slid a 4-byte window over the whole 396-byte trailer at every offset and
+  kept the first two values that looked like 2014-2039 Unix times (`66 00 00
+  00` / `62 00 00 00` read as 2024 / 2022). It agreed with the real fields on
+  30 of 269 objects (11.2%) in the repo's 103 zips. The stamps are aligned
+  `u32`s at trailer +0xF4 / +0xF8 (`TRAILER_CREATED` / `TRAILER_MODIFIED`):
+  all 269 objects (piece 159, model 38, rule table 26, marker 16, order 7, lay
+  limits 7, notch table 8, annotation 7, block buffer 1) carry a real date
+  there - 267 inside the old 2014-2039 window, the other two shared library
+  tables (real stamps 2004-01-08 and 2013-11-06) just outside it, so the
+  plausibility window is now 1980-2040 - with created <= modified on 268. The
+  exception is the M-MARKER annotation table in the CP 150 zip (created
+  2023-01-19, modified 2013-11-06), reported as stored. Independent check: the
+  1825D stamps (06:16:15 GT and 06:11:35 BD UTC, 2020-10-16) sit 5 h 30 m and
+  5 h 35 m before the ZIP members' local time (11:46:32), in line with the
+  ~5.5 h export lag `FORMAT_SPEC.md` section 7 measured on this project's own
+  exports.
+- **Record split falls back to the marker's own sizes.** When a piece's size
+  table is not supplied (its piece object is not in the ZIP) `parse_marker` now
+  splits the `<piece><cut><size>G` record text against the marker's size
+  table instead of by pattern; the pattern cannot tell `CUT X 01` + `2-3` from
+  `CUT X 012-` + `3`. 0/36 records on the 1825D markers had a real size
+  before, 36/36 now, with one cut description per piece (`CUT X 01` for
+  FROT / OGUS / IGUS, `CUT X01` for BACK). No other fixture's split changed.
+
+**Added.** `check_marker` gained two identities (only when a size table was
+read): "model list + size table tile sections 11-12" and "size table:
+sum(pieces) == slots, ordinals cumulative, model index in range" - both hold
+on 15/15, so a marker with a layout this reader has not seen now says so
+instead of being silently mis-read. `mk['sizes']` rows are now `size`,
+`model_index` (0-based), `n` (pieces = slots the row owns), `ordinal` (index of
+its first slot), `flags`, and `model` (the name `model_index` points at);
+`f0` is gone. `mk['table_ends']` records where each walk stopped. The CLI
+(`python accumark_marker.py <zip>`) prints models and sizes, and for an
+unlaid marker the first 8 records, which it used to omit entirely.
+
+**Verification.** Old-vs-new field diff over every marker zip in the repo (12
+zips, 16 markers, from a copy of the v3.0 modules): models changed on all 16
+as strict supersets, none lost; size names changed only where the old reader
+returned nothing (4 markers); record text / area / perimeter never changed;
+the piece / cut / size split changed only on the 36 1825D records;
+placements, placed outlines and every pre-existing check identical; the 32
+new checks all pass. `python selftest.py` PASS (12 new v4 checks; the new
+section fails on the v3.0 decoder, and re-breaking each of the three fixes
+separately fails the matching checks), `python dataset_test.py` 36/36,
+`python robustness/run.py` (full) 303/303, quick matrix 84/84.
+
+**Observed, not changed.** (1) `users` is still the old token scan of the
+trailer and includes fragments of the object's own name (`GT`, `SS21`); the
+object's name itself sits at trailer +0x8A (269/269 objects) and two user-name
+strings at +0x110 / +0x162 (equal on 252 of 269; both empty on 41, mostly
+rule tables; `MSI`, `sachithraper`, `DilshiniS`, `raveenl` ... in this
+corpus). (2) The
+size-row `flags` word is `0xffff` on 12 of the 15 markers and 0 on
+LADIES-BLOUSE and both 1825D markers - meaning unexplained. (3) `@422` is the
+sum of ALL slots' declared areas on 14 of 15 markers (equal to W x L x U / 100
+only when every slot is placed - this resolves the "holds something else on
+the July markers" `[?]` in `check_marker`; the exception is the 2303-BD 137
+unlaid export, 6.27, stale). `@454` equals the sum of all slots' record
+perimeters on 8 of 15 (1825D x2, CLAUDE-QTY-TEST, CAP-C21-SEC14, the three
+CLAUDE-GRADE markers, AD1234) but not on 2303-BD 137 (19.5158), the CP 150
+markers (104.04) or LADIES-BLOUSE (exactly 2x there) - still unexplained in
+general.
+
 ## v3.0 (2026-09-12 to 2026-09-13) - exact kind-2 seam model and structured survey
 
 - Resolved the provisional internal-list names by native-to-ASTM geometry:

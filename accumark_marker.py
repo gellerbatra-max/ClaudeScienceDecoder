@@ -12,6 +12,14 @@ instead of returning a plausible-looking dict built from wrapped-around bytes;
 list_zip() reads each ZIP member by position (ZipInfo) rather than by name, so
 members that happen to share a name no longer alias to the same object.
 
+v4 (see CHANGELOG.md; documentation label only, __version__ stays 3.0): the
+model list and size table (sections 11-12) are read as the length-prefixed
+chain they are (parse_model_list / parse_sizes_section) instead of by regex, so
+no model or size is dropped and hyphenated / lettered size names work;
+parse_marker falls back to the marker's OWN size table to split record texts
+when the pieces are not in the ZIP; read_object reads created/modified from
+their fixed trailer offsets instead of scanning for plausible-looking integers.
+
     import accumark_marker as am
     objs = am.list_zip('2303-BD 137 PLACED.zip')          # every object, typed
     mk   = am.parse_marker(objs['marker'][0]['data'])       # header + placements
@@ -29,11 +37,23 @@ def f64(d, o): return struct.unpack_from('<d', d, o)[0]
 __version__ = '3.0'
 MAGIC = b'XGGT IXPORT DB5.'
 TRAILER = 396
+# The trailer's created / modified Unix stamps are aligned u32s at these
+# offsets INTO the 396-byte trailer [V: 267 of 269 objects in 103 zips, every
+# object type and both export vintages, decode to a real date with created <=
+# modified; the other two are library tables whose stamps (2004, 2013) fall
+# outside the old 2014-2039 window]. STAMP_LO/HI is only a plausibility window
+# (1980-01-01 .. 2040-01-01) that rejects zeros and sentinels.
+TRAILER_CREATED, TRAILER_MODIFIED = 0xf4, 0xf8
+STAMP_LO, STAMP_HI = 315_532_800, 2_208_988_800
 OBJECT_TYPES = {20: 'piece', 12: 'model', 13: 'order', 9: 'marker',
                 10: 'marker_geometry', 2: 'annotation', 3: 'block_buffer',
                 6: 'lay_limits', 17: 'notch_table', 23: 'rule_table'}
 
 # ------------------------------------------------------------ envelope
+def _stamp(tr, off):
+    t = u32(tr, off)
+    return t if STAMP_LO <= t < STAMP_HI else None
+
 def read_object(d):
     """Envelope shared by every object type and both export vintages [V]:
     name at 0x15, type u16 at 0x7a (the u32 copy is at 0x60 or 0x68
@@ -51,7 +71,19 @@ def read_object(d):
     marker truncated to ~120-200 bytes used to return a plausible-looking
     dict where d[-TRAILER:] covered the *entire* short buffer (header
     included) instead of a real, distinct trailer region - guard against
-    that by requiring the buffer be at least TRAILER bytes on its own."""
+    that by requiring the buffer be at least TRAILER bytes on its own.
+
+    v4: `created` / `modified` are the aligned u32s at trailer +0xF4 / +0xF8
+    (TRAILER_CREATED / TRAILER_MODIFIED), or None when outside the
+    STAMP_LO..STAMP_HI plausibility window. They used to be the first two
+    values found by sliding a 4-byte window over the whole trailer at EVERY
+    byte offset, which matched unaligned junk (the byte runs `66 00 00 00` /
+    `62 00 00 00` read as 2024 / 2022 stamps) and agreed with the real fields
+    on only 30 of the 269 corpus objects. On library tables copied between
+    storage areas `created` can be later than `modified` (M-MARKER: 2023 vs
+    2013) - both are reported as stored. `users` is still the old token scan
+    of the trailer and includes fragments of the object's own name (the real
+    creator / modifier strings sit at +0x110 / +0x162); left unchanged."""
     if not d.startswith(MAGIC): raise NotAnAccuMarkObject('not an AccuMark IXPORT object')
     if len(d) < 0x82:
         raise TruncatedObject('object too short to hold a header', declared=0x82, actual=len(d))
@@ -66,13 +98,10 @@ def read_object(d):
         raise TruncatedObject('object shorter than its own trailer region',
                                source=name, declared=TRAILER, actual=len(d))
     tr = d[-TRAILER:]
-    stamps = [u32(tr, o) for o in range(0, len(tr)-4)
-              if 1_400_000_000 < u32(tr, o) < 2_200_000_000]
     users = [m.group().decode('latin1') for m in re.finditer(rb'[A-Za-z][A-Za-z0-9]{1,30}', tr)]
     return dict(name=name, type=t, kind=OBJECT_TYPES.get(t, 'unknown_%d' % t),
                 payload_len=plen, size=len(d), payload=d[0x80:0x80+plen],
-                created=stamps[0] if stamps else None,
-                modified=stamps[1] if len(stamps) > 1 else None,
+                created=_stamp(tr, TRAILER_CREATED), modified=_stamp(tr, TRAILER_MODIFIED),
                 users=users, data=d)
 
 def list_zip(path):
@@ -107,19 +136,6 @@ def list_zip(path):
     dupes = [n for n, c in seen_names.items() if c > 1]
     if dupes: out['duplicate_member_names'] = dupes
     if obj_errors: out['object_errors'] = obj_errors
-    return out
-
-# -------------------------------------------------------------- strings
-def _len_after_strings(d, lo, hi, minlen=3):
-    """Strings stored as <chars><u16 len> (the marker's model and size lists
-    write the length AFTER the text). Returns [(offset, text)]."""
-    out = []
-    for m in re.finditer(rb'[\x20-\x7e]{%d,}' % minlen, d[lo:hi]):
-        s = m.group(); o = lo + m.start()
-        # the run may glue several strings together (`...B1 1\x0f\x00` breaks
-        # them, so usually not) - accept when the u16 after it equals its length
-        if o+len(s)+2 <= hi and u16(d, o+len(s)) == len(s):
-            out.append((o, s.decode('latin1')))
     return out
 
 # --------------------------------------------------------------- marker
@@ -238,19 +254,77 @@ def parse_pieces_section(d, lo, hi):
                         raw=d[o-24:o].hex()))
     return out
 
+def _printable(b):
+    return all(32 <= c < 127 for c in b)
+
+SIZE_HDR = 14
+
+def _walk_model_list(d, lo, hi):
+    """-> ([model name, ...], offset where the walk ended). `lo`/`hi` are
+    section 11's directory span; the chain starts 6 bytes before `lo` (the
+    directory offset lands 4 bytes into the first name, 6 past its length)."""
+    out = []; pos = lo - 6; stop = min(hi - 6, len(d))
+    if pos < 0: return out, pos
+    while pos + 2 <= stop:
+        n = u16(d, pos)
+        if n < 1 or pos + 2 + n > stop or not _printable(d[pos+2:pos+2+n]): break
+        out.append(d[pos+2:pos+2+n].decode('latin1')); pos += 2 + n
+    return out, pos
+
+def parse_model_list(d, lo, hi):
+    """Section 11: the marker's model list, `<u16 length><name>` per model, in
+    the order section 12's `model_index` indexes (0-based) [V: 15 of 15 corpus
+    markers - the chain closes exactly where the size table's first row
+    starts, and on the 2303 markers every name is a model object bundled in
+    the same ZIP].
+
+    v4: replaces a reading that took the u16 to be a length AFTER the text
+    (`<chars><u16 len>`). That only works while consecutive names happen to
+    have equal lengths, so it dropped 3 of the 11 models on 2303-BD 137 and 2
+    of 11 on the CP 150 markers, and returned NOTHING on every single-model
+    marker (the u16 after the only name is not a length)."""
+    return _walk_model_list(d, lo, hi)[0]
+
+def _walk_size_table(d, lo, hi):
+    """-> ([row, ...], offset where the walk ended); see parse_sizes_section."""
+    out = []; pos = lo - 6; stop = min(hi - 6, len(d))
+    if pos < 0: return out, pos
+    while pos + SIZE_HDR <= stop:
+        n = u16(d, pos); name = d[pos+SIZE_HDR:pos+SIZE_HDR+n]
+        if n < 1 or pos + SIZE_HDR + n > stop or not _printable(name): break
+        out.append(dict(size=name.decode('latin1'), model_index=u16(d, pos+2), n=u16(d, pos+4),
+                        ordinal=u32(d, pos+6), flags=u32(d, pos+10)))
+        pos += SIZE_HDR + n
+    return out, pos
+
 def parse_sizes_section(d, lo, hi):
-    """Section 12: one row per (model, size) the order requests, each
-    `<size name><u16 f0><u16 model index, 1-based><u16 pieces in model>
-    <u32 ordinal><ffff><0000>` [V for model index / pieces / ordinal on
-    2303-BD 137: 59 rows = the order's 59 (model,size) lines]. The name is
-    delimited by the `ff ff 00 00` that ends the previous row; `f0` takes
-    1/3/4 and is not the string length [?]."""
-    out = []
-    for m in re.finditer(rb'(?:^|\xff\xff\x00\x00)(\d{1,2}[A-Z]{0,3})(?=[\x00-\x1f])', d[lo:hi]):
-        o = lo + m.start(1); s = m.group(1).decode('latin1'); p = o+len(s)
-        out.append(dict(size=s, f0=u16(d, p), model_index=u16(d, p+2), n=u16(d, p+4),
-                        ordinal=u32(d, p+6)))
-    return out
+    """Section 12: the size table, one row per (model, size) line of the
+    order. Each row is a 14-byte descriptor followed by its name [V: 15 of 15
+    corpus markers, both export vintages]:
+
+        <u16 name length> <u16 model index (0-based, into the model list)>
+        <u16 pieces> <u32 first slot> <u32 flags> <size name>
+
+    `pieces` is how many section-21 placement slots the row owns and `first
+    slot` the index of the first of them, so the rows tile the slot table:
+    sum(pieces) == len(slots) and first slot == running sum of pieces, on
+    every marker checked (97/97 on 2303-BD 137, 72/72 on the CP 150 markers,
+    27/27 on 1825D-BD 180). `flags` is 0xffff on the 2303 / CLAUDE / AD1234
+    markers and 0 on LADIES-BLOUSE and the 1825D samples [?]. The directory
+    offset lands on the `first slot` field, 6 bytes into the first
+    descriptor, and the table ends exactly 6 bytes before section 13's offset
+    (where that section's u32 array starts), hence the walk from lo - 6.
+
+    v4: replaces a regex that (a) only knew names shaped like
+    `\\d{1,2}[A-Z]{0,3}`, so `2-3`, `11-12`, `XS`, `M`, `XL` were never found
+    (AD1234, LADIES-BLOUSE and both 1825D markers returned no sizes at all),
+    and (b) read the fields AFTER each name, i.e. the NEXT row's descriptor.
+    That is why `f0` looked like an unexplained 1/3/4 - read after a name it
+    is the next name's length; it is simply each row's own name length - and
+    why the model index looked 1-based (it was the following row's 0-based
+    index). Size names are unchanged on every marker the old regex could
+    read."""
+    return _walk_size_table(d, lo, hi)[0]
 
 def parse_slots(d, lo, hi):
     """Section 21: contiguous 96-byte placement slots [V] (dxfparser layout)."""
@@ -266,7 +340,9 @@ def parse_slots(d, lo, hi):
 def parse_marker(d, size_vocab=None):
     """Everything readable in a marker object. `size_vocab` = {piece name:
     [size names]} from the piece objects of the same ZIP, used to split the
-    record strings; without it the size is taken by pattern."""
+    record strings; a piece it does not cover is split against the marker's
+    own size table (v4), and only a marker with neither falls back to a
+    pattern."""
     obj = read_object(d)
     if obj['type'] != 9: raise WrongObjectType('not a marker object', got=obj['type'], want=9)
     dirs = directory(d)
@@ -277,12 +353,16 @@ def parse_marker(d, size_vocab=None):
     mk['laid'] = mk['length'] > 0 and mk['util'] > 0
     mk['piece_names'] = declared_piece_names(d)
     mk['pieces'] = parse_pieces_section(d, *sec[SEC_PIECES]) if sec[SEC_PIECES] else []
-    # the directory's model-list offset lands 4 bytes into the first name on
-    # both vintages [V]; the piece-list strings before it end in `01 00 41`
-    # and cannot pass the length-after test, so widening the window is safe
-    mk['models'] = ([s for _, s in _len_after_strings(d, sec[SEC_MODELS][0]-48, sec[SEC_MODELS][1])]
-                    if sec[SEC_MODELS] else [])
-    mk['sizes'] = parse_sizes_section(d, *sec[SEC_SIZES]) if sec[SEC_SIZES] else []
+    # v4: sections 11 and 12 are one length-prefixed chain - see
+    # parse_model_list / parse_sizes_section. table_ends = (where each walk
+    # stopped, where the directory says it must) for check_marker.
+    models, m_end = _walk_model_list(d, *sec[SEC_MODELS]) if sec[SEC_MODELS] else ([], None)
+    sizes, s_end = _walk_size_table(d, *sec[SEC_SIZES]) if sec[SEC_SIZES] else ([], None)
+    mk['models'], mk['sizes'] = models, sizes
+    for r in mk['sizes']:
+        r['model'] = mk['models'][r['model_index']] if r['model_index'] < len(mk['models']) else None
+    mk['table_ends'] = (dict(models=(m_end, sec[SEC_SIZES][0]-6), sizes=(s_end, sec[SEC_SIZES][1]-6))
+                        if sec[SEC_MODELS] and sec[SEC_SIZES] else None)
     mk['records'] = piece_records(d, *sec[SEC_RECORDS]) if sec[SEC_RECORDS] else []
     # section 13: u32 cumulative byte offsets of the section-14 records; the
     # array starts 6 bytes before the directory offset [?] (66 values for 66
@@ -303,8 +383,13 @@ def parse_marker(d, size_vocab=None):
         # them here so a slot binding to this record (by area) doesn't KeyError
         r['cut'] = None; r['size'] = None
         if name: by_piece.setdefault(name, []).append(r)
+    # v4: a piece whose own size table is not in `size_vocab` (its piece object
+    # is not in the ZIP) is split against the marker's OWN size names instead
+    # of by pattern - the pattern cannot tell `CUT X 01` + `2-3` from
+    # `CUT X 012-` + `3` (both 1825D markers came out 0/36 right before)
+    own_vocab = list(dict.fromkeys(r['size'] for r in mk['sizes']))
     for name, recs in by_piece.items():
-        vocab = (size_vocab or {}).get(name) or []
+        vocab = (size_vocab or {}).get(name) or own_vocab
         res = sizes_for_piece([r['text'] for r in recs], name, vocab) if vocab else {}
         for r in recs:
             desc, size = res.get(r['text']) or split_record(r['text'], [name], vocab)[1:]
@@ -337,8 +422,11 @@ def check_marker(mk):
     W, L, U, A = mk['width'], mk['length'], mk['util'], mk['total_area']
     if mk['laid']:
         # W*L*U/100 == sum of the placed slots' declared areas held on both
-        # vintages; the double at 422 equals it on the 2026-09 export but
-        # holds something else on the 2026-07 one [?], so it is reported, not asserted
+        # vintages. The double at 422 is the sum of ALL slots' declared areas
+        # (14 of 15 corpus markers, v4), so it equals the placed sum only when
+        # every slot is placed - which is why it differed on the July markers
+        # (1 of 72 placed). Reported, not asserted: the 2303-BD 137 unlaid
+        # export, a marker that had been laid, holds a stale value there.
         out.append(('sum(slot areas) == W*L*U', abs(mk['sum_slot_areas'] - W*L*U/100) < 1e-2,
                     f'{mk["sum_slot_areas"]:.4f} vs {W*L*U/100:.4f}; @422={A:.4f}'))
         inside = all(0 <= p['y'] <= W and 0 <= p['x'] <= L for p in mk['placements'])
@@ -351,6 +439,21 @@ def check_marker(mk):
                 f'{sorted(placed_names - listed)}' if placed_names - listed else 'ok'))
     out.append(('slot count == directory span', len(mk['slots'])*SLOT ==
                 (mk['sections'][SEC_SLOTS][1]-mk['sections'][SEC_SLOTS][0]) if mk['sections'][SEC_SLOTS] else True, ''))
+    # v4: the model list and size table must tile sections 11-12 exactly, and
+    # the size rows must tile the slot table (both hold on all 15 corpus
+    # markers; a failure means a layout this reader has not seen)
+    te = mk.get('table_ends')
+    if te:
+        out.append(('model list + size table tile sections 11-12', all(a == b for a, b in te.values()),
+                    ', '.join('%s end %s want %s' % (k, hex(a), hex(b)) for k, (a, b) in te.items())))
+    if mk['sizes']:
+        run = 0; cumulative = True
+        for r in mk['sizes']:
+            cumulative = cumulative and r['ordinal'] == run; run += r['n']
+        in_range = all(r['model_index'] < len(mk['models']) for r in mk['sizes'])
+        out.append(('size table: sum(pieces) == slots, ordinals cumulative, model index in range',
+                    run == len(mk['slots']) and cumulative and in_range,
+                    f'{run} pieces vs {len(mk["slots"])} slots, {len(mk["sizes"])} rows'))
     return out
 
 # ------------------------------------------------ type-10 object (research)
@@ -665,8 +768,12 @@ if __name__ == '__main__':
             print(f"{mk['name']}: W {mk['width']*2.54:.2f} cm  L {mk['length']*2.54:.2f} cm  U {mk['util']:.2f}%  "
                   f"{'laid' if mk['laid'] else 'UNLAID'}  {len(mk['placements'])} placements, {len(mk['bundles'])} bundles, "
                   f"{len(mk['records'])} records, {len(mk['pieces'])} pieces listed")
+            print(f"   models: {', '.join(mk['models']) or '-'} | sizes: {', '.join(dict.fromkeys(r['size'] for r in mk['sizes'])) or '-'}")
             for name, ok, detail in mkr['checks']:
                 print(f"   {'ok ' if ok else 'BAD'} {name}: {detail}")
             for s, name, size, outline, note in mkr['placed'][:8]:
                 o = 'rot180' if s['rot'] == 180 else ('flipH' if s['flip_h'] else ('flipV' if s['flip_v'] else 'rot0'))
                 print(f"   ({s['x']:8.3f},{s['y']:8.3f}) {o:6} bundle {s['bundle']:3}  {name} [{size}] {note}")
+            if not mk['placements']:    # unlaid: nothing placed, so show what the marker does list
+                for r in mk['records'][:8]:
+                    print(f"   {r['piece']} [{r['size']}] {r['cut']!r}  area {r['area']:.4f}  perimeter {r['perimeter']:.4f}")

@@ -622,6 +622,59 @@ def _add_order_and_state(d, mk, sec):
                                     agree=(by_word == by_slots and (by_header == 'unlaid') == (by_slots == 'unlaid')))
     mk['header_sums'] = _header_sums(mk)
 
+KNOWN_SECTIONS = frozenset({1, 2, 3, 4, 5, 6, 10, 11, 12, 13, 14, 15, 21, 30})    # every directory slot ever seen used
+KNOWN_ORIENT_BITS = ROT180_BIT | MIRROR_BIT | 0x0040                                  # what a NEVER-LAID slot's word can carry
+
+def marker_warnings(mk):
+    """v4.6: the future-proofing contract. Every way a marker can differ from
+    everything the corpus has shown, named - so an unseen variant is LOUD, never
+    a silently wrong answer. -> [str]; empty on all 18 fixture markers.
+
+      an unknown directory slot in use (a section this reader has never seen)
+      directory word 40 outside 0/1/2, or word 41 non-zero
+      a slot of a NEVER-LAID marker whose orientation word carries bits outside
+        rot180 / mirror / the 0x0040 pair bit (true of none of the six such
+        markers). Not applied to a partly laid marker: its unplaced slots were
+        lifted from a lay and keep that history - on the July CP 150 markers
+        61 of 71 carry words like 0x80c7 - so their `preset` is what the slot
+        last was, not a clean pre-set pattern
+      the record index missing, so the records came from the regex fallback
+      slots the structure could not bind (the area rule filled in, or none)
+      a section chain that does not close where the directory says
+
+    The check_marker rows already fail for most of these; this list is what a
+    consumer reads without running them, and unplaced_inventory folds it in."""
+    w = []
+    for k, v in enumerate(mk['directory'][:DIR_OFFSETS]):
+        if v not in (0, 0xffffffff) and k not in KNOWN_SECTIONS:
+            w.append('directory slot %d is in use but this reader has never seen that section' % k)
+    if mk['placed_word'] not in (0, 1, 2): w.append('directory word 40 is %d, expected 0 / 1 / 2' % mk['placed_word'])
+    if mk['directory'][41] != 0: w.append('directory word 41 is %#x, expected 0' % mk['directory'][41])
+    odd = [s['index'] for s in mk['slots'] if s['orient_code'] & ~KNOWN_ORIENT_BITS] if mk['laid_state'] == 'unlaid' else []
+    if odd: w.append('%d slots of a never-laid marker carry orientation bits outside rot180 / mirror / pair (first: slot %d, word %#06x)'
+                     % (len(odd), odd[0], mk['slots'][odd[0]]['orient_code']))
+    if mk['sections'][SEC_INDEX] and mk.get('records_source') != 'index':
+        w.append('section 13 (record index) did not validate: records were read by the fallback regex')
+    n_bad = sum(1 for s in mk['slots'] if (s.get('binding') or {}).get('method') != 'structural')
+    if n_bad: w.append('%d of %d slots are not bound structurally' % (n_bad, len(mk['slots'])))
+    # the cross-checks of the structural binding: a record or slot read at the
+    # wrong offset still parses, and only these notice (a first index entry shifted
+    # by one byte gave a plausible record with a garbage area on 5683D)
+    bind = [s.get('binding') or {} for s in mk['slots'] if (s.get('binding') or {}).get('method') == 'structural']
+    n_area = sum(1 for x in bind if not x.get('area_ok'))
+    if n_area: w.append("%d slots: the declared area does not equal the bound record's (a record or slot read at the wrong offset?)" % n_area)
+    n_bt = sum(1 for x in bind if x.get('bundle_ok') is False or x.get('text_ok') is False)
+    if n_bt: w.append('%d slots: the bundle or the record text disagree with the size table' % n_bt)
+    for label, end in (('piece list', mk.get('piece_list_end')), ('order copy', mk.get('order_copy_end'))):
+        if end and end[0] != end[1]: w.append('the %s chain ends at %#x, the directory says %#x' % (label, end[0], end[1]))
+    if mk['sections'][SEC_PIECES] and not mk.get('piece_list_end'):
+        w.append('section 10 (piece list) is not the known chain: no header / no rows read, the regex fallback was used')
+    if mk['sections'][SEC_ORDER_COPY] and not mk.get('order_copy'):
+        w.append('section 15 (order copy) did not parse: no order lines can be stated from the marker itself')
+    for label, (got, want) in (mk.get('table_ends') or {}).items():
+        if got != want: w.append('the %s chain ends at %#x, the directory says %#x' % (label, got, want))
+    return w
+
 def _header_sums(mk):
     """How the header doubles @422 / @454 relate to the slots - a MODE per
     double, not a pass/fail: 'all' (the sum over every slot's declared area /
@@ -921,6 +974,19 @@ def marker_coverage(d, mk=None):
             runs.append((i, j, own[i])); i = j
         else: i += 1
     return dict(size=n, counts={c: counts.get(c, 0) for c in COVERAGE_CLASSES}, pct=pct, sections=sections, unknown_runs=runs)
+
+PARSED_SECTIONS = frozenset({6, 11, 12, 13, 14, 15, 21, 30})    # every byte they own is classified on all 18 fixture markers
+
+def coverage_warnings(mk, cv=None):
+    """v4.6: bytes inside a section this reader parses that no parser explains.
+    On all 18 fixture markers there are none, so any is a field or variant never
+    seen before. Costs a pass over every byte, so the CLI runs it, not place_marker."""
+    cv = cv or marker_coverage(mk['object']['data'], mk)
+    by = Counter()
+    for a, b, k in cv['unknown_runs']:
+        if k in PARSED_SECTIONS: by[k] += b - a
+    return ['section %d: %d bytes are explained by no parser (a field this reader has never seen)' % (k, n)
+            for k, n in sorted(by.items())]
 
 # ------------------------------------------------ type-10 object (research)
 # The marker's slot 30 embeds a second, complete XGGT object (its own magic,
@@ -1273,8 +1339,7 @@ def unplaced_inventory(mk, pieces=None, piece_errors=None, use_grading=True, geo
     else:
         order_lines = [dict(model=k[0], size=k[1], quantity=len(v), bundles=v) for k, v in bundles.items()]
         warnings.append('no order copy (section 15) read: order lines rebuilt from the size table')
-    n_bad = sum(1 for s in mk['slots'] if (s.get('binding') or {}).get('method') != 'structural')
-    if n_bad: warnings.append('%d of %d slots are not bound structurally' % (n_bad, len(mk['slots'])))
+    warnings += marker_warnings(mk)
     if not mk.get('laid_state_sources', {}).get('agree', True): warnings.append('laid-state sources disagree: %s' % mk['laid_state_sources'])
     if 'other' in mk['header_sums'].values(): warnings.append('header @422/@454 sums fit no known mode: %s' % mk['header_sums'])
     if slots and not pieces: warnings.append('no piece objects in the ZIP: no outlines, bounding boxes are the declared ones only')
@@ -1403,6 +1468,7 @@ if __name__ == '__main__':
         for mkr in res['markers']:
             mk = mkr['marker']
             if '--inventory' in flags:
+                mkr['inventory']['warnings'] += coverage_warnings(mk)
                 print(json.dumps(mkr['inventory'], default=str, indent=1) if '--json' in flags
                       else inventory_report(mkr['inventory'], mkr['checks']))
                 continue

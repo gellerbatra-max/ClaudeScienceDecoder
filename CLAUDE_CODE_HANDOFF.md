@@ -92,6 +92,33 @@ python -c "import accumark_pds as a, json; print(json.dumps(a.summarize_zip('CAP
 
 `verify_capture.py --help` lists every `--expect` key.
 
+## A new unplaced (never-laid) marker arrives
+
+Whatever AccuMark exports - your own, or a marker from another install - read it
+before anything else:
+
+```
+python accumark_marker.py "some marker.zip" --inventory
+```
+
+It prints the cut order (width, order lines, pieces with cuts and mirrored
+pairs, area to lay, the fabric length a 100%-efficient lay needs) and ends with
+one of two lines:
+
+- `DECODED CLEANLY` - every check passes, no warning was raised, and every byte
+  in the sections the reader parses is explained. If the ZIP holds no piece
+  objects the report says `GEOMETRY: none` - that is a limit of the export (no
+  outlines, declared areas and boxes only), not a decode failure.
+- `NEEDS A LOOK:` plus the failing checks and the named warnings
+  (`marker_warnings`, `coverage_warnings`). The marker differs from everything
+  seen so far. Do not trust the numbers above the line for that marker; add the ZIP
+  under `markers/<NAME>/`, note it in a `MARKER_DECODE_PLAN.md` STATUS block, and
+  find which fact broke (`python accumark_marker.py <zip>` lists every check row).
+
+`--inventory --json` gives the same thing as data. The byte-level spec is
+`MARKER_FORMAT_SPEC.md`; `python -c "import accumark_marker as m; ..."`
+`m.marker_coverage(data)` says where the unexplained bytes are.
+
 ## Two things to keep in mind
 
 **Byte coverage is ~25 %.** The decoder extracts every field the first round

@@ -1084,6 +1084,48 @@ if src:
     print(f"   {'ok ' if lost else 'FAIL'} mutation: a broken model list surfaces as unknown bytes in section 11 ({sum(r[1]-r[0] for r in lost)} B)")
     if not lost: fails.append('marker byte map: a broken model list did not surface as unknown bytes')
 
+print('-- unseen variants are loud (v4.6, see accumark_marker.marker_warnings)')
+# Reading "whatever marker AccuMark produces in future" means a marker unlike
+# the corpus must announce itself. Every fixture must be silent; every named
+# warning must fire when the fact it guards is broken in the bytes.
+n_mk = 0; noisy = []
+for zp in sorted(glob.glob(os.path.join(HERE, 'markers', '**', '*.zip'), recursive=True)):
+    try: mos = am.list_zip(zp).get('marker', [])
+    except Exception: continue
+    for o in mos:
+        n_mk += 1; mk = am.parse_marker(o['data'])
+        w = am.marker_warnings(mk) + am.coverage_warnings(mk)
+        if w: noisy.append(f"{o['name']}: {w[0]}")
+print(f"   {'ok ' if n_mk and not noisy else 'FAIL'} {n_mk} fixture markers raise no warning  {'; '.join(noisy[:3])}")
+if not n_mk or noisy: fails.append('marker warnings on fixtures: ' + '; '.join(noisy[:5]))
+src = _mk(('5683D-SS21-UNLAID', '5683D-BD 168 SS21.zip'), '5683D-BD 168 SS21')
+if src:
+    d0, mk0 = src[0]['data'], src[1]; sec = mk0['sections']
+    def _warn(off, fmt, val):
+        b = bytearray(d0); struct.pack_into(fmt, b, off, val); return am.marker_warnings(am.parse_marker(bytes(b)))
+    WMUT = [  # description, warnings after the patch, the text that must appear
+     ('a directory slot nobody has used (slot 20) now in use', _warn(am.DIR_OFF + 4*20, '<I', sec[am.SEC_SLOTS][0]), 'directory slot 20 is in use'),
+     ('directory word 40 = 5', _warn(am.DIR_OFF + 4*40, '<I', 5), 'directory word 40 is 5'),
+     ('directory word 41 non-zero', _warn(am.DIR_OFF + 4*41, '<I', 7), 'directory word 41'),
+     ('a never-laid slot with unknown orientation bits', _warn(mk0['slots'][3]['slot'] + 32, '<H', 0x0801), 'orientation bits'),
+     # a 1-byte shift of the first index entry still yields a plausible record (garbage area), so it is the
+     # per-slot area cross-check that must notice; a non-monotonic index is the index's own failure
+     ('section 13: first record offset shifted one byte', _warn(sec[am.SEC_INDEX][0] - 6, '<I', mk0['record_index'][0] + 1), 'declared area does not equal'),
+     ('section 13: index no longer monotonic', _warn(sec[am.SEC_INDEX][0] - 6, '<I', 0x7fffffff), 'record index) did not validate'),
+     ('a slot bundle disagrees with the size table', _warn(mk0['slots'][4]['slot'] - 6 + 4, '<H', 9), 'bundle or the record text disagree'),
+     ('section 10: header label broken', _warn(sec[am.SEC_PIECES][0] + 22, '<H', 0), 'section 10 (piece list)'),
+     ('section 15: first model block claims 5 more sizes', _warn(sec[am.SEC_ORDER_COPY][0] - 6 + 12, '<H', 11), 'section 15 (order copy) did not parse'),
+     ('a slot head points past the records', _warn(mk0['slots'][2]['slot'] - 6, '<H', 500), 'not bound structurally'),
+    ]
+    bad = [f'"{d}" did not raise "{t}": {w}' for d, w, t in WMUT if not any(t in x for x in w)]
+    print(f"   {'ok ' if not bad else 'FAIL'} {len(WMUT)} byte patches each raise the warning that names them  {'; '.join(bad)}")
+    if bad: fails.append('marker warnings mutation: ' + '; '.join(bad))
+    # and the report turns them into NEEDS A LOOK
+    b = bytearray(d0); struct.pack_into('<H', b, mk0['slots'][3]['slot'] + 32, 0x0801); mkp = am.parse_marker(bytes(b))
+    rep = am.inventory_report(am.unplaced_inventory(mkp), am.check_marker(mkp))
+    print(f"   {'ok ' if 'NEEDS A LOOK' in rep else 'FAIL'} an unseen variant makes the inventory report say NEEDS A LOOK, not DECODED CLEANLY")
+    if 'NEEDS A LOOK' not in rep: fails.append('inventory_report did not flag an unseen variant')
+
 print('-- coverage (informational only - see accumark_pds.coverage();'
       ' 0 unknown_bytes everywhere is the Phase D sign-off target, not'
       ' enforced here yet)')

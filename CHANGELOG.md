@@ -1,5 +1,62 @@
 # Changelog
 
+## v4.6 (2026-09-21) - a marker unlike the corpus announces itself
+
+Same labelling rule: `__version__` stays `'3.0'`. (No v4.5 yet: that number is
+reserved for the live-capture round - see "Not done" below.)
+
+The goal is a decoder that reads WHATEVER unplaced marker AccuMark produces in
+future. That needs the failure mode to be loud: a variant this reader has never
+seen must say so, not return a plausible wrong answer.
+
+- **`marker_warnings(mk)`** names every way a marker can differ from what the
+  corpus shows: a directory slot in use that no reader has seen; directory word
+  40 outside 0/1/2 or word 41 non-zero; a never-laid slot whose orientation word
+  carries bits outside rot180 / mirror / the `0x0040` pair bit; the record index
+  missing or non-monotonic (records then came from the regex fallback); slots the
+  structure could not bind; a section-10 / 11 / 12 / 15 chain that does not close
+  or does not parse; and the two cross-checks of the structural binding - a
+  slot's declared area not equal to its bound record's, or its bundle / record
+  text disagreeing with the size table. **`coverage_warnings(mk)`** adds bytes
+  inside a parsed section that no parser explains (a field never seen). All 18
+  fixture markers are silent on both.
+- **The cross-checks earn their place.** A first section-13 index entry shifted by
+  one byte still produced a plausible-looking record on 5683D (the misaligned
+  bytes happened to read as a valid double), so the index's own validation stayed
+  quiet; only the per-slot area check noticed. That is why they are warnings and
+  not just check rows.
+- **`unplaced_inventory` folds them in and the CLI's last line follows:** `python
+  accumark_marker.py <zip> --inventory` ends `DECODED CLEANLY`, or `NEEDS A LOOK:`
+  with every failing check and warning (byte-map leaks are computed there too - a
+  pass over every byte, so not on the `place_marker` path). The intake procedure is
+  in `CLAUDE_CODE_HANDOFF.md`.
+- **A corpus finding, from writing the orientation warning.** On the four July CP
+  150 markers, 61 of 71 UNPLACED slots carry orientation words like `0x80c7`, with
+  bits beyond rot180 / mirror / pair, while none of the six never-laid markers'
+  slots does. A partly laid marker's unplaced slots were lifted from a lay and
+  keep that history, so the warning applies to never-laid markers only, and the
+  inventory's `preset` for a PARTLY laid marker is what the slot last was, not a
+  clean pre-set pattern.
+- **`MARKER_FORMAT_SPEC.md` (new):** the marker's current byte-level spec, tagged
+  [V] / [?], separate from `MARKER_DECODE_PLAN.md` (the journal). Seeded from the
+  plan's section 1 and everything v4.0-v4.4 established.
+
+Tests: every fixture silent; ten byte patches each raise the warning that names
+them (unused directory slot, word 40, word 41, unknown orientation bits, section-13
+shift and non-monotonic index, broken section-10 label, section-15 size count, a
+slot head past the records, a bundle that disagrees with the size table); and an
+unseen variant flips the report to `NEEDS A LOOK`.
+
+**Not done: the live-capture round (v4.5).** Still open and each needing a
+controlled AccuMark capture, not more analysis of the existing files: the side
+order of unequal block buffers; what sets the `0x0040` pair bit and the pre-set
+rot180 alternation; slot `u16 @88` and `@52/@54/@60` (needs a never-laid vs
+cleared twin of one marker); the one-sided y excess on the July CP 150 unplaced
+slots; two models / two fabric types in one order; size names with spaces.
+
+**Verified.** `selftest.py` PASS, `dataset_test.py` 36/36, `robustness/run.py`
+474/474.
+
 ## v4.4 (2026-09-21) - a byte map for the marker: "fully decoded" is now a number
 
 Same labelling rule: `__version__` stays `'3.0'`. Additive: `marker_coverage(d)`

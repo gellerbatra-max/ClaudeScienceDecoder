@@ -1,5 +1,34 @@
 # Marker decode plan — AccuMark native marker export
 
+> ## STATUS 2026-09-21 (v4.6) - a marker unlike the corpus announces itself; the marker spec has its own file
+>
+> The goal is a decoder that reads WHATEVER never-laid marker AccuMark produces
+> in future, so the failure mode must be loud. `marker_warnings(mk)` and
+> `coverage_warnings(mk)` name every way a marker can differ from the corpus
+> (an unseen directory section, a bad state word, unknown orientation bits on a
+> never-laid slot, a chain that does not close, a record read at the wrong offset,
+> bytes in a parsed section no parser explains); all 18 fixtures are silent, ten
+> byte patches each raise the warning that names them, and
+> `python accumark_marker.py <zip> --inventory` ends `DECODED CLEANLY` or `NEEDS
+> A LOOK:`. Intake procedure: `CLAUDE_CODE_HANDOFF.md`.
+>
+> **Corpus finding.** On the July CP 150 markers 61 of 71 UNPLACED slots carry
+> orientation words like `0x80c7`; none of the six never-laid markers' slots do. A
+> partly laid marker's unplaced slots keep the state they had before they were
+> lifted, so their `preset` is history, not a clean pre-set pattern.
+>
+> **The marker's byte-level spec now lives in `MARKER_FORMAT_SPEC.md`** (current
+> state, [V] / [?]); this file stays the journal.
+>
+> **Not done - the live-capture round (v4.5), each item needing a controlled
+> AccuMark capture:** side order of unequal block buffers; what sets the `0x0040`
+> pair bit and the rot180 alternation; slot `u16 @88` and `@52/@54/@60` (a
+> never-laid vs cleared twin); the CP 150 y excess; two models / two fabric types;
+> size names with spaces.
+>
+> `python selftest.py` -> SELFTEST PASS; `dataset_test.py` 36/36;
+> `robustness/run.py` 474/474.
+
 > ## STATUS 2026-09-21 (v4.3 / v4.4) - the unplaced case is fuzzed; the marker has a byte map
 >
 > **v4.3.** No marker seed was ever unlaid and the marker canon only listed

@@ -735,10 +735,10 @@ import verify_marker as vm
 MK = [  # folder, zip, {fact: want}, dxf folder or None
  ('2303-BD137-UNLAID', '2303-BD 137.zip', dict(laid='no', placements=0, slots=97, records=66, pieces_listed=12, bound=0), None),
  ('2303-BD137-PLACED', '2303-BD 137 PLACED.zip', dict(laid='yes', placements=97, bundles=61, bound=97, identity='yes',
-                                                    width_cm=137.0, length_cm=377.68, util_pct=71.51, bbox_ok=97, area_ok=12, area_pairs=12,
-                                                    dxf_centres=97, dxf_outlines_checked=97,
+                                                    width_cm=137.0, length_cm=377.68, util_pct=71.51, bbox_ok=97, area_ok=66, area_pairs=66,
+                                                    dxf_centres=97, dxf_outlines_checked=97, dxf_size_labels=97,
                                                     folds='2303-B1-A1- OUCF-SP24;2303-B1-A2- OUCF-SP24;2303-B1-DD2- OUCF-SP24;2303-B1-E3- OUCF-SP24'), 'dxf'),
- ('2303-CP150-JULY',   '2303-CP 150 CPL.zip', dict(laid='yes', placements=1, bound=1, identity='yes', dxf_centres=1, area_ok=1, bbox_ok=4), 'dxf'),
+ ('2303-CP150-JULY',   '2303-CP 150 CPL.zip', dict(laid='yes', placements=1, bound=1, identity='yes', dxf_centres=1, dxf_size_labels=1, area_ok=1, bbox_ok=4), 'dxf'),
  # Controlled M3 test: a fresh rectangle assigned CAP-RULES-A (real,
  # non-placeholder per-size-break deltas), rule 1 applied to only 2 of 4
  # corners so the other 2 rely on graded_outline()'s chain-interpolation
@@ -749,8 +749,14 @@ MK = [  # folder, zip, {fact: want}, dxf folder or None
  # centre_worst 0.0007in confirm both sizes' graded shape - including the
  # interpolated corners - against AccuMark's own drawn marker DXF.
  ('CLAUDE-GRADE-MARKER', 'CLAUDE-GRADE-MARKER.zip', dict(laid='yes', placements=2, bound=2, identity='yes',
-                                                    bbox_ok=2, dxf_centres=2, dxf_outlines_checked=2), 'dxf'),
+                                                    bbox_ok=2, dxf_centres=2, dxf_outlines_checked=2, dxf_size_labels=2), 'dxf'),
 ]
+# dxf_size_labels (v4.1): the label AccuMark draws at every placed centre reads
+# `<piece> <size>` (September vintage: one TEXT; July: three stacked). It is an
+# answer key for the slot -> (piece, size) binding that needs no area and no
+# geometry, and it is the only one that can tell sister sizes apart on style
+# 2303 (all-placeholder grading: same shape, same area) - 97/97 with the
+# structural binding, 20/97 with the old area rule.
 for folder, zname, want, dxf in MK:
     path = os.path.join(HERE, 'markers', folder, zname)
     if not os.path.isfile(path):
@@ -797,6 +803,18 @@ V4_MARKERS = [  # zip path under markers/, marker name, {fact: want}
  (('1825D-SS21-UNLAID', '1825D-BD 180 SS21.zip'), '1825D-BD 180 SS21',
   dict(models=['CON2-1825D'], sizes=SZ_1825D, slots=27, records=27, pieces=3, width_cm=180.0,
        created=_utc(2020, 10, 16, 6, 11, 35), modified=_utc(2020, 10, 16, 6, 11, 35))),
+ # three more never-laid, marker-only markers from the same foreign origin
+ # (Empty marker files Zip, 2020-21): 4, 3 and 1 pieces; 6, 7 and 11 size rows
+ (('5683D-SS21-UNLAID', '5683D-BD 168 SS21.zip'), '5683D-BD 168 SS21',
+  dict(models=['CON-5683D'], sizes=['18-24', '2-3', '3-4', '4-5', '5-6', '6-7'], slots=24, records=24, pieces=4, width_cm=168.0,
+       created=_utc(2020, 10, 16, 4, 56, 33), modified=_utc(2020, 10, 16, 4, 56, 33))),
+ (('2591A-SS21-UNLAID', '2591A-BD 157 AW SS21.zip'), '2591A-BD 157 AW SS21',
+  dict(models=['CON-2591A'], sizes=['6/7', '7/8', '8/9', '9/10', '11/12', '13/14', '15/16'], slots=35, records=21, pieces=3, width_cm=157.0,
+       created=_utc(2020, 10, 16, 5, 0, 17), modified=_utc(2020, 10, 16, 5, 0, 17))),
+ (('418T-SHAPESHIFTER-UNLAID', '418T-BD 160 SHAPESHIFTER.zip'), '418T-BD 160 SHAPESHIFTER',
+  dict(models=['418T'], sizes=['2-3', '3-4', '4-5', '5-6', '6-7', '7-8', '8-9', '9-10', '11-12', '13-14', '15-16'],
+       slots=22, records=11, pieces=1, width_cm=160.0,
+       created=_utc(2021, 5, 13, 6, 36, 21), modified=_utc(2021, 5, 13, 6, 36, 21))),
  (('2303-BD137-UNLAID', '2303-BD 137.zip'), '2303-BD 137',      # 8 of 11 models before; the missing 3 were B1 7, OUCF DD, OUCF E
   dict(n_models=11, last_model='2303 OUCF E', n_sizes=61, slots=97,
        created=_utc(2026, 9, 8, 16, 29, 51), modified=_utc(2026, 9, 8, 16, 29, 51))),
@@ -835,6 +853,113 @@ for parts, name, want in V4_MARKERS:
         if mk['laid'] or mk['placements']: bad.append('an unlaid marker was read as laid')
     print(f"   {'ok ' if not bad else 'FAIL'} {name:30} {'; '.join(bad) if bad else 'as expected'}")
     if bad: fails.append(f'{name}: ' + '; '.join(bad))
+print('-- slot binding: structure, not area (v4.1, see CHANGELOG.md)')
+# Every slot is bound to (piece, size, model, record) from its own 6-byte head,
+# the size table's tiling of the slot table and section 10's piece list; the
+# declared area / bundle / record text are checked against that, never used to
+# choose it. The old area rule tied on sister sizes and picked an arbitrary one
+# (77 of 97 slots on 2303-BD 137) - invisible to every geometric check because
+# style 2303's grading is all-placeholder; the drawn DXF's labels (MK rows
+# above: dxf_size_labels) are what prove the structural size.
+BIND_ROWS = ['every slot bound structurally', 'slot bundle == head bundle == size-row index',
+             'slot declared area == bound record area', 'record text ends with the tiled size + G',
+             'records == section-13 entries', 'piece list tiles section 10']
+n_mk = 0; bad_all = []
+for zp in sorted(glob.glob(os.path.join(HERE, 'markers', '**', '*.zip'), recursive=True)):
+    try: mos = am.list_zip(zp).get('marker', [])
+    except Exception: continue
+    for o in mos:
+        n_mk += 1; mk = am.parse_marker(o['data'])
+        rows = {n: ok for n, ok, _ in am.check_marker(mk)}
+        miss = [n for n in BIND_ROWS if not rows.get(n, False)]
+        # directory word 40 is a state code, not an offset: 0 / 1 / 2 = none /
+        # some / all slots placed, and there is no section 40 or 41
+        want_word = 0 if not mk['placements'] else (2 if len(mk['placements']) == len(mk['slots']) else 1)
+        if mk['placed_word'] != want_word: miss.append(f"placed word {mk['placed_word']} != {want_word}")
+        if mk['sections'][40] is not None or mk['sections'][41] is not None: miss.append('a bogus section 40/41')
+        if miss: bad_all.append(f"{o['name']}: {'; '.join(miss)}")
+print(f"   {'ok ' if n_mk and not bad_all else 'FAIL'} {n_mk} fixture markers pass all {len(BIND_ROWS)} binding rows  {'; '.join(bad_all)}")
+if not n_mk or bad_all: fails.append('binding rows: ' + '; '.join(bad_all))
+
+# never-laid markers: WHAT is to be laid and nothing about where. Per fixture:
+# slots per (piece, size) [the cut quantity: a `CUT X02` piece is a mirrored
+# pair, so 2], and whether the header's @422 / @454 equal the sums over ALL
+# slots (every never-laid marker except 2303-BD 137, whose header holds other
+# sums - see CHANGELOG v4.1).
+UNLAID = [  # parts, marker, {piece: slots per size}, header sums == all-slot sums?
+ (('1825D-SS21-UNLAID', '1825D-BD 180 SS21.zip'), '1825D-GT 168 SS21', {'1825D IGUS 061020': 1}, True),
+ (('1825D-SS21-UNLAID', '1825D-BD 180 SS21.zip'), '1825D-BD 180 SS21',
+  {'1825D FROT 061020': 1, '1825D OGUS 061020': 1, '1825D BACK 061020': 1}, True),
+ (('5683D-SS21-UNLAID', '5683D-BD 168 SS21.zip'), '5683D-BD 168 SS21',
+  {'5683D OGUS 210920': 1, '5683D IGUSE 210920': 1, '5683D BACK 210920': 1, '5683D FROT 210920': 1}, True),
+ (('2591A-SS21-UNLAID', '2591A-BD 157 AW SS21.zip'), '2591A-BD 157 AW SS21',
+  {'2591A POUTH 170920': 2, '2591A BPNL170920': 1, '2591A LEG 170920': 2}, True),
+ (('418T-SHAPESHIFTER-UNLAID', '418T-BD 160 SHAPESHIFTER.zip'), '418T-BD 160 SHAPESHIFTER', {'0418T TRS 190421': 2}, True),
+ (('2303-BD137-UNLAID', '2303-BD 137.zip'), '2303-BD 137', None, False),
+]
+from collections import Counter
+for parts, name, mult, sums in UNLAID:
+    got = _mk(parts, name)
+    if got is None:
+        print(f'   --  {name:30} (absent)'); continue
+    o, mk = got; bad = []
+    if mk['laid'] or mk['placements'] or not all(s['empty'] for s in mk['slots']): bad.append('read as laid / has placements')
+    if mk['placed_word'] != 0: bad.append(f"placed word {mk['placed_word']} != 0")
+    if any((s.get('binding') or {}).get('method') != 'structural' for s in mk['slots']): bad.append('a slot is not structurally bound')
+    if any(s['size'] not in {r['size'] for r in mk['sizes']} for s in mk['slots']): bad.append('a slot has a size outside the size table')
+    if sums:
+        if abs(mk['total_area'] - sum(s['area'] for s in mk['slots'])) > 1e-9: bad.append('@422 != sum(all slot areas)')
+        if abs(mk['unknown_454'] - sum(s['record']['perimeter'] for s in mk['slots'])) > 1e-9: bad.append('@454 != sum(all slot record perimeters)')
+    if mult is not None:
+        per = Counter((s['piece'], s['size']) for s in mk['slots'])
+        got_mult = {}
+        for (pc, sz), n in per.items(): got_mult.setdefault(pc, set()).add(n)
+        if {k: sorted(v) for k, v in got_mult.items()} != {k: [v] for k, v in mult.items()}: bad.append(f'slots per (piece, size) {dict(got_mult)} != {mult}')
+    print(f"   {'ok ' if not bad else 'FAIL'} unplaced {name:30} {'; '.join(bad) if bad else 'bound N/N, all slots empty, sums as expected'}")
+    if bad: fails.append(f'unplaced {name}: ' + '; '.join(bad))
+
+# mutation tests: each new row must actually FAIL when the fact it checks is
+# broken in the bytes (a check that cannot fail proves nothing). In-memory byte
+# patches of the 2591A marker; the unpatched marker must have every row ok.
+src = _mk(('2591A-SS21-UNLAID', '2591A-BD 157 AW SS21.zip'), '2591A-BD 157 AW SS21')
+if src:
+    d0, mk0 = src[0]['data'], src[1]
+    sec = mk0['sections']; s5 = mk0['slots'][5]; h5 = s5['slot'] - am.SLOT_HEAD
+    def _rows(d, **kw): return {n: ok for n, ok, _ in am.check_marker(am.parse_marker(d, **kw))}
+    def _patched(off, fmt, val):
+        b = bytearray(d0); struct.pack_into(fmt, b, off, val); return bytes(b)
+    MUT = [  # description, patched bytes / kwargs, the row that must flip
+     ('slot head: record index of slot 5 moved to the next record',
+      dict(d=_patched(h5, '<H', mk0['slots'][5]['record_index'] + 1)), 'slot declared area == bound record area'),
+     ('slot head: bundle of slot 5 changed',
+      dict(d=_patched(h5 + 4, '<H', s5['bundle'] + 1)), 'slot bundle == head bundle == size-row index'),
+     ('section 13: first record offset changed',
+      dict(d=_patched(sec[am.SEC_INDEX][0] - 6, '<I', mk0['record_index'][0] + 1)), 'records == section-13 entries'),
+     ('section 10: first piece\'s fabric-type count 1 -> 0',
+      dict(d=_patched(sec[am.SEC_PIECES][0] + am.PIECE_LIST_HEAD + 22, '<H', 0)), 'piece list tiles section 10'),
+     ('section 12: first size row owns one piece fewer',
+      dict(d=_patched(sec[am.SEC_SIZES][0] - 6 + 4, '<H', mk0['sizes'][0]['n'] - 1)), 'every slot bound structurally'),
+     ('binding="area" (the pre-v4.1 rule)', dict(d=d0, binding='area'), 'every slot bound structurally'),
+    ]
+    clean = _rows(d0); bad = [f'clean marker: {n}' for n in BIND_ROWS if not clean.get(n)]
+    for desc, kw, row in MUT:
+        r = _rows(**kw)
+        if r.get(row, False): bad.append(f'"{desc}" did not fail "{row}"')
+    print(f"   {'ok ' if not bad else 'FAIL'} mutation tests: {len(MUT)} byte patches each break exactly the row that checks them  {'; '.join(bad)}")
+    if bad: fails.append('binding mutation tests: ' + '; '.join(bad))
+# and the answer key can fail: the old area rule against the drawn DXF labels
+zp = os.path.join(HERE, 'markers', '2303-BD137-PLACED', '2303-BD 137 PLACED.zip')
+dxf = os.path.join(HERE, 'markers', '2303-BD137-PLACED', '2303-BD 137 PLACED.DXF')
+if os.path.isfile(zp) and os.path.isfile(dxf):
+    labs = vm.dxf_labels(dxf)
+    mk_area = am.parse_marker(am.list_zip(zp)['marker'][0]['data'], binding='area')
+    n_area = sum(1 for s in mk_area['placements'] if vm._label_matches(labs, s, s['piece'], s['size']))
+    n_struct = sum(1 for s in am.parse_marker(am.list_zip(zp)['marker'][0]['data'])['placements']
+                   if vm._label_matches(labs, s, s['piece'], s['size']))
+    ok = n_struct == 97 and n_area < 97
+    print(f"   {'ok ' if ok else 'FAIL'} DXF labels: structural {n_struct}/97, area rule {n_area}/97 (the oracle can tell them apart)")
+    if not ok: fails.append(f'dxf label oracle: structural {n_struct}, area {n_area}')
+
 # library tables copied between storage areas: created can be LATER than modified
 # (M-MARKER: 2023 vs 2013), and the notch table's 2004 creation date is outside
 # the old 2014-2039 window - both must be reported exactly as stored

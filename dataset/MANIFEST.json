@@ -1,5 +1,5 @@
 {
- "decoder_version": "2.0",
+ "decoder_version": "3.0",
  "panels": [
   {
    "garment": "A-LINE-SKIRT",
@@ -3043,12 +3043,18 @@
     "sum(slot areas) == W*L*U": true,
     "placed centres inside W x L": true,
     "every placement bound": true,
-    "placed pieces are in the piece list": false,
-    "slot count == directory span": true
+    "placed pieces are in the piece list": true,
+    "slot count == directory span": true,
+    "model list + size table tile sections 11-12": true,
+    "size table: sum(pieces) == slots, ordinals cumulative, model index in range": true,
+    "every slot bound structurally": true,
+    "slot bundle == head bundle == size-row index": true,
+    "slot declared area == bound record area": true,
+    "record text ends with the tiled size + G": true,
+    "records == section-13 entries": true,
+    "piece list tiles section 10": true
    },
-   "pre_existing_failures": [
-    "placed pieces are in the piece list"
-   ],
+   "pre_existing_failures": [],
    "new_failures": [],
    "placements": 2,
    "checks_ok": true,

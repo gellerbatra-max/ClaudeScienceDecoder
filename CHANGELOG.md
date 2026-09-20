@@ -1,5 +1,129 @@
 # Changelog
 
+## v4.1 (2026-09-21) - unplaced markers: slots bound by structure, not by area
+
+Same labelling rule as v4.0: `__version__` stays `'3.0'`.
+
+**Trigger.** Planning "fully decode unplaced markers" (a never-laid marker is a
+cut order: WHAT to lay, on what width - nothing about where). Three more
+never-laid, marker-only samples from the same foreign origin arrived
+(`5683D-BD 168 SS21`, `2591A-BD 157 AW SS21`, `418T-BD 160 SHAPESHIFTER`) and
+are now fixtures (`markers/5683D-SS21-UNLAID/`, `markers/2591A-SS21-UNLAID/`,
+`markers/418T-SHAPESHIFTER-UNLAID/`, byte-identical copies). They decoded without
+error, and `check_marker` said 5/5 ok - but two of those five rows read `0/0`
+on any unlaid marker, so "ok" proved little. Measuring what the checks did NOT
+cover found a real bug.
+
+- **BUG: slot -> size binding by declared area picked an arbitrary size
+  whenever sister sizes tie on area.** `parse_marker` bound each slot to the
+  section-14 record whose area was nearest (dxfparser's rule) and rejected only
+  rival PIECES, so two sizes of one piece with the same area were never a
+  conflict and `ranked[0]` won. Measured against the previous build: the size
+  changes on **77 of 97 slots of both 2303-BD 137 markers**, 54 of 72 on each
+  CP 150 marker (plus 14 slots per marker that were unbound), 11 of 13 on AD1234
+  and 1 of 2 on CLAUDE-GRADE-MARKER; on LADIES-BLOUSE all 54 slots were unbound.
+  It stayed invisible because style 2303's grading is all placeholder (sister
+  sizes share one shape and one area), so no geometric check can tell them
+  apart. **Proof of the correct size, independent of area and geometry:** the
+  drawn DXF labels every placed piece `<piece> <size>` at its placed centre -
+  with the structural binding 97 of 97 placed slots of `2303-BD 137 PLACED` sit
+  within 0.001 in of a label reading exactly that; with the old rule 20 of 97.
+  The same holds on all four July `2303-CP 150` markers (1 of 1 each, where the
+  label is three stacked TEXTs) and on `CLAUDE-GRADE-MARKER` (2 of 2).
+- **How a slot is bound now [V: 677 of 677 slots on all 18 markers].** From the
+  file's own structure; the declared area, the slot's bundle and the record
+  text are CHECKED against it, per slot, never used to choose:
+  - `size`, `model` <- the size table (section 12) tiles the slot table:
+    row `i` owns slots `ordinal .. ordinal + pieces - 1`;
+  - `record` <- the slot's 6-byte **head**, which sits just BEFORE its 96-byte
+    body: `<u16 record index (0-based, section-14 order)> <u16 piece index
+    (1-based, section 10)> <u16 bundle>`. What earlier notes called the
+    "@90/@92/@94 circular triple" is simply the NEXT slot's head;
+  - `piece` <- section 10 at `piece index - 1`.
+  Agreement: the record's area matches the slot's on 677/677; the piece name
+  starts the record text on 466/466 slots of the markers that list pieces;
+  `slot bundle == head bundle == size-row index` on 677/677; the record text
+  ends with `<tiled size>G` on 677/677.
+- **Section 10 (piece list) is a length-prefixed chain [V: 18 of 18].** A
+  28-byte header ending in the literal `MARKER`, then contiguous rows
+  `<u16 name len><u16 category len><24 flag bytes><name><category><fabric
+  types: u16 count at flag byte 18, then that many <u16 len><text>>`, closing
+  exactly 6 bytes before section 11. The regex it replaces needed exactly one
+  fabric type, so it returned `[]` on every CLAUDE-* marker (which is why
+  `placed pieces are in the piece list` was BAD on all four of them and on the
+  generated dataset marker) and would have missed LADIES-BLOUSE's collar and cuff
+  fabric types (`M`, `F`). Flag bytes 4..5 (u16) are a 1-based index into
+  section 6, `0xffff` for none; the rest of the flags stay raw.
+- **Section 14 is walked from section 13's index** (offsets relative to 6 bytes
+  before `directory[14]`, label text 48 bytes into each record) [V: identical -
+  offset, text, area, perimeter, prefix, stream length - to the regex on all 18
+  markers]. It cannot skip or invent a record and fixes their order, which the
+  slot heads index into; the regex remains the fallback.
+- **Directory words 40 and 41 are not offsets.** Word 40 is a state code - 0 /
+  1 / 2 = no / some / all slots placed [V: 18 of 18: 0 on every unlaid marker, 1
+  on the July 1-of-72 markers, 2 on every fully laid one] - and word 41 is 0.
+  `_section` read 1 and 2 as file offsets and made a bogus section 40 on every
+  laid marker (11 of 18). Exposed as `mk['placed_word']`.
+- **Record split uses both name sources.** The `-PDSTEXT-` label scan finds
+  nothing on LADIES-BLOUSE, so all 20 of its records went unsplit; the names now
+  also come from section 10, and a record's `size`/`cut` are set exactly from
+  its slots' tiled size rather than guessed from the text.
+
+Added:
+- `parse_slots` keys `index`, `record_index`, `piece_index`, `bundle_head`;
+  `parse_marker(d, size_vocab=None, binding='structural')` (`binding='area'` is
+  the old rule alone, kept for diffs and mutation tests); per-slot `model`,
+  `row`, `binding={method, area_ok, bundle_ok, text_ok}`; `mk['placed_word']`,
+  `records_source`, `piece_list_end`; `piece_records_indexed`,
+  `_walk_piece_list`; piece rows gain `fabric_types` and `buffer_index`.
+- Six `check_marker` rows that count EVERY slot, placed or not (appended, no
+  existing row renamed): `every slot bound structurally`, `slot bundle == head
+  bundle == size-row index`, `slot declared area == bound record area`,
+  `record text ends with the tiled size + G`, `records == section-13 entries`,
+  `piece list tiles section 10`. All pass on all 18 fixture markers.
+- `verify_marker.dxf_labels()` and the `dxf_size_labels` fact.
+- `selftest.py`: `dxf_size_labels` on the three DXF fixtures; a table-driven
+  unplaced block (slots per (piece, size) - the cut quantity, `2` for a `CUT X02`
+  mirrored pair - laid state, `@422`/`@454` sums) over the six never-laid
+  markers; six byte-patch mutation tests, each breaking exactly the row that
+  checks it; a negative control (the old rule scores 20/97 against the DXF).
+
+Changed:
+- Slot `size` (and so `record`) on the markers listed above; nothing else in
+  any marker's decode changed (no record byte, model, size row, laid state or
+  placement moved). `MK` row for `2303-BD137-PLACED`: `area_ok/area_pairs`
+  12/12 -> 66/66 (each (piece, size) pair now measured, not 12 arbitrary ones).
+- `dataset/build.py` patches areas through the slot binding, so the regenerated
+  `GENERATED-SAMEBBOX-MARKER.zip` now has BOTH records patched (the tracked copy
+  had record 1 stale - the new area check caught it) and its
+  `pre_existing_failures` list is empty. The 31 piece zips are byte-identical in
+  content (container timestamps only) and were left as committed.
+
+**Verified before handing back.** `selftest.py` PASS, `dataset_test.py` 36/36,
+`robustness/run.py` (full) 303/303. Old-vs-new field diff over all 18 markers
+against a `git worktree` of the v4.0 commit: no record byte, model, size row,
+laid state, placement count or check row changed except as listed; no check
+that passed before fails now; every new row passes everywhere. Mutation tests:
+re-breaking the directory-word-40 fix alone yields a bogus section 40 on 11
+markers; each of six byte patches (slot-head record, slot-head bundle, section-13
+offset, section-10 fabric-type count, size-row piece count, `binding='area'`)
+flips exactly its row.
+
+Observed, not changed:
+- Header `@422` / `@454` on never-laid markers equal the sums over ALL slots'
+  declared areas / record perimeters exactly on the six markers that were laid
+  by nobody (1825D x2, 5683D, 2591A, 418T, CLAUDE-QTY-TEST). On the multi-model
+  2303 markers `@454` equals the sum over the LAST model's slots only (19.5158 on
+  both 2303-BD 137 exports, 104.0376 on CP 150), and `@422` does too in the
+  unlaid export (6.2726) but equals the all-slot sum in the laid export of the
+  same style (5735.2104). So the earlier "stale value" wording is retracted: the
+  arithmetic is exact, the cause (a last-model accumulation that laying
+  overwrites?) is unproven [?]. LADIES-BLOUSE `@454` is exactly 2x the all-slot
+  perimeter sum, still unexplained [?].
+- A July-vintage drawn DXF carries a header line `MODEL:SZ/QTY:<model>:<size>/<qty>`
+  (e.g. `2303 MOCUP B1 1:32A/1`) - an answer key for the order lines (model,
+  size, quantity) that no check uses yet.
+
 ## v4.0 (2026-09-21) - first foreign-origin marker: model list, size table and trailer stamps fixed
 
 v4 is the label for this round's decoder-improvement documentation only:

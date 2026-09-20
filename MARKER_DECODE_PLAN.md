@@ -1,5 +1,49 @@
 # Marker decode plan — AccuMark native marker export
 
+> ## STATUS 2026-09-21 (v4.1) - unplaced markers: a slot is bound by its own structure, and the area rule it replaces was wrong on 2303
+>
+> Goal of this thread: read WHATEVER never-laid marker AccuMark produces (a cut
+> order: what to lay, on what width; no positions). Three more never-laid
+> samples arrived (`5683D`, `2591A`, `418T`; fixtures under `markers/`), all
+> marker-only like 1825D. Full write-up: `CHANGELOG.md` v4.1.
+>
+> **Bug found and fixed.** Slots were bound to a (piece, size) by nearest
+> declared area; sister sizes that tie on area were resolved arbitrarily -
+> **77 of 97 slots wrong on both 2303-BD 137 markers**, laid and unlaid, and
+> invisible to every check because style 2303's grading is all placeholder.
+> The drawn DXF proves the structural binding: every placed slot has a label
+> `<piece> <size>` at its centre - 97/97 structural vs 20/97 area on 2303-BD 137
+> PLACED, and 1/1 on each July CP 150 marker, 2/2 on CLAUDE-GRADE-MARKER.
+>
+> **Slot binding [V, 677/677 slots, 18 markers].** Size and model from the size
+> table's tiling of the slot table; record and piece from the slot's 6-byte
+> HEAD (`u16 record index`, `u16 piece index`, `u16 bundle`), which sits just
+> before its 96-byte body - the old "@90/@92/@94 circular triple" is the next
+> slot's head. Area, bundle and record text are checked against it, not used
+> to choose it. **Section 10** is a `MARKER`-headed length-prefixed chain
+> (row: `<u16 n1><u16 n2><24 flags><name><category><u16-counted fabric
+> types>`), closing at `directory[11] - 6`. **Section 14** is walked from
+> section 13's index. **Directory word 40** is a state code (0/1/2 = none /
+> some / all slots placed), not an offset.
+>
+> **Header sums (refines the v4 note).** `@422`/`@454` equal the sums over all
+> slots on the six markers nobody laid; on the 2303 markers `@454` (and `@422`
+> in the unlaid export) equals the sum over the LAST model's slots, `@422`
+> equals the all-slot sum in the laid export. "Stale" is retracted: exact
+> arithmetic, cause unproven [?].
+>
+> **Still open for unplaced markers** (plan and evidence in `CHANGELOG.md`
+> v4.1 "Observed"): slot `u16 @88` (non-zero and constant per (piece, size) on
+> every never-laid marker, 0 on all 97 slots of the laid twin - meaning
+> unknown), `@52/@54/@60`, orient bit `0x0040`, section 6 (block buffer:
+> `(pieces + 1)` x 102-byte entries of four equal doubles 0.0591 in = 1.5 mm
+> on the markers that have it), section 15 (the order copy, likely the
+> per-size quantity), sections 2/3/4/5, section 1's unread bytes. The July DXF
+> header line `MODEL:SZ/QTY:` is an unused answer key for order lines.
+>
+> `python selftest.py` -> SELFTEST PASS; `dataset_test.py` 36/36;
+> `robustness/run.py` 303/303.
+
 > ## STATUS 2026-09-21 (v4) - sections 11-12 are one length-prefixed chain; a foreign-origin marker reads; @422 / @454 refined
 >
 > First marker from outside this project's own AccuMark install:

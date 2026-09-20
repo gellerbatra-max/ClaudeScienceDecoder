@@ -20,6 +20,15 @@ parse_marker falls back to the marker's OWN size table to split record texts
 when the pieces are not in the ZIP; read_object reads created/modified from
 their fixed trailer offsets instead of scanning for plausible-looking integers.
 
+v4.1 (same label): slots are bound to their (piece, size, model) STRUCTURALLY -
+each slot's 6-byte head (record index, piece index, bundle), the size table's
+tiling of the slot table and section 10's piece list - with the declared area
+demoted to a cross-check (parse_marker(binding='area') keeps the old rule).
+The area rule picked an arbitrary size whenever sister sizes tie on area (77 of
+97 slots on 2303-BD 137); the drawn DXF's own labels prove the structural size.
+Section 10 is read as the length-prefixed chain it is, and section 14's records
+are walked from section 13's index instead of by regex.
+
     import accumark_marker as am
     objs = am.list_zip('2303-BD 137 PLACED.zip')          # every object, typed
     mk   = am.parse_marker(objs['marker'][0]['data'])       # header + placements
@@ -140,7 +149,13 @@ def list_zip(path):
 
 # --------------------------------------------------------------- marker
 DIR_OFF, DIR_SLOTS = 0x8a, 42
+# v4.1: directory words 0..39 are section offsets; the last two are not.
+# Word 40 is a small state code - 0 / 1 / 2 = none / some / all slots placed
+# [V: 18 of 18 corpus markers] - and word 41 is 0. Reading 1 or 2 as an
+# offset made a bogus section 40 on every laid marker.
+DIR_OFFSETS = 40
 SLOT = 96
+SLOT_HEAD = 6       # a slot's (record index, piece index, bundle) u16s sit 6 bytes BEFORE its body
 SEC_SCALARS, SEC_PIECES, SEC_MODELS, SEC_SIZES, SEC_INDEX, SEC_RECORDS, SEC_ORDER_COPY, SEC_SLOTS, SEC_GEOMETRY = 1, 10, 11, 12, 13, 14, 15, 21, 30
 ROT180_BIT, MIRROR_BIT = 0x2000, 0x0080
 
@@ -149,6 +164,7 @@ def directory(d):
     return [u32(d, DIR_OFF+4*i) for i in range(DIR_SLOTS)]
 
 def _section(d, dirs, k):
+    if k >= DIR_OFFSETS: return None            # v4.1: words 40/41 are state, not offsets
     a = dirs[k]
     if a in (0xffffffff, 0): return None
     # v2: a section's directory offset is trusted absolute file position with
@@ -160,7 +176,7 @@ def _section(d, dirs, k):
     if a >= len(d):
         raise TruncatedObject('section %d offset points past end of object' % k,
                                declared=a, actual=len(d))
-    later = [v for v in dirs if v not in (0xffffffff, 0) and v > a]
+    later = [v for v in dirs[:DIR_OFFSETS] if v not in (0xffffffff, 0) and v > a]
     return a, (min(later) if later else len(d))
 
 def decode_orient(code):
@@ -189,6 +205,30 @@ def piece_records(d, lo, hi):
         out.append(dict(offset=o, text=m.group()[:-1].decode('latin1'), area=area,
                         perimeter=perim, prefix=[u16(d, o-40+2*k) for k in range(5)],
                         stream_len=u16(d, o-10)))
+    return out
+
+RECORD_HEAD = 48    # bytes from a section-14 record's start to its label text
+
+def piece_records_indexed(d, lo, hi, index):
+    """Section 14 walked from section 13's index instead of by regex (v4.1).
+    Section 13 is a u32 array of the records' byte offsets, relative to 6 bytes
+    before section 14's directory offset, and the label text starts 48 bytes
+    into each record [V: 18 of 18 corpus markers; identical - offset, text,
+    area, perimeter, prefix, stream_len - to `piece_records` on every one]. The
+    walk needs no printable-string heuristic and cannot skip or invent a
+    record, and it fixes record ORDER, which the slot heads index into.
+    -> the record list, or None when any entry does not validate (the caller
+    then falls back to the regex reader)."""
+    out = []
+    for off in index:
+        o = lo - 6 + off + RECORD_HEAD
+        if o < lo + 30 or o >= hi: return None
+        end = d.find(b'\x00', o, hi)
+        if end <= o: return None
+        area, perim = f64(d, o-30), f64(d, o-22)
+        if not (0.0 < area < 1e5 and 0.0 < perim < 1e5): return None
+        out.append(dict(offset=o, text=d[o:end].decode('latin1'), area=area, perimeter=perim,
+                        prefix=[u16(d, o-40+2*k) for k in range(5)], stream_len=u16(d, o-10)))
     return out
 
 def declared_piece_names(d):
@@ -241,9 +281,47 @@ def sizes_for_piece(texts, name, size_vocab):
             out[t] = split_record(t, [name], size_vocab)[1:]
     return out
 
-def parse_pieces_section(d, lo, hi):
-    """Section 10: per placed piece `<name><fabric code>\\x01\\x00<flag>` with
-    the two string lengths and 22 flag bytes stored just before the text [V]."""
+PIECE_LIST_HEAD = 28      # section 10's own header: 22 bytes, then the label 'MARKER'
+
+def _walk_piece_list(d, lo, hi):
+    """-> (rows, offset where the walk ended, where it must end, header ok).
+
+    Section 10 is a 28-byte header ending in the string `MARKER`, then one
+    row per piece, contiguous, closing exactly 6 bytes before section 11's
+    offset (the same `-6` convention as sections 11-13) [V: 18 of 18 corpus
+    markers, both vintages]:
+
+        <u16 name length> <u16 category length> <24 flag bytes> <name>
+        <category> <fabric types: u16 count at flag byte 18, then that many
+        <u16 length><text>>
+
+    Flag byte 4 (u16) is a 1-based index into section 6's block-buffer table,
+    0xffff for none [V: 18 of 18]; the other flag bytes stay raw."""
+    rows = []; stop = min(hi - 6, len(d))
+    head_ok = d[lo+22:lo+PIECE_LIST_HEAD] == b'MARKER'
+    pos = lo + PIECE_LIST_HEAD
+    while head_ok and pos + 28 <= stop:
+        n1, n2 = u16(d, pos), u16(d, pos+2)
+        if n1 < 1 or pos + 28 + n1 + n2 > stop: break
+        name = d[pos+28:pos+28+n1]; cat = d[pos+28+n1:pos+28+n1+n2]
+        if not (_printable(name) and _printable(cat)): break
+        p = pos + 28 + n1 + n2; fabric_types = []; ok = True
+        for _ in range(u16(d, pos+22)):
+            if p + 2 > stop: ok = False; break
+            n = u16(d, p)
+            if p + 2 + n > stop or not _printable(d[p+2:p+2+n]): ok = False; break
+            fabric_types.append(d[p+2:p+2+n].decode('latin1')); p += 2 + n
+        if not ok: break
+        buf = u16(d, pos+8)
+        rows.append(dict(offset=pos+28, name=name.decode('latin1'), fabric=cat.decode('latin1'),
+                         flag=fabric_types[0] if fabric_types else '', fabric_types=fabric_types,
+                         buffer_index=None if buf == 0xffff else buf, raw=d[pos+4:pos+28].hex()))
+        pos = p
+    return rows, pos, stop, head_ok
+
+def _parse_pieces_regex(d, lo, hi):
+    """The pre-v4.1 reader, kept as the fallback for a section 10 whose header
+    is not the known one: per piece `<name><fabric code>\\x01\\x00<flag>`."""
     out = []
     for m in re.finditer(rb'([\x20-\x7e]{8,})\x01\x00([A-Z])', d[lo:hi]):
         o = lo + m.start(); s = m.group(1).decode('latin1')
@@ -253,6 +331,17 @@ def parse_pieces_section(d, lo, hi):
         out.append(dict(offset=o, name=name, fabric=fabric, flag=chr(m.group(2)[0]),
                         raw=d[o-24:o].hex()))
     return out
+
+def parse_pieces_section(d, lo, hi):
+    """Section 10: the piece list, one row per piece the marker lays [V]. Keys
+    `name`, `fabric` (the category text), `flag` (the first fabric type - AccuMark's
+    'Fabric Type' role, A/B/C/D/G/M...) and `raw` are the pre-v4.1 shape;
+    `fabric_types` (every type, e.g. LADIES-BLOUSE's collar is M and F) and
+    `buffer_index` are new. v4.1: read as the chain it is (_walk_piece_list),
+    which also reads the pieces of every CLAUDE-* marker - the old regex needed
+    one fabric type and returned [] for a piece with none."""
+    rows, _, _, head_ok = _walk_piece_list(d, lo, hi)
+    return rows if head_ok and rows else _parse_pieces_regex(d, lo, hi)
 
 def _printable(b):
     return all(32 <= c < 127 for c in b)
@@ -327,22 +416,39 @@ def parse_sizes_section(d, lo, hi):
     return _walk_size_table(d, lo, hi)[0]
 
 def parse_slots(d, lo, hi):
-    """Section 21: contiguous 96-byte placement slots [V] (dxfparser layout)."""
+    """Section 21: contiguous 96-byte placement slots [V] (dxfparser layout).
+
+    v4.1: every slot also carries its 6-byte HEAD, which sits just BEFORE the
+    body (inside the previous slot's last six bytes - the '@90/@92/@94' triple
+    earlier notes read as a circular pointer is simply the NEXT slot's head):
+    `<u16 record index (0-based, section 14 order)> <u16 piece index (1-based,
+    section 10)> <u16 bundle>` [V: 677 of 677 slots on 18 markers - the record's
+    declared area matches the slot's, the piece's name starts the record text,
+    and the bundle equals both the slot's own bundle and its size-table row]."""
     out = []
-    for s in range(lo, hi-SLOT+1, SLOT):
+    for i, s in enumerate(range(lo, hi-SLOT+1, SLOT)):
         px, py, hx, hy = struct.unpack_from('<dddd', d, s)
-        out.append(dict(slot=s, x=px, y=py, home_x=hx, home_y=hy,
+        h = s - SLOT_HEAD
+        head = (u16(d, h), u16(d, h+2), u16(d, h+4)) if h >= 0 else (None, None, None)
+        out.append(dict(slot=s, index=i, x=px, y=py, home_x=hx, home_y=hy,
                         orient_code=u16(d, s+32), area=f64(d, s+42),
                         bundle=u32(d, s+64) & 0xffff, bundle_flags=u32(d, s+64) >> 16,
+                        record_index=head[0], piece_index=head[1], bundle_head=head[2],
                         raw=d[s:s+SLOT].hex(), **decode_orient(u16(d, s+32))))
     return out
 
-def parse_marker(d, size_vocab=None):
+def parse_marker(d, size_vocab=None, binding='structural'):
     """Everything readable in a marker object. `size_vocab` = {piece name:
     [size names]} from the piece objects of the same ZIP, used to split the
     record strings; a piece it does not cover is split against the marker's
     own size table (v4), and only a marker with neither falls back to a
-    pattern."""
+    pattern.
+
+    `binding` (v4.1): 'structural' (default) binds each slot to its (piece,
+    size, model, record) from the slot head, the size-table tiling and
+    section 10 - see _bind_structural - and uses the declared area only for
+    slots that cannot be bound that way; 'area' is the pre-v4.1 rule alone,
+    kept so a change can be diffed against it."""
     obj = read_object(d)
     if obj['type'] != 9: raise WrongObjectType('not a marker object', got=obj['type'], want=9)
     dirs = directory(d)
@@ -363,20 +469,34 @@ def parse_marker(d, size_vocab=None):
         r['model'] = mk['models'][r['model_index']] if r['model_index'] < len(mk['models']) else None
     mk['table_ends'] = (dict(models=(m_end, sec[SEC_SIZES][0]-6), sizes=(s_end, sec[SEC_SIZES][1]-6))
                         if sec[SEC_MODELS] and sec[SEC_SIZES] else None)
-    mk['records'] = piece_records(d, *sec[SEC_RECORDS]) if sec[SEC_RECORDS] else []
-    # section 13: u32 cumulative byte offsets of the section-14 records; the
-    # array starts 6 bytes before the directory offset [?] (66 values for 66
-    # records on 2303-BD 137; consecutive differences are the record lengths)
+    # v4.1: whether section 10's chain closed where the directory says it must
+    walked = _walk_piece_list(d, *sec[SEC_PIECES]) if sec[SEC_PIECES] else None
+    mk['piece_list_end'] = (walked[1], walked[2]) if walked and walked[3] and walked[0] else None
+    # section 13: u32 byte offsets of the section-14 records, relative to 6 bytes
+    # before section 14's directory offset (66 values for 66 records on
+    # 2303-BD 137; consecutive differences are the record lengths) [V: 18 of 18]
     mk['record_index'] = []
     if sec[SEC_INDEX] and sec[SEC_RECORDS]:
         n = (sec[SEC_INDEX][1] - sec[SEC_INDEX][0]) // 4
         vals = [u32(d, sec[SEC_INDEX][0]-6+4*k) for k in range(n)]
-        if all(vals[k] < vals[k+1] for k in range(len(vals)-1)): mk['record_index'] = vals
+        if vals and all(vals[k] < vals[k+1] for k in range(len(vals)-1)): mk['record_index'] = vals
+    # v4.1: the records are walked from that index (exact, and it fixes their
+    # ORDER, which the slot heads index into); the regex reader is the fallback
+    # for a marker whose index is missing or does not validate
+    walked_records = (piece_records_indexed(d, *sec[SEC_RECORDS], mk['record_index'])
+                      if mk['record_index'] and sec[SEC_RECORDS] else None)
+    mk['records_source'] = 'index' if walked_records is not None else 'regex'
+    mk['records'] = (walked_records if walked_records is not None else
+                     piece_records(d, *sec[SEC_RECORDS]) if sec[SEC_RECORDS] else [])
     mk['slots'] = parse_slots(d, *sec[SEC_SLOTS]) if sec[SEC_SLOTS] else []
-    # split every record text: piece / cut description / size
+    mk['placed_word'] = dirs[40] & 0xffff       # 0 / 1 / 2 = none / some / all slots placed [V: 18/18]
+    # split every record text: piece / cut description / size. The names come
+    # from the -PDSTEXT- label scan AND section 10's own list (v4.1: the scan
+    # finds nothing on LADIES-BLOUSE, so all 20 of its records went unsplit)
+    split_names = list(dict.fromkeys(mk['piece_names'] + [p['name'] for p in mk['pieces']]))
     by_piece = {}
     for r in mk['records']:
-        name, _, _ = split_record(r['text'], mk['piece_names'])
+        name, _, _ = split_record(r['text'], split_names)
         r['piece'] = name
         # a record whose text matches no declared piece name never enters
         # by_piece below, so it never gets 'cut'/'size' set there - default
@@ -394,12 +514,27 @@ def parse_marker(d, size_vocab=None):
         for r in recs:
             desc, size = res.get(r['text']) or split_record(r['text'], [name], vocab)[1:]
             r['cut'] = desc; r['size'] = size
-    # bind slots to records by declared area (nearest within tolerance, no
-    # rival within 10x the gap - dxfparser's rule)
-    placements = []
     for s in mk['slots']:
-        empty = (abs(s['x']) < 1e-9 and abs(s['y']) < 1e-9) or s['x'] < -900
-        s['empty'] = empty
+        s['empty'] = (abs(s['x']) < 1e-9 and abs(s['y']) < 1e-9) or s['x'] < -900
+    if binding == 'structural': _bind_structural(mk)
+    _bind_by_area(mk, only_unbound=(binding == 'structural'))
+    placements = [s for s in mk['slots'] if not s['empty']]
+    mk['placements'] = placements
+    mk['bundles'] = sorted({p['bundle'] for p in placements})
+    mk['sum_slot_areas'] = sum(p['area'] for p in placements)
+    return mk
+
+def _area_ok(s, rec):
+    return abs(rec['area'] - s['area']) <= max(0.05, 1e-3*s['area'])
+
+def _bind_by_area(mk, only_unbound=False):
+    """The pre-v4.1 binding, dxfparser's rule: the record whose declared area
+    is nearest the slot's (within tolerance, no rival PIECE within 10x the
+    gap). It cannot tell sister sizes of one piece apart when they tie on area,
+    so it is the fallback for a slot the structure could not bind, not the
+    rule - on 2303-BD 137 it picked the wrong size for 77 of 97 slots."""
+    for s in mk['slots']:
+        if only_unbound and s.get('binding', {}).get('method') == 'structural': continue
         rec = None
         if mk['records']:
             ranked = sorted(mk['records'], key=lambda r: abs(r['area']-s['area']))
@@ -410,11 +545,51 @@ def parse_marker(d, size_vocab=None):
         s['record'] = rec
         s['piece'] = rec['piece'] if rec else None
         s['size'] = rec['size'] if rec else None
-        if not empty: placements.append(s)
-    mk['placements'] = placements
-    mk['bundles'] = sorted({p['bundle'] for p in placements})
-    mk['sum_slot_areas'] = sum(p['area'] for p in placements)
-    return mk
+        s['model'] = None; s['row'] = None
+        s['binding'] = dict(method='area' if rec else 'none', area_ok=bool(rec), bundle_ok=None, text_ok=None)
+
+def _tile_rows(mk):
+    """-> [size-row index for each slot], or None when the size table does not
+    tile the slot table (then nothing can be bound structurally)."""
+    rows, n = mk['sizes'], len(mk['slots'])
+    if not rows or sum(r['n'] for r in rows) != n: return None
+    out = []; run = 0
+    for i, r in enumerate(rows):
+        if r['ordinal'] != run: return None
+        out += [i] * r['n']; run += r['n']
+    return out
+
+def _bind_structural(mk):
+    """Bind every slot to (record, piece, size, model) from the file's own
+    structure [V: 677 of 677 slots on 18 markers, DXF labels 97/97 on
+    2303-BD 137 PLACED]:
+
+      size, model   the size table's tiling of the slot table
+      record        the slot head's record index (section 14 order)
+      piece         the slot head's piece index (section 10, 1-based)
+
+    The declared area, the slot's own bundle and the record text's `<size>G`
+    ending are then CHECKED against that binding, per slot, in s['binding'] -
+    never used to choose it. A slot that cannot be bound this way (unseen
+    layout) is left for the area rule and says so in s['binding']['method']."""
+    tiling = _tile_rows(mk)
+    if tiling is None: return
+    recs, pieces, rows = mk['records'], mk['pieces'], mk['sizes']
+    for s, ri in zip(mk['slots'], tiling):
+        rec_i, piece_i = s['record_index'], s['piece_index']
+        if rec_i is None or not (0 <= rec_i < len(recs)): continue
+        rec, row = recs[rec_i], rows[ri]
+        prow = pieces[piece_i-1] if piece_i and 1 <= piece_i <= len(pieces) else None
+        piece = prow['name'] if prow and rec['text'].startswith(prow['name']) else rec['piece']
+        text_ok = rec['text'].endswith(row['size'] + 'G')
+        s['record'], s['piece'], s['size'] = rec, piece, row['size']
+        s['model'], s['row'] = row['model'], ri
+        s['binding'] = dict(method='structural', area_ok=_area_ok(s, rec),
+                            bundle_ok=(s['bundle'] == ri == s['bundle_head']), text_ok=text_ok)
+        # the record's own size/cut are now known exactly, not guessed from text
+        if text_ok and piece and rec['text'].startswith(piece):
+            rec['piece'], rec['size'] = piece, row['size']
+            rec['cut'] = rec['text'][len(piece):len(rec['text'])-len(row['size'])-1]
 
 def check_marker(mk):
     """Identities a correct read must satisfy; -> list of (name, ok, detail)."""
@@ -454,6 +629,27 @@ def check_marker(mk):
         out.append(('size table: sum(pieces) == slots, ordinals cumulative, model index in range',
                     run == len(mk['slots']) and cumulative and in_range,
                     f'{run} pieces vs {len(mk["slots"])} slots, {len(mk["sizes"])} rows'))
+    # v4.1: rows that count EVERY slot, placed or not - "every placement bound"
+    # above is 0/0 on an unlaid marker and says nothing there. Appended, never
+    # renamed: dataset/MANIFEST.json keys on the existing names.
+    slots = mk['slots']; N = len(slots)
+    if N:
+        b = [s.get('binding') or {} for s in slots]
+        n_struct = sum(1 for x in b if x.get('method') == 'structural')
+        out.append(('every slot bound structurally', n_struct == N, f'{n_struct}/{N}'))
+        n = sum(1 for x in b if x.get('bundle_ok'))
+        out.append(('slot bundle == head bundle == size-row index', n == N, f'{n}/{N}'))
+        n = sum(1 for x in b if x.get('area_ok'))
+        out.append(('slot declared area == bound record area', n == N, f'{n}/{N}'))
+        n = sum(1 for x in b if x.get('text_ok'))
+        out.append(('record text ends with the tiled size + G', n == N, f'{n}/{N}'))
+    if mk['record_index']:
+        out.append(('records == section-13 entries', mk.get('records_source') == 'index'
+                    and len(mk['records']) == len(mk['record_index']),
+                    f'{len(mk["records"])} records, {len(mk["record_index"])} index entries, read by {mk.get("records_source")}'))
+    if mk.get('piece_list_end'):
+        a, w = mk['piece_list_end']
+        out.append(('piece list tiles section 10', a == w, f'walk end {hex(a)} want {hex(w)}'))
     return out
 
 # ------------------------------------------------ type-10 object (research)

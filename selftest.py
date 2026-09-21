@@ -1242,7 +1242,7 @@ for zp, piece, want in (('markers/CLAUDE-GRADE-MARKER/CLAUDE-GRADE-MARKER.zip', 
 mut = bytearray(st); mut[23] ^= 0x40                                                     # the high byte of the first d1 step of the last (RUFFLE) stream
 if am.verify_stream_outline(am.decode_record_stream(bytes(mut))['contours'][0], rc['area'], rc['perimeter'])[0]: sd_bad.append('a flipped coordinate bit still verified')
 # corpus: distinct streams verified against their own record head, marker-only ZIPs included
-sd_seen = set(); sd_tot = sd_ok = 0; sd_named = {}
+sd_seen = set(); sd_tot = sd_ok = sd_unf = 0; sd_named = {}; sd_cross = []
 for zp in sorted(glob.glob(os.path.join(HERE, 'markers', '**', '*.zip'), recursive=True) + glob.glob(os.path.join(HERE, 'markers-live', '**', '*.zip'), recursive=True)):
     try: mos = am.list_zip(zp).get('marker', [])
     except Exception: continue
@@ -1253,8 +1253,13 @@ for zp in sorted(glob.glob(os.path.join(HERE, 'markers', '**', '*.zip'), recursi
             oo = rc['offset']; tt = len(rc['text']); key = (rc['text'], o_['data'][oo+tt:oo+tt+24], rc['stream_len'])
             if key in sd_seen: continue
             sd_seen.add(key); ro = am.record_outline(o_['data'], rc); sd_tot += 1; sd_ok += bool(ro and ro['verified'])
+            if ro and ro['unfolded']:                                   # an unfolded half must give a SIMPLE polygon (no crossing edges)
+                sd_unf += 1; pp = ro['points']; nn = len(pp)
+                def _c(a, b, c): return (c[1]-a[1])*(b[0]-a[0]) - (b[1]-a[1])*(c[0]-a[0])
+                if any(_c(pp[i], pp[(i+1) % nn], pp[j]) * _c(pp[i], pp[(i+1) % nn], pp[(j+1) % nn]) < 0 and _c(pp[j], pp[(j+1) % nn], pp[i]) * _c(pp[j], pp[(j+1) % nn], pp[(i+1) % nn]) < 0 for i in range(nn) for j in range(i + 2, nn) if not (i == 0 and j == nn - 1)): sd_cross.append(rc['text'][:24])
             for nm in ('0418T TRS', '2591A', '1825D', '5683D'):
                 if rc['text'].startswith(nm): sd_named.setdefault(nm, [0, 0]); sd_named[nm][0] += 1; sd_named[nm][1] += bool(ro and ro['verified'])
+if sd_cross: sd_bad.append('unfolded outlines that cross themselves: %s' % sd_cross[:3])
 if sd_ok != sd_tot or sd_tot < 255: sd_bad.append(f'{sd_ok} of {sd_tot} distinct corpus streams verify (all 255 did)')
 for nm, (nn, kk) in sd_named.items():
     if nn == 0 or kk != nn: sd_bad.append(f'marker-only {nm}: {kk} of {nn} records verify')

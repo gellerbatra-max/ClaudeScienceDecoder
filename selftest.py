@@ -1144,6 +1144,57 @@ if os.path.isfile(E1) and lobjs:
     print(f"   {'ok ' if not bad else 'FAIL'} live twins: a plain store clears @88, sets word 40 = 1, orientation 0x8000, centres -1000; laying + returning a piece changes 12 bytes (1 area ulp)  {'; '.join(bad)}")
     if bad: fails.append('E1 twins: ' + '; '.join(bad))
 
+# The second live experiment (2026-09-21, v4.7): the SAME order as a laid and as an
+# as-generated marker. `AD1234 TEST 134` (laid, 13 pieces, kept from September) and
+# `CLAUDE-D2-M0` (Easy Order > Save As a copy of that order, change ONLY the marker
+# name, Process): identical pieces, sizes, quantities and width, so every byte that
+# differs is what laying does. Result: the 13 records are identical; the slot bodies
+# differ only in centre (0..20), orientation (32-33), two area ulps (41-42) and @88
+# (213 on every RUFFLE slot as generated, 0 laid); section 1 loses its length /
+# utilisation / area doubles, word 40 goes 0 -> 2, and the type-10 scratch object grows
+# by 960 B (a ~1 KB block of small offsets at its offset 310) once laid.
+D2 = os.path.join(HERE, 'markers-live', 'CLAUDE-UNP-D2-TWIN', 'CLAUDE-D2-M0.zip')
+LAID = os.path.join(HERE, 'markers', 'misc-test-markers', 'AD1234 TEST 134.zip')
+if os.path.isfile(D2) and os.path.isfile(LAID):
+    G = am.place_marker(D2)['markers'][0]; L = am.place_marker(LAID)['markers'][0]
+    g, l = G['marker'], L['marker']; bad = []
+    if not (g['lay_history'] == 'as_generated' and g['placed_word'] == 0 and len(g['slots']) == 13 and {s['sig88'] for s in g['slots']} == {213}): bad.append('twin as generated: state / @88')
+    if not (l['lay_history'] == 'laid' and l['placed_word'] == 2 and len(l['slots']) == 13 and not any(s['sig88'] for s in l['slots'])): bad.append('laid twin: state / @88')
+    if [n for n, ok, _ in am.check_marker(g) if not ok] or am.marker_warnings(g) or [n for n, ok, _ in am.check_marker(l) if not ok]: bad.append('a check or warning fires')
+    strip = lambda r: {k: v for k, v in r.items() if k != 'offset'}
+    if [strip(r) for r in g['records']] != [strip(r) for r in l['records']]: bad.append('the records differ between the twins')
+    same = ('record_index', 'piece_index', 'bundle', 'bundle_head', 'piece', 'size', 'model')
+    if any(any(a[k] != b[k] for k in same) or abs(a['home_x'] - b['home_x']) > 1e-4 or abs(a['home_y'] - b['home_y']) > 1e-4 or abs(a['area'] - b['area']) > 1e-6
+           for a, b in zip(g['slots'], l['slots'])): bad.append('a slot field other than centre / orientation / @88 differs')
+    if {(s['x'], s['y']) for s in g['slots']} != {(0.0, 0.0)} or len({(s['x'], s['y']) for s in l['slots']}) < 10: bad.append('centres: as generated must be (0,0), laid must be placed')
+    allowed = set(range(21)) | {32, 33, 41, 42, 88, 89}
+    off = {j for a, b in zip(g['slots'], l['slots']) for j in range(96) if bytes.fromhex(a['raw'])[j] != bytes.fromhex(b['raw'])[j]}
+    if not off <= allowed: bad.append(f'slot bytes outside centre/orientation/area/@88 differ: {sorted(off - allowed)}')
+    # @88 = record head count + one constant per piece (RUFFLE: 209 + 4), on both twins' record
+    sm = g['sig88_model']
+    if not (sm['applicable'] and sm['ok'] and sm['constant'] == {'ID1005 - RUFFLE': 4} and all(s['record']['prefix'][1] == 209 for s in g['slots'])): bad.append(f'@88 model: {sm}')
+    # and the row can fail: move one slot's @88 by 1 in the bytes
+    b = bytearray(next(o for o in am.list_zip(D2)['marker'])['data']); struct.pack_into('<H', b, g['slots'][4]['slot'] + 88, 214)
+    gm = am.parse_marker(bytes(b)); row = 'slot @88 = record head count + one constant per piece (as generated)'
+    if {n: ok for n, ok, _ in am.check_marker(gm)}.get(row, True) or not any('@88' in x for x in am.marker_warnings(gm)): bad.append('a broken @88 did not fail its row / raise a warning')
+    # the marker-level 0x0040 bit is a copy of the piece row's flag u16 @+14: 0 here, so a patched row flag must break it
+    prow = 'slot orientation bit 0x0040 == its piece row flag @+14 (section 10)'
+    ri = next(i for i, p in enumerate(g['pieces']) if p['name'] == 'ID1005 - RUFFLE')
+    b = bytearray(next(o for o in am.list_zip(D2)['marker'])['data']); struct.pack_into('<H', b, g['pieces'][ri]['offset'] - 10, 1)
+    if not {n: ok for n, ok, _ in am.check_marker(g)}.get(prow) or {n: ok for n, ok, _ in am.check_marker(am.parse_marker(bytes(b)))}.get(prow, True): bad.append('the 0x0040 == piece flag row did not fail when the flag was patched')
+    # reproducibility of the harness: the same order processed again 32 minutes later under another marker name
+    # (CLAUDE-D2-M5, via Process w/ AutoMark's scaffold) differs in 18 bytes - four name digits and stamp bytes - so any
+    # byte that differs between two runs of the dataset is a setting that was changed
+    M5 = os.path.join(HERE, 'markers-live', 'CLAUDE-UNP-D2-TWIN', 'CLAUDE-D2-M5.zip')
+    if os.path.isfile(M5):
+        a5 = next(o for o in am.list_zip(D2)['marker'])['data']; b5 = next(o for o in am.list_zip(M5)['marker'])['data']
+        dif = [i for i in range(len(a5)) if a5[i] != b5[i]] if len(a5) == len(b5) else None
+        if dif is None or len(dif) != 18 or sum(1 for i in dif if a5[i] == 0x30 and b5[i] == 0x35) != 4: bad.append(f'the harness is not reproducible: {None if dif is None else len(dif)} differing bytes')
+        m5 = am.parse_marker(b5)
+        if not (m5['lay_history'] == 'as_generated' and {s['sig88'] for s in m5['slots']} == {213} and m5['name'] == 'CLAUDE-D2-M5'): bad.append('D2-M5 is not the same as-generated marker')
+    print(f"   {'ok ' if not bad else 'FAIL'} live twins of one order (laid vs as generated): records identical, slots differ only in centre / orientation / area ulp / @88 (= record head count + C per piece)  {'; '.join(bad)}")
+    if bad: fails.append('D2 twins: ' + '; '.join(bad))
+
 print('-- marker byte map (v4.4, see accumark_marker.marker_coverage)')
 # Every byte owned by a section a parser reads must be classified (identified /
 # raw / zero_pad / opaque) - only the envelope, the header scalars, sections 2-5,

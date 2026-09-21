@@ -115,6 +115,11 @@ one of two lines:
   under `markers/<NAME>/`, note it in a `MARKER_DECODE_PLAN.md` STATUS block, and
   find which fact broke (`python accumark_marker.py <zip>` lists every check row).
 
+To MAKE a marker of your own to test a hypothesis (one setting changed at a time, an
+as-generated marker on demand, reproducible to 18 bytes), follow the harness in
+`MARKER_DATASET_DESIGN.md` - and never use Explorer's *Generate Marker* on a copy of an
+order, it targets the original's marker.
+
 `--inventory --json` gives the same thing as data. The byte-level spec is
 `MARKER_FORMAT_SPEC.md`; `python -c "import accumark_marker as m; ..."`
 `m.marker_coverage(data)` says where the unexplained bytes are.

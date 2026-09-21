@@ -41,6 +41,8 @@ SEEDS = [
     # only listed placements) could not have told a corrupt slot from a sound one.
     ('2303-BD137-UNLAID', 'markers/2303-BD137-UNLAID/2303-BD 137.zip', 'marker'),
     ('5683D-SS21-UNLAID', 'markers/5683D-SS21-UNLAID/5683D-BD 168 SS21.zip', 'marker'),
+    # v4.7: an as-generated marker that BUNDLES its pieces (the fresh twin of a laid order)
+    ('CLAUDE-D2-M0', 'markers-live/CLAUDE-UNP-D2-TWIN/CLAUDE-D2-M0.zip', 'marker'),
 ]
 QUICK_SEEDS = SEEDS[:2]
 

@@ -111,7 +111,7 @@ def canon_place_marker(res):
                         for m in mk.get('order_copy', [])],
             block_buffers=[[_round(v) for v in b['sides']] for b in mk.get('block_buffers', [])],
             laid_state=mk.get('laid_state'), lay_history=mk.get('lay_history'), placed_word=mk.get('placed_word'), placed_area=_round(mk.get('placed_area')),
-            header_sums=mk.get('header_sums'), inventory=inventory,
+            header_sums=mk.get('header_sums'), sig88_model=mk.get('sig88_model'), inventory=inventory,
         ))
     markers.sort(key=lambda r: json.dumps(r, sort_keys=True, default=str))
     piece_errors = sorted(res.get('piece_errors', {}).keys())

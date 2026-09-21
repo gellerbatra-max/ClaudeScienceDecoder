@@ -1,5 +1,35 @@
 # Marker decode plan — AccuMark native marker export
 
+> ## STATUS 2026-09-21 (v4.7) - the controlled dataset: @88 is the record's own count; 0x0040 is a copy of a piece-row flag
+>
+> **Dataset design + harness: `MARKER_DATASET_DESIGN.md`.** One order, one setting changed per
+> run, an as-generated marker made on demand (Explorer Save As of the order > Easy Order on
+> the copy > edit the Step 4 *Marker Name* cell > Process; Explorer's Generate Marker on a copy
+> targets the ORIGINAL order's marker and stops at "Confirm Marker Replace" - my earlier
+> "overwrote AD1234 TEST 134" was a false alarm: nothing was replaced, the export is
+> byte-identical apart from stamps). Fixtures `markers-live/CLAUDE-UNP-D2-TWIN/`
+> (`CLAUDE-D2-M0`, `CLAUDE-D2-M5`); the laid twin is `markers/misc-test-markers/AD1234 TEST 134.zip`.
+>
+> Settled (all offline over the 111-marker corpus, each with a check row + mutation test):
+> * **`@88` = record head u16 @+10 + C, C one constant per piece** across sizes and markers
+>   (107 groups, 43 markers, 31 pieces, 0 exceptions). It was never a free signature.
+>   C is 4 (<= a grain line), 28-32 (grain + mirror), 216-266 (ten internal lines), 620+
+>   (eighteen): what exactly C counts is open [?] (F6: pieces of controlled topology).
+> * **The marker-level `0x0040` bit == the piece row's flag u16 @+14** (section 10): 9,122 of
+>   9,122 slots, no marker mixes values. What sets the flag is open: not a model-piece
+>   property (450 pairs), not the block buffer; by name it tracks the engine that wrote the
+>   marker (F5).
+> * **Laid vs as generated, same order:** records byte-identical; slots differ only in centre,
+>   orientation, two area ulps and `@88`; section 1 loses length / util / placed-area; word 40
+>   0 vs 2; the type-10 scratch object is 960 B larger once laid (~1 KB block of small offsets
+>   at its offset 310).
+> * **The harness is reproducible:** the same order processed again differs in 18 bytes (name
+>   digits + stamps).
+>
+> Still open, each with a named run: C's meaning (F6), the origin of flag @+14 (F5), the
+> block-buffer table's purpose (F4), `@52/@54/@60`, the CP 150 y excess, two placed slots 7.2%
+> over their record, the two-model / two-fabric order.
+>
 > ## STATUS 2026-09-21 (v4.5, live) - a store changes an unplaced marker in six ways; "never laid" was the wrong label
 >
 > Live experiment on Save-As copies of my own scratch marker (`markers-live/

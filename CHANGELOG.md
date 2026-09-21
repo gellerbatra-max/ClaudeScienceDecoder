@@ -1,5 +1,77 @@
 # Changelog
 
+## v4.7 (2026-09-21) - the controlled dataset: `@88` is the record's own count, `0x0040` is a copy of a piece-row flag
+
+Same labelling rule: `__version__` stays `'3.0'`. Design: `MARKER_DATASET_DESIGN.md`.
+Fixture: `markers-live/CLAUDE-UNP-D2-TWIN/CLAUDE-D2-M0.zip`.
+
+**How an as-generated marker is made on demand (the harness).** Explorer > select an
+Order > right-click > Save As (a copy, e.g. `CLAUDE-D2-GEN`) > Easy Order on the copy >
+edit the **Marker Name** cell of Step 4 (the marker takes the name from that cell, NOT
+from the order object - Explorer's *Generate Marker* on a copy targets the ORIGINAL
+order's marker name and stops at "Confirm Marker Replace") > *Process* > Save changes
+> Success. No Easy Marking involved, so the marker is genuinely as generated
+(`CLAUDE-D2-M0`: word 40 = 0, 24,496 B). One order object per experiment, so every
+byte that differs between two markers is a setting I changed.
+
+**Correction of my own false alarm.** Earlier this session I wrote that *Generate
+Marker* had overwritten the scratch marker `AD1234 TEST 134` (laid 25,464 B ->
+9,762 B). It had not: the dialog I cancelled was *Confirm Marker Replace* hidden behind
+the progress window, and Explorer's Size column showed a stale figure for a while. A
+re-export of the marker differs from the September export only in the 57 envelope-stamp
+bytes; the laid original is intact. Nothing was replaced.
+
+**Reproducibility.** The same order processed again 32 minutes later under another marker name
+(`CLAUDE-D2-M5`, reached through *Process w/ AutoMark*, which only writes the same as-generated
+marker and opens the AutoMark Editor as a job scaffold - the job was not submitted) differs from
+`CLAUDE-D2-M0` in **18 bytes**: four name digits and stamp bytes. So the harness is deterministic
+and any byte that differs between two runs is a setting that was changed (`selftest` row).
+
+**The twin.** `AD1234 TEST 134` (laid, 13 pieces, from September) and `CLAUDE-D2-M0`
+(as generated, from a Save-As copy of that order with only the marker name changed) share
+pieces, sizes, quantities and width, so every difference is what laying does:
+- the 13 records are byte-identical (text, area, perimeter, head words, stream length);
+- slot bodies differ ONLY in centre (+0..+20: 0,0 vs placed), orientation (+32/+33),
+  two 1-ulp area bytes (+41/+42) and `@88` (**213 on every RUFFLE slot as generated, 0
+  laid**); record index, piece index, bundle, home box and area are identical;
+- section 1 loses its length / utilisation / placed-area doubles when unlaid, word 40
+  is 0 vs 2, the name (repeated in sections 2 and 30) changes length;
+- the embedded type-10 scratch object is **960 B larger once laid** (a ~1 KB block of
+  small offsets, `f0 04 00 00 f8 04 00 00 fc 04 00 00 ff ff ff ff ...`, at its offset
+  310..1288 that the unlaid object lacks) - still opaque, but the growth is now located;
+- the unlaid marker decodes cleanly with geometry for every slot (`GEOMETRY: outlines
+  for every slot`): 13 pieces, 543.25 sq in, 10.3 in minimum length at 134 cm.
+
+**`@88` is not independent - it is the record's own count.** Slot `@88` (as generated)
+`= record head u16 @+10 (prefix[1], a per-size count) + C`, with **C one constant per
+piece** - the same for every size of the piece and for every marker that carries it:
+107 (marker, piece) groups over 43 markers and 31 pieces, **0 exceptions**. RUFFLE 209 +
+4 = 213, the rectangle 5 + 4 = 9, LADIES-BLOUSE-BK 105 + 4 = 109 (and 103 + 4 at size 10:
+`@88` moves with the size, so the earlier "constant per piece+size" was really "per
+record"). C is 4 on a piece with at most a grain line, 28-32 with grain + mirror lines,
+216-266 with ten internal lines, 620+ with eighteen: the internal geometry's share of
+the entry count. Still open [?]: exactly which entries C counts. New check row
+`slot @88 = record head count + one constant per piece (as generated)`, new
+`marker_warnings` entry, `mk['sig88_model']`, mutation-tested (one slot's `@88` +1 breaks
+the row and raises the warning).
+
+**The marker-level `0x0040` bit is a copy of the piece row's flag u16 @+14
+(section 10).** Slot bit `== (flag == 1)` on **9,122 of 9,122 slots over 111 markers**,
+and no marker mixes flag values (232 piece rows are 0, 268 are 1, each marker uniform).
+That is why it looked marker-level, and why it never tracked the pair bit. Piece rows
+now carry `flag14`; new check row `slot orientation bit 0x0040 == its piece row flag
+@+14 (section 10)`, mutation-tested. Still open [?]: WHAT (order / model option) sets
+the flag. It is not a model-piece property (no model flag byte separates it over 450
+marker-piece / model-piece pairs) and not the block buffer (both values occur with and without
+one); by name it looks like the ENGINE that wrote the marker (0 on Marker Wizard / Easy Order /
+AccuPlan / the imported 1825D, 5683D and 2303-BD 137 markers; 1 on the ZZ-AM, ZZN, ZZC, CP 150,
+418T, 2591A and LADIES-BLOUSE TEST-2 markers) - circumstantial until one order is run through
+each engine (`MARKER_DATASET_DESIGN.md`, F5).
+
+**Robustness** 474 -> 561 (the twin is a new seed; canon carries `sig88_model`). The
+committed `ROBUSTNESS_REPORT.md` said 303 - it had been restored after every run and was
+stale; it is now the real report. selftest PASS, dataset_test 36/36.
+
 ## v4.5 (continued, 2026-09-21) - the live experiment: my "never laid" label was wrong
 
 Same labelling rule: `__version__` stays `'3.0'`.

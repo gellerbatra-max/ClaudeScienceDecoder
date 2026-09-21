@@ -317,7 +317,8 @@ def _walk_piece_list(d, lo, hi):
         buf = u16(d, pos+8)
         rows.append(dict(offset=pos+28, name=name.decode('latin1'), fabric=cat.decode('latin1'),
                          flag=fabric_types[0] if fabric_types else '', fabric_types=fabric_types,
-                         buffer_index=None if buf == 0xffff else buf, raw=d[pos+4:pos+28].hex()))
+                         buffer_index=None if buf == 0xffff else buf, raw=d[pos+4:pos+28].hex(),
+                         flag14=u16(d, pos+18)))
         pos = p
     return rows, pos, stop, head_ok
 
@@ -644,6 +645,25 @@ def _add_order_and_state(d, mk, sec):
     sig = [s['sig88'] for s in mk['slots']]
     mk['lay_history'] = (('as_generated' if any(sig) else 'stored_empty') if by_slots == 'unlaid' else by_slots)
     mk['header_sums'] = _header_sums(mk)
+    mk['sig88_model'] = _sig88_model(mk)
+
+def _sig88_model(mk):
+    """v4.7: slot @88 is not an independent number. On an as-generated marker it is
+    the bound record's OWN entry count: @88 = record head u16 @+10 (`prefix[1]`, a
+    per-size count that grows with the size) + C, where C is one constant PER PIECE -
+    the same on every size of that piece and on every marker that carries it (live
+    corpus: 107 (marker, piece) groups over 43 markers and 31 pieces, 0 exceptions,
+    the fresh twin CLAUDE-D2-M0 included). C is 4 on a piece with at most a grain
+    line, 28-32 with grain + mirror lines, 216-266 with ten internal lines and 620+
+    with eighteen, so it tracks the piece's INTERNAL geometry [?] exactly what it counts.
+    -> dict(applicable, ok, constant={piece: C, or None when it varies})"""
+    per = {}
+    for s in mk['slots']:
+        rc = s.get('record')
+        if s['sig88'] and rc:
+            per.setdefault(s.get('piece') or ('record %d' % s['record_index']), set()).add(s['sig88'] - rc['prefix'][1])
+    return dict(applicable=bool(per), ok=all(len(v) == 1 for v in per.values()),
+                constant={p: (next(iter(v)) if len(v) == 1 else None) for p, v in per.items()})
 
 KNOWN_SECTIONS = frozenset({1, 2, 3, 4, 5, 6, 10, 11, 12, 13, 14, 15, 21, 30})    # every directory slot ever seen used
 KNOWN_ORIENT_BITS = ROT180_BIT | MIRROR_BIT | 0x0040                                  # what a NEVER-LAID slot's word can carry
@@ -696,6 +716,9 @@ def marker_warnings(mk):
         w.append('section 15 (order copy) did not parse: no order lines can be stated from the marker itself')
     for label, (got, want) in (mk.get('table_ends') or {}).items():
         if got != want: w.append('the %s chain ends at %#x, the directory says %#x' % (label, got, want))
+    sm = mk.get('sig88_model')
+    if sm and sm['applicable'] and not sm['ok']:
+        w.append('slot @88 is not (record head count + one constant per piece) for: ' + ', '.join(p for p, c in sm['constant'].items() if c is None))
     return w
 
 def _header_sums(mk):
@@ -871,6 +894,19 @@ def check_marker(mk):
         out.append(('slot @88 signature <=> directory word 40 is 0 (as generated)',
                     any(s['sig88'] for s in mk['slots']) == (mk['placed_word'] == 0),
                     f'{sum(1 for s in mk["slots"] if s["sig88"])} slots with a non-zero @88, word 40 = {mk["placed_word"]}'))
+    # v4.7: the marker-level 0x0040 orientation bit is a COPY of the piece row's flag u16 @+14
+    # (section 10): slot bit == (flag == 1) on 9,122 of 9,122 slots over 111 markers, and no
+    # marker mixes values. What sets that flag (an order / model option) is still open [?].
+    prow = mk['pieces']
+    pr = [(s, prow[s['piece_index'] - 1]) for s in mk['slots'] if 0 < s['piece_index'] <= len(prow) and 'flag14' in prow[s['piece_index'] - 1]]
+    if pr:
+        out.append(('slot orientation bit 0x0040 == its piece row flag @+14 (section 10)',
+                    all(bool(s['orient_code'] & 0x40) == (p['flag14'] == 1) for s, p in pr),
+                    f'{sum(1 for s, p in pr if bool(s["orient_code"] & 0x40) == (p["flag14"] == 1))} of {len(pr)} slots; flags {sorted({p["flag14"] for _, p in pr})}'))
+    sm = mk.get('sig88_model')
+    if sm and sm['applicable']:
+        out.append(('slot @88 = record head count + one constant per piece (as generated)', sm['ok'],
+                    f'{len(sm["constant"])} pieces; C = {sorted(v for v in sm["constant"].values() if v is not None)[:6]}'))
     if mk.get('block_buffers'):
         # v4.5: the table holds buffer DEFINITIONS and a piece points at one (0-based)
         # or at none - not "entry k is piece k's". Live scratch markers (ZZC-M1..3,

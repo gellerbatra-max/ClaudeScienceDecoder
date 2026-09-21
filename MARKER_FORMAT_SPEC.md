@@ -138,10 +138,13 @@ for that (model, size)** - the marker states its own cut quantities.
     +32  u16 orientation         +34..+41  const  ff ff ff ff 00 00 00 00 [?]
     +42  f64 declared area       +50..+63  raw (u16 @52, @54, @60 vary) [?]
     +64  u32 bundle (low 16) + flags (high 16, 0)    +68..+87 const [?]
-    +88  u16 AS-GENERATED SIGNATURE [V]: non-zero (constant per piece+size, meaning open)
-         on every slot of a marker Easy Marking has never stored, 0 on every slot of
-         every marker it has - laid, part-laid, or stored EMPTY. `@88 != 0  <=>  word 40
-         == 0` holds on all 60 markers, and on the live twins below.
+    +88  u16 AS-GENERATED SIGNATURE [V]: non-zero on every slot of a marker Easy Marking
+         has never stored, 0 on every slot of every marker it has - laid, part-laid, or
+         stored EMPTY. `@88 != 0  <=>  word 40 == 0` holds on all 60 markers, and on the
+         live twins below. **@88 = record head u16 @+10 (per-size count) + C, C one constant
+         per piece** [V: 107 (marker, piece) groups, 43 markers, 31 pieces, 0 exceptions];
+         C = 4 for a piece with at most a grain line, 28-32 with grain + mirror, 216-266 with
+         ten internal lines, 620+ with eighteen - what exactly C counts is open [?].
     +90..+95  the NEXT slot's head (below)
 
 **The head.** 6 bytes BEFORE each slot body: `<u16 record index (0-based, section 14
@@ -150,9 +153,10 @@ all 18 markers]. (Earlier notes read `+90/+92/+94` as a circular pointer; it is 
 next slot's head.)
 
 **Orientation.** Bit 0x2000 = rotate 180, bit 0x0080 = mirror [V vs drawn DXF]. Bit
-0x0040 is MARKER-level: set on all slots of a marker or on none, never mixed [V: 58
-markers, 28 / 30]; it is not the mirrored-pair bit (2303 has pairs and no 0x0040) and
-what sets it is open [?]. **Bit 0x8000 = "stored by Easy Marking"** [V live: every slot
+0x0040 is a COPY of the piece row's flag u16 @+14 (section 10): slot bit == (flag == 1)
+[V: 9,122 of 9,122 slots, 111 markers; no marker mixes flag values, which is why it looked
+marker-level]. It is not the mirrored-pair bit (2303 has pairs and no 0x0040); what order /
+model option sets the flag is open [?]. **Bit 0x8000 = "stored by Easy Marking"** [V live: every slot
 gains it on a plain store, `0x0000 -> 0x8000`, and `0x2000 -> 0xa004` - a rot180 preset
 also gains 0x0004]. A placed slot's word also carries lay-
 session bits (0x8000, 0x0200, 0x0020 ... ). On a never-laid marker only the three
@@ -213,8 +217,8 @@ zero_pad 0.8%, opaque 91.3% (section 14's streams + section 30).
 | open | evidence so far | method |
 |---|---|---|
 | side order of the four block-buffer doubles; what the table is for | home box ignores it (ZZC-M1 vs ZZC-BIG) | live: unequal buffers on a piece with real geometry |
-| what sets the marker-level 0x0040 bit; the pre-set rot180 alternation | 58 markers all-or-none; alternates per bundle | live: vary order / lay-limit settings |
-| slot u16 @88 values (9, 33, 54 ... per piece+size); @52/@54/@60 | @88 = as-generated signature [V]; stored-empty and laid-then-returned read 0 alike | @88 vs the piece's geometry; @52/@54/@60 vs piece/size |
+| what order / model option sets the piece-row flag @+14 (= the slot 0x0040 bit); the pre-set rot180 alternation | 0x0040 == flag @+14 on 9,122 / 9,122 slots [V]; alternates per bundle | live: flip one order / model option per run (DATASET_DESIGN F5) |
+| what C counts in @88 = head count + C; slot @52/@54/@60 | @88 = p1 + C(piece) [V], C tracks internal-line points; stored-empty and laid-then-returned read 0 alike | pieces with 0 / 1 / 2 / 4 internal lines built in Pattern Design (DATASET_DESIGN F6); @52/@54/@60 vs piece/size |
 | the y excess on July CP 150 unplaced slots (up to 0.0786 in, one-sided) | x fits the CP 150 table but the table does not drive home | live: known notch / curve |
 | placed slots 7.2% larger than their record (ZZC-M3, ZZN-F1) | 2 slots each | live: repeat with a plain piece |
 | why `@422` / `@454` are last-model sums; LADIES-BLOUSE 2x | modes observed exactly | two-model live order |

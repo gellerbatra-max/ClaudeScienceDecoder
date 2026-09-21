@@ -1192,6 +1192,21 @@ if os.path.isfile(D2) and os.path.isfile(LAID):
         if dif is None or len(dif) != 18 or sum(1 for i in dif if a5[i] == 0x30 and b5[i] == 0x35) != 4: bad.append(f'the harness is not reproducible: {None if dif is None else len(dif)} differing bytes')
         m5 = am.parse_marker(b5)
         if not (m5['lay_history'] == 'as_generated' and {s['sig88'] for s in m5['slots']} == {213} and m5['name'] == 'CLAUDE-D2-M5'): bad.append('D2-M5 is not the same as-generated marker')
+    # E7 (two runs of the same harness): a model whose pieces carry none of the order's fabric types is DROPPED - from the
+    # order AND the marker (CLAUDE-D2-E7O: ID1005 - TOP + CLAUDE-GRADE-MODEL with quantities typed for it saves and processes as
+    # ID1005 - TOP alone, decoding exactly like CLAUDE-D2-M0); and a FRESH two-model marker (CLAUDE-D2-E7B: LADIES-BLOUSE +
+    # ZZ-PLM-BLOUSE, both fabric type M) has header @422 / @454 = the LAST model's sums, so that mode is AccuMark's own behaviour
+    # and not a stale artefact of a laid marker.
+    E7O = os.path.join(HERE, 'markers-live', 'CLAUDE-UNP-D2-TWIN', 'CLAUDE-D2-E7O.zip'); E7B = os.path.join(HERE, 'markers-live', 'CLAUDE-UNP-D2-TWIN', 'CLAUDE-D2-E7B.zip')
+    if os.path.isfile(E7O) and os.path.isfile(E7B):
+        o7 = am.place_marker(E7O)['markers'][0]['marker']; b7r = am.place_marker(E7B)['markers'][0]; b7 = b7r['marker']
+        if not (o7['models'] == ['ID1005 - TOP'] and [(x['name'], [(z['size'], z['quantity']) for z in x['sizes']]) for x in o7['order_copy']] == [('ID1005 - TOP', [('XS', 2), ('S', 4), ('M', 4), ('L', 2), ('XL', 1)])]
+                and [strip(r) for r in o7['records']] == [strip(r) for r in g['records']] and len(o7['slots']) == 13): bad.append('E7O: the zero-piece model was not dropped')
+        sl7 = [s for s in b7['slots'] if s.get('record')]; last7 = [s for s in sl7 if s['model'] == b7['models'][-1]]
+        if not (b7['models'] == ['LADIES-BLOUSE', 'ZZ-PLM-BLOUSE'] and b7['lay_history'] == 'as_generated' and len(b7['slots']) == 29 and len(b7['pieces']) == 10): bad.append('E7B: shape')
+        if b7['header_sums'] != dict(area='last_model', perimeter='last_model') or abs(b7['total_area'] - sum(s['area'] for s in last7)) > 1e-6 or abs(b7['unknown_454'] - sum(s['record']['perimeter'] for s in last7)) > 1e-6 or abs(b7['total_area'] - sum(s['area'] for s in sl7)) < 1: bad.append('E7B: header @422 / @454 are not the last-model sums')
+        if [n for n, ok, _ in b7r['checks'] if not ok] or am.marker_warnings(b7): bad.append('E7B: a check or warning fires')
+        if not (b7['sig88_model']['ok'] and {p['flag14'] for p in b7['pieces']} == {0}): bad.append('E7B: @88 model / flag14')
     print(f"   {'ok ' if not bad else 'FAIL'} live twins of one order (laid vs as generated): records identical, slots differ only in centre / orientation / area ulp / @88 (= record head count + C per piece)  {'; '.join(bad)}")
     if bad: fails.append('D2 twins: ' + '; '.join(bad))
 

@@ -26,6 +26,11 @@
 > * **The harness is reproducible:** the same order processed again differs in 18 bytes (name
 >   digits + stamps).
 >
+> * **E7 (two more harness runs):** a model none of whose pieces has a used fabric type is dropped
+>   from the order AND the marker; a fresh two-model marker (`CLAUDE-D2-E7B`) has header `@422` / `@454`
+>   = the LAST model's sums (generation-time behaviour); the same LADIES-BLOUSE pieces read `flag @+14` 0
+>   there and 1 on older markers, so the flag is not a model property.
+>
 > Still open, each with a named run: C's meaning (F6), the origin of flag @+14 (F5), the
 > block-buffer table's purpose (F4), `@52/@54/@60`, the CP 150 y excess, two placed slots 7.2%
 > over their record, the two-model / two-fabric order.

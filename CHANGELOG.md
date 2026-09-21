@@ -27,6 +27,22 @@ marker and opens the AutoMark Editor as a job scaffold - the job was not submitt
 `CLAUDE-D2-M0` in **18 bytes**: four name digits and stamp bytes. So the harness is deterministic
 and any byte that differs between two runs is a setting that was changed (`selftest` row).
 
+**Two more runs of the harness (E7).**
+- `CLAUDE-D2-E7O`: I added `CLAUDE-GRADE-MODEL` to the order and typed quantities for it. The order
+  saved and the marker processed as `ID1005 - TOP` alone - **a model none of whose pieces carries a
+  fabric type of a used fabric row is dropped from the ORDER and the MARKER** (order copy included),
+  and the marker decodes exactly like `CLAUDE-D2-M0`. So an order's lines are not the marker's content:
+  read the order copy of the marker, not the Order object (`selftest` row).
+- `CLAUDE-D2-E7B`: `LADIES-BLOUSE` + `ZZ-PLM-BLOUSE` (both fabric type M), 3 cuts, freshly generated: header
+  **@422 / @454 are the LAST model's sums** (3,483.80 sq in / 738.85 in against 7,706.33 / 1,795.84 over
+  all 29 slots) - so the `last_model` mode on the 2303 markers is AccuMark's own behaviour at generation
+  time, not an artefact of a laid marker. The piece list repeats each piece once per model (10 rows for 5
+  pieces), the order copy holds both models, all check rows pass, no warning. (Four of the five blouse
+  piece objects in that export are stubs, so `--inventory` says `GEOMETRY: outlines for SOME slots` and
+  `NEEDS A LOOK` for them - the export's limit, not a decode fault.) `flag14` is **0** here, on the same
+  LADIES-BLOUSE pieces whose `LADIES-BLOUSE TEST-2` / `ZZN-F1` markers carry 1: the flag is NOT a property
+  of the model or its pieces, it changes with the marker's origin (`selftest` row).
+
 **The twin.** `AD1234 TEST 134` (laid, 13 pieces, from September) and `CLAUDE-D2-M0`
 (as generated, from a Save-As copy of that order with only the marker name changed) share
 pieces, sizes, quantities and width, so every difference is what laying does:
@@ -67,6 +83,8 @@ one); by name it looks like the ENGINE that wrote the marker (0 on Marker Wizard
 AccuPlan / the imported 1825D, 5683D and 2303-BD 137 markers; 1 on the ZZ-AM, ZZN, ZZC, CP 150,
 418T, 2591A and LADIES-BLOUSE TEST-2 markers) - circumstantial until one order is run through
 each engine (`MARKER_DATASET_DESIGN.md`, F5).
+
+**Not run, and why.** F1-F3 (width, quantities, single-size markers) predict only header width / section 15 / size rows, all already decoded; F4 (block buffer) needs an unequal buffer object (the only one in the scratch area, ZZBB-1, is 1 cm on all four sides) and a place to assign it - the Step 4 fabric row shows no block-buffer column, and the Defaults dialog looks like app-level defaults (width 137.16 there against 134 on the order), i.e. the user's own settings, which I did not touch; F6 needs pieces of controlled topology from Pattern Design. None is needed to read an unplaced marker; each has its procedure in `MARKER_DATASET_DESIGN.md`.
 
 **Robustness** 474 -> 561 (the twin is a new seed; canon carries `sig88_model`). The
 committed `ROBUSTNESS_REPORT.md` said 303 - it had been restored after every run and was

@@ -221,7 +221,7 @@ zero_pad 0.8%, opaque 91.3% (section 14's streams + section 30).
 | what C counts in @88 = head count + C; slot @52/@54/@60 | @88 = p1 + C(piece) [V], C tracks internal-line points; stored-empty and laid-then-returned read 0 alike | pieces with 0 / 1 / 2 / 4 internal lines built in Pattern Design (DATASET_DESIGN F6); @52/@54/@60 vs piece/size |
 | the y excess on July CP 150 unplaced slots (up to 0.0786 in, one-sided) | x fits the CP 150 table but the table does not drive home | live: known notch / curve |
 | placed slots 7.2% larger than their record (ZZC-M3, ZZN-F1) | 2 slots each | live: repeat with a plain piece |
-| why `@422` / `@454` are last-model sums; LADIES-BLOUSE 2x | modes observed exactly | two-model live order |
+| why `@422` / `@454` are last-model sums; LADIES-BLOUSE 2x | modes observed exactly; a FRESH two-model as-generated marker (`CLAUDE-D2-E7B`) shows `last_model` on both [V], so it is generation-time behaviour, not a laid-state artefact; the LADIES-BLOUSE `2x_all` case is still unexplained [?] | one more two-model order laid in Easy Marking |
 | size-row `flags` (0xffff vs 0) | 12 vs 6 markers | live |
 | sections 2, 3, 4, 5; section 1's 45 varying bytes; the trailer | mostly constant | twin diffs |
 

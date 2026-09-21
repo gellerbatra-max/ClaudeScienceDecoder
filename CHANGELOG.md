@@ -71,12 +71,28 @@ cause unknown [?]).
 marker (Save As, place one piece, return it, export, read `@88`), and what sets
 the `0x0040` bit. Also open: nothing about the two-model / two-fabric order.
 
-**A mistake worth recording.** After the export, extra Enter presses meant for
-the last "Not all components exist" dialogs reached Explorer with 108 objects
-still selected, where Enter is "open": it opened `CLAUDE-QTY-TEST` as a tab in the
-running Easy Marking and added pieces to Pattern Design's icon menu. Nothing was
-saved or changed; the lesson is to verify a dialog before every Enter, never to
-batch them.
+**A mistake worth recording, and its size.** After the export, extra Enter presses
+meant for the last "Not all components exist" dialogs reached AccuMark Explorer with
+all 108 objects still selected, where Enter means "open the selection". That started
+a runaway that ran from 09:55 to about 10:20: Explorer launched one editor process
+per object about every 30 seconds - **54 editors** (27 Order, 5 Lay Limits, 5 Model,
+3 Grade Rule, 3 UserEnv, annotation / cut / notch / plot / search editors ...) and 182
+licence-runtime helpers - and opened **about 40 markers as tabs in the user's running
+Easy Marking**, next to their own `4155B LACE 30`. Several editors asked "file is
+currently opened in another application - open anyway?" (answered No). **Nothing was
+saved, modified or deleted**; the cost was windows, file locks and licence sessions
+for about half an hour. Recovery, without touching anything the user had open: the
+cascade's processes were told apart by start time (all after 09:54; the user's began
+days earlier) and closed with `CloseMainWindow` (the same as clicking X - never
+kills, never saves), 52 of 53 at once and the 53rd after answering its prompt; the
+Easy Marking tabs were closed with the tab menu's **Close All But This** issued from
+the USER's tab after checking the title bar, which left exactly their marker (22 of
+65 placed, unchanged); the Explorer selection was cleared. The pre-existing scratch
+tab `LADIES-BLOUSE TEST-2` was closed too, and two scratch pieces were added to
+Pattern Design's in-memory icon menu (not saved). Rules that follow: never press Enter
+or double-click with a multi-selection in Explorer; never batch-press a key at a
+dialog; deselect (click the folder) as soon as an export is done; and judge each
+dialog by a fresh screenshot.
 
 **Verified.** `selftest.py` PASS (live-corpus block: 41 markers, exactly 5
 anomalies pinned, buffer-table semantics, tolerance both ways, `@88` incl. the

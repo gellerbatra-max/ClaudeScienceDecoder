@@ -1,7 +1,7 @@
 # Robustness report (v2)
 decoder_version: accumark_pds=3.0 accumark_marker=3.0
 
-561 cases, 561 passed, 0 failed, 51.2s
+561 cases, 561 passed, 0 failed, 151.0s
 
 ## Supported
 

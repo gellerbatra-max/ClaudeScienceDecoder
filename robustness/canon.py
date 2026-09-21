@@ -88,7 +88,7 @@ def canon_place_marker(res):
                       bundle=s.get('bundle'), bundle_head=s.get('bundle_head'), record_index=s.get('record_index'),
                       piece_index=s.get('piece_index'), empty=s.get('empty'), orient_code=s.get('orient_code'),
                       area=_round(s.get('area')), home_x=_round(s.get('home_x')), home_y=_round(s.get('home_y')),
-                      x=_round(s.get('x')), y=_round(s.get('y')), binding=s.get('binding'),
+                      x=_round(s.get('x')), y=_round(s.get('y')), binding=s.get('binding'), sig88=s.get('sig88'),
                       record=s['record']['offset'] if s.get('record') else None) for s in mk['slots']]
         records = [dict(offset=r['offset'], text=r['text'], area=_round(r['area']), perimeter=_round(r['perimeter']),
                         piece=r.get('piece'), cut=r.get('cut'), size=r.get('size')) for r in mk['records']]
@@ -110,7 +110,7 @@ def canon_place_marker(res):
             order_copy=[[m['name'], m['ordinal'], m['fabric_types'], [[s['size'], s['quantity']] for s in m['sizes']]]
                         for m in mk.get('order_copy', [])],
             block_buffers=[[_round(v) for v in b['sides']] for b in mk.get('block_buffers', [])],
-            laid_state=mk.get('laid_state'), placed_word=mk.get('placed_word'), placed_area=_round(mk.get('placed_area')),
+            laid_state=mk.get('laid_state'), lay_history=mk.get('lay_history'), placed_word=mk.get('placed_word'), placed_area=_round(mk.get('placed_area')),
             header_sums=mk.get('header_sums'), inventory=inventory,
         ))
     markers.sort(key=lambda r: json.dumps(r, sort_keys=True, default=str))

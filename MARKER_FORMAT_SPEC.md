@@ -66,13 +66,22 @@ table (`-PDSTEXT-`, then a 3-byte gap and the piece's label text: what
 
 ## 5. Section 6 - block buffers [V framing]
 
-Only on some markers (1825D, 418T, July CP 150). `(pieces + 1)` entries of 102
-bytes from `dir[6] - 6`: `<u16 0><4 x f64 buffer, inches><68 zero bytes>`. Every
-value observed is 0.0591 in (1.5 mm). A piece row's `buffer_index` equals its
-1-based position in the piece list, so entry 0 is the marker-wide default and
-entry k is piece k's [V]. It is what makes `home x 2` exceed a piece's own bounding
-box (July markers: residual 0.1182 in = 2 x 0.0591 without it, 0.0000 with it) [V].
-Which side each double is [?] - all are equal.
+Only on some markers (1825D, 418T, July CP 150, the ZZC / ZZN scratch markers).
+Entries of 102 bytes from `dir[6] - 6`: `<u16 0><4 x f64 buffer, inches><68 zero
+bytes>` [V framing, 13 markers]. **The table is a list of buffer DEFINITIONS, and a
+piece points into it** by a 0-based `buffer_index` (section 10, flag bytes 4..5) or
+at none (`0xffff`) [V]. Where every piece has its own definition the table has
+`pieces + 1` entries and piece k points at k (1825D, 418T, July CP 150, ZZC-BIG);
+`ZZC-M1..M3` / `ZZN-F1` have 4 entries for 5 pieces - `[0.3937 x4]`, `[0.1968 x4]`,
+`[0.3937 x4]`, `[0.7874, 0.1968, 0, 0]` inches - with BK -> 0, COL -> 1, CUFF ->
+none, FR -> 2, SL -> 3. (An earlier reading, "entry k is piece k's, entry 0 the
+marker default", was an over-fit to the small corpus and is retracted.) Side order
+of the four doubles is [?].
+
+**The home box does NOT follow this table.** The same five pieces in ZZC-M1 (buffers
+0.5 cm / 1 cm / none / unequal) and ZZC-BIG (1 cm everywhere) have byte-identical
+home boxes [V], so what the table is for, and why the July CP 150 x residual
+(`home x 2 - bbox` = 0.1182 = 2 x 0.0591 in) matches it, are both open [?].
 
 ## 6. Section 10 - piece list [V: 18 of 18]
 
@@ -82,7 +91,7 @@ closing at `dir[11] - 6`:
     <u16 name length> <u16 category length> <24 flag bytes> <name> <category>
     <fabric types: u16 count at flag byte 18, then that many <u16 len><text>>
 
-Flag bytes 4..5 (u16) = 1-based index into section 6 (0xffff = none). The 'Fabric
+Flag bytes 4..5 (u16) = 0-based index into section 6's table of buffer definitions (0xffff = none). The 'Fabric
 Type' role (A/B/C/D/G/M/F ...) is the fabric-type text. The other flag bytes stay
 raw [?].
 
@@ -121,11 +130,13 @@ for that (model, size)** - the marker states its own cut quantities.
 
     +0   f64 placed centre x     +8   f64 placed centre y      (0.0 when unplaced;
                                                                  -1000 on older exports)
-    +16  f64 home x              +24  f64 home y     (half the piece's box + buffer)
+    +16  f64 home x              +24  f64 home y     (half the piece's box; the block-buffer table does not drive it [?])
     +32  u16 orientation         +34..+41  const  ff ff ff ff 00 00 00 00 [?]
     +42  f64 declared area       +50..+63  raw (u16 @52, @54, @60 vary) [?]
     +64  u32 bundle (low 16) + flags (high 16, 0)    +68..+87 const [?]
-    +88  u16 (non-zero, constant per record, on never-laid markers; 0 on laid ones) [?]
+    +88  u16 NEVER-LAID SIGNATURE [V]: 0 on every placed slot and on EVERY slot of a
+         partly laid marker, non-zero (constant per piece+size, meaning open) on every
+         slot of a never-laid one - 59 markers
     +90..+95  the NEXT slot's head (below)
 
 **The head.** 6 bytes BEFORE each slot body: `<u16 record index (0-based, section 14
@@ -133,8 +144,10 @@ order)> <u16 piece index (1-based, section 10)> <u16 bundle>` [V: 677 of 677 slo
 all 18 markers]. (Earlier notes read `+90/+92/+94` as a circular pointer; it is the
 next slot's head.)
 
-**Orientation.** Bit 0x2000 = rotate 180, bit 0x0080 = mirror [V vs drawn DXF]; 0x0040
-tracks the pair bit of a `CUT X02` piece [?]. A placed slot's word also carries lay-
+**Orientation.** Bit 0x2000 = rotate 180, bit 0x0080 = mirror [V vs drawn DXF]. Bit
+0x0040 is MARKER-level: set on all slots of a marker or on none, never mixed [V: 58
+markers, 28 / 30]; it is not the mirrored-pair bit (2303 has pairs and no 0x0040) and
+what sets it is open [?]. A placed slot's word also carries lay-
 session bits (0x8000, 0x0200, 0x0020 ... ). On a never-laid marker only the three
 known bits appear [V: 6 of 6]; on a PARTLY laid marker an unplaced slot keeps the
 bits it had before it was lifted (61 of 71 on July CP 150). So on a never-laid
@@ -179,10 +192,11 @@ zero_pad 0.8%, opaque 91.3% (section 14's streams + section 30).
 
 | open | evidence so far | method |
 |---|---|---|
-| side order of the four block-buffer doubles | all equal in the corpus | live: unequal buffers |
-| what sets the 0x0040 pair bit; the pre-set rot180 alternation | tracks `CUT X02`; alternates per bundle | live: qty / flip options |
-| slot u16 @88, @52/@54/@60 | @88 non-zero only when never laid | never-laid vs cleared twin |
-| the y excess on July CP 150 unplaced slots (up to 0.0786 in, one-sided) | x exact with the buffer | live: known notch / curve |
+| side order of the four block-buffer doubles; what the table is for | home box ignores it (ZZC-M1 vs ZZC-BIG) | live: unequal buffers on a piece with real geometry |
+| what sets the marker-level 0x0040 bit; the pre-set rot180 alternation | 58 markers all-or-none; alternates per bundle | live: vary order / lay-limit settings |
+| slot u16 @88 values; @52/@54/@60 | @88 = never-laid signature [V]; a CLEARED marker is predicted to read 0 | live: place one piece, return it, export |
+| the y excess on July CP 150 unplaced slots (up to 0.0786 in, one-sided) | x fits the CP 150 table but the table does not drive home | live: known notch / curve |
+| placed slots 7.2% larger than their record (ZZC-M3, ZZN-F1) | 2 slots each | live: repeat with a plain piece |
 | why `@422` / `@454` are last-model sums; LADIES-BLOUSE 2x | modes observed exactly | two-model live order |
 | size-row `flags` (0xffff vs 0) | 12 vs 6 markers | live |
 | sections 2, 3, 4, 5; section 1's 45 varying bytes; the trailer | mostly constant | twin diffs |

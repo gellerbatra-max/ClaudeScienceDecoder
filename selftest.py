@@ -979,10 +979,10 @@ if src:
     src418 = _mk(('418T-SHAPESHIFTER-UNLAID', '418T-BD 160 SHAPESHIFTER.zip'), '418T-BD 160 SHAPESHIFTER')
     if src418:
         b = bytearray(src418[0]['data']); struct.pack_into('<H', b, src418[1]['sections'][am.SEC_PIECES][0] + am.PIECE_LIST_HEAD + 8, 2)
-        row = 'piece buffer indices == list positions'
+        row = 'piece buffer indices resolve into the block-buffer table'
         if not {n: ok for n, ok, _ in am.check_marker(src418[1])}.get(row): bad.append('418T clean marker fails ' + row)
         if {n: ok for n, ok, _ in am.check_marker(am.parse_marker(bytes(b)))}.get(row, True): bad.append('section 10: buffer index 1 -> 2 did not fail ' + row)
-        MUT.append(('section 10: buffer index 1 -> 2', None, row))
+        MUT.append(('section 10: buffer index 1 -> 2 (past the 2-entry table)', None, row))
     print(f"   {'ok ' if not bad else 'FAIL'} mutation tests (v4.1 + v4.2): {len(MUT)} byte patches each break exactly the row that checks them  {'; '.join(bad)}")
     if bad: fails.append('binding mutation tests: ' + '; '.join(bad))
     # the unplaced inventory of a marker-only ZIP: the cut order, read from structure alone
@@ -1053,6 +1053,66 @@ if src:
             except Exception as e: raised.append(f'{fn.__name__}({lo},{hi}): {type(e).__name__}')
     print(f"   {'ok ' if not raised else 'FAIL'} table walkers stay in bounds on junk / truncated input")
     if raised: fails.append('table walkers raised: ' + '; '.join(raised))
+
+print('-- live corpus: 41 markers exported from the scratch area (v4.5)')
+# `markers-live/` is deliberately NOT under `markers/`: the strict all-fixtures
+# invariants above hold on every marker there, and five real markers here carry
+# documented anomalies (below). Exported read-only from C:\ZZ-CLAUDE-SCRATCH on
+# 2026-09-21 - markers AutoMark / AccuNest laid, hand-laid, part-laid, never laid,
+# with unequal block buffers, and a 1,080-piece one. Pinned exactly, so a
+# decoder change that moves any of it is noticed.
+LIVE = os.path.join(HERE, 'markers-live', 'ZZ-SCRATCH-ALL-20260921', 'ZZ-SCRATCH-ALL-20260921.zip')
+LIVE_ANOMALIES = {   # marker -> (laid state, slots, failing check rows, warnings)
+ 'LADIES-BLOUSE TEST-2': ('partial', 54, ('header @430 == sum of placed slot areas', 'sum(slot areas) == W*L*U'), 0),   # 52 of 54 placed; header stale
+ 'ZZC-BIGM': ('laid', 1080, ('header @430 == sum of placed slot areas', 'sum(slot areas) == W*L*U'), 0),   # @430 = true area - 2**32/1e4: AccuMark's own 32-bit fixed-point wrap
+ 'ZZC-M3': ('partial', 10, ('slot declared area == bound record area',), 1),    # 2 placed slots 7.2% larger than their record [?]
+ 'ZZN-B7': ('laid', 54, ('header @430 == sum of placed slot areas',), 0),       # @430 drifted 1191 sq in above the placed sum; util is right
+ 'ZZN-F1': ('laid', 10, ('slot declared area == bound record area',), 1),
+}
+if os.path.isfile(LIVE):
+    lobjs = am.list_zip(LIVE); found = {}; bad = []; states = Counter(); leaks = 0
+    for o in lobjs['marker']:
+        try: mk = am.parse_marker(o['data'])
+        except Exception as e: bad.append(f"{o['name']}: {type(e).__name__}"); continue
+        states[mk['laid_state']] += 1
+        fl = tuple(sorted(n for n, ok, _ in am.check_marker(mk) if not ok)); warns = am.marker_warnings(mk) + am.coverage_warnings(mk)
+        if fl or warns: found[o['name']] = (mk['laid_state'], len(mk['slots']), fl, len(warns))
+        # the never-laid signature: slot @88 non-zero <=> nothing has ever been placed
+        if (mk['lay_history'] == 'never_laid') != (mk['laid_state'] == 'unlaid'): bad.append(f"{o['name']}: lay_history {mk['lay_history']} vs {mk['laid_state']}")
+        leaks += sum(1 for a, b, k in am.marker_coverage(o['data'], mk)['unknown_runs'] if k in am.PARSED_SECTIONS)
+    if len(lobjs['marker']) != 41 or dict(states) != {'unlaid': 17, 'laid': 22, 'partial': 2}: bad.append(f'{len(lobjs["marker"])} markers, states {dict(states)}')
+    if found != LIVE_ANOMALIES: bad.append(f'anomalies changed: {found}')
+    if leaks: bad.append(f'{leaks} unknown-byte runs inside parsed sections')
+    print(f"   {'ok ' if not bad else 'FAIL'} 41 real markers decode with no exception; 36 clean, exactly 5 documented anomalies; byte map has no leak  {'; '.join(bad)}")
+    if bad: fails.append('live corpus: ' + '; '.join(bad))
+    # block buffers: a TABLE of definitions, pieces point into it (0-based) or at none
+    zc = next(am.parse_marker(o['data']) for o in lobjs['marker'] if o['name'] == 'ZZC-M1')
+    idx = {p['name'][-4:]: p['buffer_index'] for p in zc['pieces']}
+    got = {n[-4:]: am._buffer_sides(zc, n) for n in [p['name'] for p in zc['pieces']]}
+    ok = (len(zc['block_buffers']) == 4 and idx == {'E-BK': 0, '-COL': 1, 'CUFF': None, 'E-FR': 2, 'E-SL': 3}
+          and got['CUFF'] == (0.0, 0.0, 0.0, 0.0) and abs(got['E-SL'][0] - 0.7874) < 1e-3 and abs(got['E-SL'][1] - 0.1968) < 1e-3 and got['E-SL'][2:] == (0.0, 0.0))
+    print(f"   {'ok ' if ok else 'FAIL'} ZZC-M1: 4 buffer definitions for 5 pieces; a piece with no index gets no buffer, the rest point into the table (0-based)")
+    if not ok: fails.append(f'block buffer table semantics: {idx}')
+    # utilisation identity is relative: AutoMark stores util to 0.01% (ZZ-AM-1: 13417.98 vs 13420.42)
+    za = next(am.parse_marker(o['data']) for o in lobjs['marker'] if o['name'] == 'ZZ-AM-1')
+    rows = {n: ok for n, ok, _ in am.check_marker(za)}
+    za2 = dict(za); za2['util'] = za['util'] * 1.01
+    ok = rows['sum(slot areas) == W*L*U'] and not {n: ok for n, ok, _ in am.check_marker(za2)}['sum(slot areas) == W*L*U']
+    print(f"   {'ok ' if ok else 'FAIL'} utilisation identity tolerates AutoMark's 0.01% rounding (2e-4) yet still fails on a 1% error")
+    if not ok: fails.append('utilisation tolerance')
+    # slot @88: zero on every slot once anything is placed; the prediction for a CLEARED marker
+    zn = _mk(('5683D-SS21-UNLAID', '5683D-BD 168 SS21.zip'), '5683D-BD 168 SS21')
+    if zn:
+        b = bytearray(zn[0]['data'])
+        for s in zn[1]['slots']: struct.pack_into('<H', b, s['slot'] + 88, 0)
+        cleared = am.parse_marker(bytes(b))
+        lo = next(o for o in lobjs['marker'] if o['name'] == 'ZZN-1'); bl = bytearray(lo['data']); ml = am.parse_marker(lo['data'])
+        struct.pack_into('<H', bl, ml['slots'][3]['slot'] + 88, 9)
+        row = 'slot @88 signature is zero once anything is placed'
+        ok = (zn[1]['lay_history'] == 'never_laid' and cleared['lay_history'] == 'cleared' and cleared['laid_state'] == 'unlaid'
+              and {n: ok for n, ok, _ in am.check_marker(ml)}[row] and not {n: ok for n, ok, _ in am.check_marker(am.parse_marker(bytes(bl)))}[row])
+        print(f"   {'ok ' if ok else 'FAIL'} slot @88: non-zero = never laid; zeroed = 'cleared' (a prediction, unobserved); non-zero on a laid marker fails its row")
+        if not ok: fails.append('slot @88 signature')
 
 print('-- marker byte map (v4.4, see accumark_marker.marker_coverage)')
 # Every byte owned by a section a parser reads must be classified (identified /

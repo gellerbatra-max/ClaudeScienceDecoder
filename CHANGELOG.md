@@ -1,5 +1,87 @@
 # Changelog
 
+## v4.5 (2026-09-21) - the live round, part 1: 41 real markers from the scratch area
+
+Same labelling rule: `__version__` stays `'3.0'`.
+
+**What was done.** With AccuMark open, the whole `ZZ-CLAUDE-SCRATCH` storage area
+was exported read-only from AccuMark Explorer (File > Export Zip, 108 objects,
+`C:\Test\CLAUDE-EXPORTS\ZZ-SCRATCH-ALL-20260921.zip`, 382 KB) and pinned as
+`markers-live/ZZ-SCRATCH-ALL-20260921/`. It holds **41 markers** made by earlier
+work in that area - AutoMark / AccuNest laid, hand-laid, part-laid, never laid,
+with unequal block buffers, one with 1,080 pieces - i.e. the variety the 18
+hand-built fixtures never had. `markers-live/` is deliberately outside
+`markers/` so the strict all-fixtures invariants are not weakened by the five
+anomalies below.
+
+**Result: all 41 decode with no exception; 36 are fully clean** (no failing
+check, no warning, no unknown byte in a parsed section), including every one of
+the 17 never-laid markers. The byte map holds on all 41 (0 leaks; 1,187 - 1,420
+unknown bytes each - the same fixed-size set). This is the first test of "read
+whatever unplaced marker AccuMark produces" on data nobody shaped for the
+decoder, and it exposed two rules that were too narrow and refuted two claims:
+
+- **Fixed: the utilisation identity was over-tight.** `sum(placed areas) ==
+  W x L x U` used an absolute 0.01 sq in, calibrated on small hand-laid markers.
+  AutoMark exports store the utilisation to 0.01% (`80.00`) and the length to
+  0.01, so the product is 2e-4 off on a large marker (ZZ-AM-1: 13417.98 vs
+  13420.42) - 9 markers failed on rounding alone. The tolerance is now relative
+  (5e-4); a 1% error still fails.
+- **Fixed AND retracted: the block-buffer table.** v4.2 said the table has
+  `(pieces + 1)` entries, entry k belongs to piece k and entry 0 is a marker-wide
+  default. `ZZC-M1..M3` / `ZZN-F1` have **4 entries for 5 pieces**: the table is a
+  list of buffer DEFINITIONS (`[0.3937 x4]`, `[0.1968 x4]`, `[0.3937 x4]`,
+  `[0.7874, 0.1968, 0, 0]` inches - the last one unequal), and a piece points into
+  it by a 0-based index or at none (`0xffff`): BK -> 0, COL -> 1, CUFF -> none, FR
+  -> 2, SL -> 3. A piece with no index used to get entry 0 - wrong, and fixed.
+  The check row is now `piece buffer indices resolve into the block-buffer table`.
+- **Retracted: "the block buffer explains the home box".** v4.2 read the July CP
+  150 residual (`home x 2 - bbox` = 0.1182 = 2 x 0.0591 in x) as the buffer. The
+  same five pieces in `ZZC-M1` (buffers 0.5 / 1 / none / unequal) and `ZZC-BIG`
+  (1 cm everywhere) have **byte-identical home boxes**: the home box does not
+  follow the section-6 table. So `bbox_in` in the inventory is now labelled an
+  estimate and `home_box_in` (as stored) is exposed beside it; why CP 150 fits is
+  open [?]. The block-buffer SIDE ORDER question is therefore moot for the home
+  box and still open for what the table is for.
+- **New, verified on 59 markers: slot `u16 @88` is a NEVER-LAID signature.** It is
+  0 on every placed slot, 0 on EVERY slot (placed or not) of all 6 partly laid
+  markers, and non-zero on the slots of all 24 never-laid markers. So an unlaid
+  marker is `never_laid` if it carries the signature and predicted `cleared`
+  (laid once, all pieces returned) if it does not - `mk['lay_history']`, shown in
+  the report. The cleared case has no example in the corpus: a prediction, tested
+  live next. Its values (9, 33, 54, 66, 107 ...) are constant per (piece, size)
+  and unexplained [?]. New check row `slot @88 signature is zero once anything is
+  placed` (all 22 laid + 2 partial pass).
+- **Retracted: "0x0040 tracks the pair bit of a `CUT X02` piece".** Across 58
+  markers the bit is set on ALL slots of a marker or on NONE (28 / 30, never
+  mixed); 2303 and ZZ-COST-A have mirrored pairs and no `0x0040`. It is a
+  marker-level setting, not per piece and not the pair. What sets it is open [?]
+  (it follows a non-zero section-10 flag word `+6` on most markers but not on the
+  foreign 1825D / 5683D / 2591A ones).
+
+**The five anomalies, pinned** (all laid or part-laid; every never-laid marker is
+clean): `LADIES-BLOUSE TEST-2` (52 of 54 placed, header `@430` / utilisation
+stale); `ZZC-BIGM` (1,080 pieces, `@430` = the true area minus 2^32/1e4 = a
+32-bit fixed-point wrap inside AccuMark, utilisation 306%); `ZZN-B7` (`@430`
+drifted 1,191 sq in above the placed sum, utilisation right); `ZZC-M3` and
+`ZZN-F1` (their 2 placed slots are 7.2% larger than the record they bind to,
+cause unknown [?]).
+
+**Not yet done in this round:** the cleared-vs-never-laid experiment on a live
+marker (Save As, place one piece, return it, export, read `@88`), and what sets
+the `0x0040` bit. Also open: nothing about the two-model / two-fabric order.
+
+**A mistake worth recording.** After the export, extra Enter presses meant for
+the last "Not all components exist" dialogs reached Explorer with 108 objects
+still selected, where Enter is "open": it opened `CLAUDE-QTY-TEST` as a tab in the
+running Easy Marking and added pieces to Pattern Design's icon menu. Nothing was
+saved or changed; the lesson is to verify a dialog before every Enter, never to
+batch them.
+
+**Verified.** `selftest.py` PASS (live-corpus block: 41 markers, exactly 5
+anomalies pinned, buffer-table semantics, tolerance both ways, `@88` incl. the
+cleared prediction), `dataset_test.py` 36/36, `robustness/run.py` 474/474.
+
 ## v4.6 (2026-09-21) - a marker unlike the corpus announces itself
 
 Same labelling rule: `__version__` stays `'3.0'`. (No v4.5 yet: that number is

@@ -399,17 +399,21 @@ def parse_order_copy(d, lo, hi):
 
 def parse_block_buffers(d, lo, hi):
     """Section 6 -> [{index, sides}] - the marker's block-buffer table, present
-    only on some markers (1825D, 418T, the July CP 150 markers; not 2303 Sept,
-    5683D, 2591A, CLAUDE-*). `(pieces + 1)` entries of 102 bytes starting 6
-    bytes before the directory offset: `<u16 0><4 x f64 buffer in inches><68
-    zero bytes>` [V: all 4 kinds present, every double 0.0591 in = 1.5 mm].
-    Entry 0 looks like the marker-wide default and entry k (1-based) piece k's
-    own buffer: each piece row's `buffer_index` (section 10, flag bytes 4..5)
-    equals its 1-based position in the piece list on every marker that has a
-    section 6 [V]. Which side each of the four doubles is cannot be told from
-    the corpus - all are equal - so `sides` keeps file order [?]. The buffer
-    is what makes home*2 exceed the piece's own bbox: 2 x 0.0591 on the July
-    markers, and 0 where there is no section 6."""
+    only on some markers (1825D, 418T, July CP 150, the ZZC / ZZN scratch
+    markers; not 2303 Sept, 5683D, 2591A, CLAUDE-*). Entries of 102 bytes from 6
+    bytes before the directory offset: `<u16 0><4 x f64 buffer in inches><68 zero
+    bytes>` [V framing, 13 markers].
+
+    v4.5: the table is a list of buffer DEFINITIONS. A piece row's `buffer_index`
+    (section 10, flag bytes 4..5) is a 0-based index into it, or None (0xffff)
+    for a piece with no buffer [V]. Where every piece has its own definition the
+    table has `pieces + 1` entries and piece k points at k (1825D, 418T, CP 150,
+    ZZC-BIG); ZZC-M1..M3 / ZZN-F1 have 4 entries for 5 pieces, one of them
+    unequal ([0.7874, 0.1968, 0, 0]) and one piece with none. (The earlier
+    reading - `pieces + 1` entries, entry k = piece k's, entry 0 a marker-wide
+    default - was an over-fit to the small corpus.) Which side each double is
+    [?]. It is NOT what sets the home box: the same pieces have byte-identical
+    home boxes under different tables (ZZC-M1 vs ZZC-BIG)."""
     out = []; pos = lo - 6; stop = min(hi - 6, len(d))
     if pos < 0: return out
     while pos + BUFFER_ENTRY <= stop:
@@ -505,6 +509,7 @@ def parse_slots(d, lo, hi):
                         orient_code=u16(d, s+32), area=f64(d, s+42),
                         bundle=u32(d, s+64) & 0xffff, bundle_flags=u32(d, s+64) >> 16,
                         record_index=head[0], piece_index=head[1], bundle_head=head[2],
+                        sig88=u16(d, s+88),
                         raw=d[s:s+SLOT].hex(), **decode_orient(u16(d, s+32))))
     return out
 
@@ -606,7 +611,8 @@ def _add_order_and_state(d, mk, sec):
         mk['order_copy'] = models; mk['order_copy_end'] = (end, stop) if models else None
     mk['block_buffers'] = parse_block_buffers(d, *sec[SEC_BUFFERS]) if sec[SEC_BUFFERS] else []
     for i, p in enumerate(mk['pieces']):
-        p['buffer_ok'] = p.get('buffer_index') == i + 1 if mk['block_buffers'] else None
+        bi = p.get('buffer_index')
+        p['buffer_ok'] = (bi is None or 0 <= bi < len(mk['block_buffers'])) if mk['block_buffers'] else None
     # header double @430 = the summed declared area of the PLACED slots
     # (= W x L x U / 100) [V: 18 of 18]; 0 on a marker nothing is placed on
     mk['placed_area'] = f64(d, 430)
@@ -620,6 +626,15 @@ def _add_order_and_state(d, mk, sec):
     mk['laid_state'] = by_slots
     mk['laid_state_sources'] = dict(slots=by_slots, placed_word=by_word, header=by_header,
                                     agree=(by_word == by_slots and (by_header == 'unlaid') == (by_slots == 'unlaid')))
+    # v4.5: slot u16 @88 is a NEVER-LAID signature. Across 59 markers it is 0 on
+    # every placed slot, 0 on EVERY slot (placed or not) of all 6 partly laid
+    # markers, and non-zero on the slots of all 24 never-laid markers - so it is
+    # what tells "never laid" from "laid once and cleared". The cleared case is a
+    # PREDICTION (no such marker in the corpus): an unlaid marker whose slots all
+    # read 0 there. Its values (9, 33, 54, 66, 107 ...) are constant per (piece,
+    # size) and unexplained [?].
+    sig = [s['sig88'] for s in mk['slots']]
+    mk['lay_history'] = (('never_laid' if any(sig) else 'cleared') if by_slots == 'unlaid' else by_slots)
     mk['header_sums'] = _header_sums(mk)
 
 KNOWN_SECTIONS = frozenset({1, 2, 3, 4, 5, 6, 10, 11, 12, 13, 14, 15, 21, 30})    # every directory slot ever seen used
@@ -774,8 +789,13 @@ def check_marker(mk):
         # every slot is placed - which is why it differed on the July markers
         # (1 of 72 placed). Reported, not asserted: the 2303-BD 137 unlaid
         # export, a marker that had been laid, holds a stale value there.
-        out.append(('sum(slot areas) == W*L*U', abs(mk['sum_slot_areas'] - W*L*U/100) < 1e-2,
-                    f'{mk["sum_slot_areas"]:.4f} vs {W*L*U/100:.4f}; @422={A:.4f}'))
+        # v4.5: the tolerance is relative. AutoMark / AccuNest exports store the
+        # utilisation to 0.01% (80.00) and the length to 0.01, so the product is
+        # off by ~2e-4 on a large marker (ZZ-AM-1: 13417.98 vs 13420.42); the old
+        # absolute 0.01 sq in was calibrated on small hand-laid markers.
+        wlu = W*L*U/100
+        out.append(('sum(slot areas) == W*L*U', abs(mk['sum_slot_areas'] - wlu) <= max(1e-2, 5e-4 * wlu),
+                    f'{mk["sum_slot_areas"]:.4f} vs {wlu:.4f}; @422={A:.4f}'))
         inside = all(0 <= p['y'] <= W and 0 <= p['x'] <= L for p in mk['placements'])
         out.append(('placed centres inside W x L', inside, f'{len(mk["placements"])} placements'))
     out.append(('every placement bound', all(p['record'] for p in mk['placements']),
@@ -839,10 +859,17 @@ def check_marker(mk):
         out.append(('header @430 == sum of placed slot areas',
                     abs(mk['placed_area'] - mk['sum_slot_areas']) <= 1e-6 * max(1.0, mk['sum_slot_areas']),
                     f'{mk["placed_area"]:.4f} vs {mk["sum_slot_areas"]:.4f}'))
+    if mk.get('lay_history') in ('laid', 'partial'):
+        out.append(('slot @88 signature is zero once anything is placed',
+                    all(s['sig88'] == 0 for s in mk['slots']),
+                    f'{sum(1 for s in mk["slots"] if s["sig88"])} slots with a non-zero @88'))
     if mk.get('block_buffers'):
-        out.append(('piece buffer indices == list positions',
-                    all(p.get('buffer_ok') for p in mk['pieces']) and len(mk['block_buffers']) == len(mk['pieces']) + 1,
-                    f'{len(mk["block_buffers"])} entries for {len(mk["pieces"])} pieces'))
+        # v4.5: the table holds buffer DEFINITIONS and a piece points at one (0-based)
+        # or at none - not "entry k is piece k's". Live scratch markers (ZZC-M1..3,
+        # ZZN-F1) have 4 entries for 5 pieces, index 0 used, and one piece with none.
+        out.append(('piece buffer indices resolve into the block-buffer table',
+                    all(p.get('buffer_ok') for p in mk['pieces']),
+                    f'{len(mk["block_buffers"])} entries; indices {[p.get("buffer_index") for p in mk["pieces"]]}'))
     return out
 
 # ------------------------------------------------------------ byte map
@@ -950,7 +977,7 @@ def marker_coverage(d, mk=None):
         for s in mk['slots']:
             b = s['slot']
             mark(b - SLOT_HEAD, b - SLOT_HEAD + 6, 'identified'); mark(b, b + SLOT, 'raw')
-            mark(b, b + 32, 'identified'); mark(b + 32, b + 34, 'identified'); mark(b + 42, b + 50, 'identified'); mark(b + 64, b + 68, 'identified')
+            mark(b, b + 32, 'identified'); mark(b + 32, b + 34, 'identified'); mark(b + 42, b + 50, 'identified'); mark(b + 64, b + 68, 'identified'); mark(b + 88, b + 90, 'identified')
         if mk['slots']: mark(mk['slots'][-1]['slot'] + SLOT - SLOT_HEAD, mk['slots'][-1]['slot'] + SLOT, 'raw')
     # -- section 30: the embedded type-10 object (topology-only scratch): bounded, not chased
     if sec[SEC_GEOMETRY]: mark(sec[SEC_GEOMETRY][0] - _LEAD, tr0, 'opaque')
@@ -1259,15 +1286,16 @@ def unplaced_slots(mk, pieces, piece_errors, use_grading=True):
     return out
 
 def _buffer_sides(mk, piece_name):
-    """The block-buffer entry for a piece, (b0, b1, b2, b3) inches - its own
-    entry, else the marker-wide entry 0, else zeros where the marker has no
-    section 6 (see parse_block_buffers; side order is [?], every observed
-    value is equal)."""
+    """The block-buffer entry a piece points at, (b0, b1, b2, b3) inches; zeros
+    for a piece with no buffer index (0xffff) or a marker with no section 6
+    (see parse_block_buffers; the side order is [?]). v4.5: a piece with no
+    index used to get entry 0 - wrong: entry 0 is an ordinary definition (1 cm on
+    ZZC-M1, used by its BK piece), and the piece that has none has none."""
     bufs = mk.get('block_buffers') or []
-    if not bufs: return (0.0, 0.0, 0.0, 0.0)
     row = next((p for p in mk['pieces'] if p['name'] == piece_name), None)
     i = row.get('buffer_index') if row else None
-    return tuple(bufs[i]['sides'] if i is not None and 0 <= i < len(bufs) else bufs[0]['sides'])
+    if i is None or not (0 <= i < len(bufs)): return (0.0, 0.0, 0.0, 0.0)
+    return tuple(bufs[i]['sides'])
 
 def _shoelace(p):
     return abs(sum(p[i][0]*p[(i+1) % len(p)][1] - p[(i+1) % len(p)][0]*p[i][1] for i in range(len(p)))) / 2
@@ -1281,13 +1309,15 @@ def unplaced_inventory(mk, pieces=None, piece_errors=None, use_grading=True, geo
 
     -> dict(
       marker      name, width / length in inches and cm, laid_state, models,
-                  fabric_types, block_buffer_in (marker-wide entry, 4 sides),
+                  fabric_types, block_buffers (the table's definitions, 4 sides each),
                   geometry_available 'all' | 'some' | 'none' | 'n/a'
       order_lines [{model, size, quantity, bundles}]  one per (model, size)
       slots       one per UNPLACED slot: ordinal, bundle, model, size, piece,
                   category, cut, copies, pair {group, part 'A'|'B'} (a `CUT X02`
                   piece is a mirrored pair), declared_area, perimeter,
-                  bbox_in (w, h: home x 2 minus the piece's block buffer),
+                  home_box_in (w, h: home x 2, as stored [V]), bbox_in (that minus the piece's
+                  block buffer - an ESTIMATE [?]: the July CP 150 boxes fit it, but the
+                  home box does not follow the buffer table on ZZC-M1 vs ZZC-BIG),
                   preset {rot180, mirror, pair_bit, other} - a PRE-SET lay
                   pattern that is reported, never counted as a placement -
                   and, with pieces: outline, checks {bbox_dx, bbox_dy,
@@ -1317,6 +1347,7 @@ def unplaced_inventory(mk, pieces=None, piece_errors=None, use_grading=True, geo
                      category=(piece_row.get(pname) or {}).get('fabric'),
                      cut=rec.get('cut'), copies=len(groups[(s['bundle'], s['record_index'])]),
                      pair=pair_of.get(s['index']), declared_area=s['area'], perimeter=rec.get('perimeter'),
+                     home_box_in=(s['home_x']*2, s['home_y']*2),
                      bbox_in=(s['home_x']*2 - (b[0] + b[1]), s['home_y']*2 - (b[2] + b[3])),
                      preset=dict(rot180=bool(s['orient_code'] & ROT180_BIT), mirror=bool(s['orient_code'] & MIRROR_BIT),
                                  pair_bit=bool(s['orient_code'] & 0x0040),
@@ -1349,8 +1380,9 @@ def unplaced_inventory(mk, pieces=None, piece_errors=None, use_grading=True, geo
     geo = 'n/a' if not slots else ('all' if n_geo == len(slots) else ('none' if not n_geo else 'some'))
     return dict(
         marker=dict(name=mk['name'], width_in=W, width_cm=W*2.54, length_in=mk['length'], laid_state=mk['laid_state'],
+                    lay_history=mk['lay_history'],
                     models=list(mk['models']), fabric_types=sorted({t for p in mk['pieces'] for t in p.get('fabric_types', [])}),
-                    block_buffer_in=(mk['block_buffers'][0]['sides'] if mk.get('block_buffers') else None), geometry_available=geo),
+                    block_buffers=[list(b['sides']) for b in mk.get('block_buffers', [])], geometry_available=geo),
         order_lines=order_lines, slots=slots,
         totals=dict(slots=len(slots), placed=len(mk['placements']), area_to_lay=area,
                     perimeter=sum(s['perimeter'] or 0 for s in slots), min_length_in=area / W if W else None,
@@ -1432,11 +1464,12 @@ def inventory_report(inv, checks=()):
     """A readable cut order for one marker (the CLI's --inventory). Ends with
     DECODED CLEANLY, or NEEDS A LOOK plus every failing check and warning."""
     m, t = inv['marker'], inv['totals']
-    state = {'unlaid': 'UNLAID (never laid)', 'partial': 'PARTLY LAID', 'laid': 'LAID'}[m['laid_state']]
+    state = ({'never_laid': 'UNLAID (never laid)', 'cleared': 'UNLAID (laid before and cleared [?])'}[m['lay_history']]
+             if m['laid_state'] == 'unlaid' else {'partial': 'PARTLY LAID', 'laid': 'LAID'}[m['laid_state']])
     lines = [f"== {m['name']} - {state} ==",
              f"width {m['width_cm']:.1f} cm ({m['width_in']:.2f} in) | models {', '.join(m['models']) or '-'} | "
              f"fabric types {', '.join(m['fabric_types']) or '-'} | block buffer "
-             f"{('%.4f in per side' % m['block_buffer_in'][0]) if m['block_buffer_in'] else 'none'}"]
+             f"{('%d definitions, %s in' % (len(m['block_buffers']), ' / '.join(sorted({'%.4f' % max(b) for b in m['block_buffers']})))) if m['block_buffers'] else 'none'}"]
     n_cuts = sum(o['quantity'] for o in inv['order_lines'])
     lines.append(f"ORDER: {n_cuts} cuts over {len(inv['order_lines'])} (model, size) lines")
     for o in inv['order_lines']:

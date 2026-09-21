@@ -721,42 +721,96 @@ def marker_warnings(mk):
         w.append('slot @88 is not (record head count + one constant per piece) for: ' + ', '.join(p for p, c in sm['constant'].items() if c is None))
     return w
 
-def decode_record_stream(st):
-    """v4.7 [PARTIAL, verified]: the leading points of a section-14 record's attribute
-    stream. The stream is `00 02 00` then items `<tag> <data> <u16 point id>`; the ids
-    count DOWN from 29999 on a piece whose points have no id (RUFFLE) and UP 1, 2, 3, 4
-    on a rectangle. The known point tags, coordinates in 1e-4 in:
-        0x99  absolute, two i32                      (8 data bytes)
-        0xf8 / 0xfc  absolute, 20 bit each           (x lo16, y lo16, byte x_hi<<4 | y_hi)
-        0xf9  delta, signed 20 bit each              (same layout)
-        0xd1 / 0xd9  delta, signed 16 bit each       (x, y)
-        0xb1  delta, signed 12 bit each              (byte x_hi<<4 | y_hi, x lo8, y lo8)
-    Other tags (0x33 0x53 0x4d 0x21 0x47 0x46 0xd8 0x7a ...) are items this reader does
-    not know yet - some precede a point, one (0x4d) precedes the first - so the decode
-    STOPS there: `stop` says why and `end` where, and nothing past it is guessed.
-    Checked equal to the piece's graded outline: the whole rectangle record (4 of 4
-    points, sizes 2 / 8 / 18) and the first 45 points of RUFFLE at all five sizes.
-    -> dict(points=[(x, y, id)], end, stop, size)"""
+# --- section 14 stream grammar (v4.7, see MARKER_FORMAT_SPEC.md section 8) --------------------
+_STREAM_WBYTES = {0: 8, 1: 3, 2: 4, 3: 5}       # width code -> data bytes: 32 / 12 / 16 / 20 bit x,y pair
+
+def _tag_len(t):
+    """data bytes of a stream item with tag `t`: bits 6-5 pick the pair width, a CLEAR bit 4
+    adds one leading extra byte (meaning open [?]); bit 7 marks the main (last) part."""
+    return _STREAM_WBYTES[(t >> 5) & 3] + (0 if t & 0x10 else 1)
+
+def _tag_delta(t, dat):
+    w = (t >> 5) & 3
+    if not t & 0x10: dat = dat[1:]
     def sg(v, bits): return v - (1 << bits) if v >= 1 << (bits - 1) else v
-    p = 3 + (4 if len(st) > 3 and st[3] == 0x4d else 0)
-    pts = []; x = y = 0; stop = 'end'
+    if w == 1: return sg(dat[1] | (dat[0] >> 4) << 8, 12), sg(dat[2] | (dat[0] & 15) << 8, 12)
+    if w == 2: return sg(u16(dat, 0), 16), sg(u16(dat, 2), 16)
+    if w == 3: return sg(u16(dat, 0) | (dat[4] >> 4) << 16, 20), sg(u16(dat, 2) | (dat[4] & 15) << 16, 20)
+    return int.from_bytes(dat[:4], 'little', signed=True), int.from_bytes(dat[4:8], 'little', signed=True)
+
+def decode_record_stream(st):
+    """v4.7 [V, partial]: a section-14 record's stream as CONTOURS of (x, y, id) points in
+    1e-4 in - the piece's graded outline first, then internal lines. Grammar:
+
+        00 02 00                                   3-byte lead
+        [<ASCII tag> 00 <n> 00]*                   header records (S 0x53 seam, M 0x4d mirror,
+                                                   F G I H ... : contour kinds and point counts [?])
+        point items                                each = prefix parts + one main part + u16 id
+        <attribute bytes> <3 bytes>                trailer, first byte 0x09 / 0x01
+
+    A part is `<tag> <data>`. Tag: bit 7 = main (last part of the item), bits 6-5 = width code
+    (0: two i32, 1: 12-bit x,y as byte x_hi<<4|y_hi, x lo8, y lo8, 2: two i16, 3: 20-bit x,y as x lo16,
+    y lo16, byte x_hi<<4|y_hi), bit 4 CLEAR = one leading extra byte (open [?]). A point's step is the
+    SUM of its parts; the first point of a contour is absolute. A prefix with low nibble 0xa CLOSES the
+    contour (returns to its start) and its main part is the absolute start of the next contour; tag
+    0x00 starts a contour with an absolute 20-bit pair. Nothing is guessed: an unknown situation stops
+    the decode and says so.
+    -> dict(contours=[[(x, y, id)]], header=[(tag, n)], end, stop, size)"""
+    if len(st) < 3: return dict(contours=[], header=[], end=0, stop='short', size=len(st))
+    p = 3; header = []
+    while p + 4 <= len(st) and st[p] < 0x80 and st[p+1] == 0 and st[p+3] == 0:
+        header.append((st[p], st[p+2])); p += 4
+    contours = []; cur = None; x = y = 0; stop = 'end'
     while p < len(st):
-        t = st[p]
-        if t == 0x99:
-            n = 8; x = int.from_bytes(st[p+1:p+5], 'little', signed=True); y = int.from_bytes(st[p+5:p+9], 'little', signed=True)
-        elif t in (0xf8, 0xfc):
-            n = 5; hi = st[p+5]; x = u16(st, p+1) | (hi >> 4) << 16; y = u16(st, p+3) | (hi & 15) << 16
-        elif t == 0xf9 and pts:
-            n = 5; hi = st[p+5]; x += sg(u16(st, p+1) | (hi >> 4) << 16, 20); y += sg(u16(st, p+3) | (hi & 15) << 16, 20)
-        elif t in (0xd1, 0xd9) and pts:
-            n = 4; x += sg(u16(st, p+1), 16); y += sg(u16(st, p+3), 16)
-        elif t == 0xb1 and pts:
-            n = 3; hi = st[p+1]; x += sg(st[p+2] | (hi >> 4) << 8, 12); y += sg(st[p+3] | (hi & 15) << 8, 12)
+        parts = []; q = p; ok = True
+        while True:
+            if q >= len(st): ok = False; stop = 'truncated at byte %d' % p; break
+            t = st[q]
+            if t == 0x00 and not parts:                       # a new contour: absolute 20-bit pair, no tag class
+                if q + 6 > len(st): ok = False; stop = 'truncated at byte %d' % p; break
+                parts.append((0xf8, st[q+1:q+6])); q += 6; break
+            if t < 0x10 and not t & 0x70:                     # 0x09 ...: the trailer's attribute bytes
+                ok = False; stop = 'trailer'; break
+            n = _tag_len(t)
+            if q + 1 + n > len(st): ok = False; stop = 'truncated at byte %d' % p; break
+            parts.append((t, st[q+1:q+1+n])); q += 1 + n
+            if t & 0x80: break
+        if not ok: break
+        if q + 2 > len(st): stop = 'truncated at byte %d' % p; break
+        dx = dy = 0
+        for t, dat in parts:
+            a, b = _tag_delta(t, dat); dx += a; dy += b
+        if any((t & 0xf) == 0xa for t, _ in parts[:-1]):
+            x, y = _tag_delta(*parts[-1]); cur = []; contours.append(cur)
+        elif cur is None or st[p] == 0x00:
+            x, y = dx, dy; cur = []; contours.append(cur)
         else:
-            stop = 'unknown item %#04x at byte %d' % (t, p); break
-        if p + 3 + n > len(st): stop = 'truncated at byte %d' % p; break
-        pts.append((x, y, u16(st, p + 1 + n))); p += 3 + n
-    return dict(points=pts, end=p, stop=stop, size=len(st))
+            x += dx; y += dy
+        cur.append((x, y, u16(st, q))); p = q + 2
+    if stop == 'end': stop = 'trailer'
+    return dict(contours=contours, header=header, end=p, stop=stop, size=len(st))
+
+def verify_stream_outline(contour, area, perimeter, tol=0.01):
+    """polygon area / perimeter (in, sq in) of a decoded contour against the record head's own
+    `area` and `perimeter`: True when both agree within `tol` (observed max 0.29% / 0.04% on 129
+    corpus records; a wrong item breaks it by far more). -> (ok, area, perimeter)"""
+    if len(contour) < 3: return False, 0.0, 0.0
+    a = pr = 0.0
+    for i, (x1, y1, _) in enumerate(contour):
+        x2, y2, _ = contour[(i + 1) % len(contour)]
+        a += x1 * y2 - x2 * y1; pr += math.hypot(x2 - x1, y2 - y1)
+    a = abs(a) / 2e8; pr /= 1e4
+    return abs(a - area) <= tol * area + 0.01 and abs(pr - perimeter) <= tol * perimeter + 0.05, a, pr
+
+def record_outline(data, rec):
+    """the graded outline of section-14 record `rec` read from the STREAM alone (no piece object
+    needed): -> dict(points=[(x_in, y_in)], verified, holes / internal=[contours], stop) or None."""
+    o = rec['offset']; t = len(rec['text']); st = data[o+t:o+t+rec['stream_len']]
+    d = decode_record_stream(st)
+    if not d['contours']: return None
+    ok, a, pr = verify_stream_outline(d['contours'][0], rec['area'], rec['perimeter'])
+    return dict(points=[(x / 1e4, y / 1e4) for x, y, _ in d['contours'][0]], verified=ok and d['stop'] == 'trailer',
+                area=a, perimeter=pr, other=[[(x / 1e4, y / 1e4) for x, y, _ in c] for c in d['contours'][1:]], stop=d['stop'], header=d['header'])
 
 def _header_sums(mk):
     """How the header doubles @422 / @454 relate to the slots - a MODE per
@@ -1349,12 +1403,19 @@ def load_pieces(objs):
             pieces[o['name']] = None; errors[o['name']] = e
     return pieces, errors
 
-def _slot_geometry(s, pieces, piece_errors, use_grading):
-    """-> (piece name, size, outline in the PIECE's own frame or None, note)."""
+STREAM_NOTE = "outline read from the marker's own section-14 stream (matches the record's area and perimeter)"
+
+def _slot_geometry(s, pieces, piece_errors, use_grading, mk=None):
+    """-> (piece name, size, outline in the PIECE's own frame or None, note). v4.7: a slot whose
+    piece object is missing or undecodable falls back to the outline in its record's stream - only
+    when that outline reproduces the record's own area and perimeter (verify_stream_outline)."""
     piece = pieces.get(s['piece']) if s['piece'] else None
     if piece is None:
         if s['piece'] in piece_errors: note = 'piece failed to decode: %s' % piece_errors[s['piece']]
         else: note = 'piece not in ZIP' if s['piece'] else 'unbound slot'
+        if mk is not None and s.get('record'):
+            ro = record_outline(mk['object']['data'], s['record'])
+            if ro and ro['verified']: return s['piece'], s['size'], ro['points'], STREAM_NOTE
         return s['piece'], s['size'], None, note
     outline, note = piece_outline(piece, s['size'] if use_grading else None)
     return s['piece'], s['size'], outline, note
@@ -1365,7 +1426,7 @@ def unplaced_slots(mk, pieces, piece_errors, use_grading=True):
     frame (an unplaced slot has no position to transform it to)."""
     out = []
     for s in mk['slots']:
-        if s['empty']: out.append((s,) + _slot_geometry(s, pieces, piece_errors, use_grading))
+        if s['empty']: out.append((s,) + _slot_geometry(s, pieces, piece_errors, use_grading, mk))
     return out
 
 def _buffer_sides(mk, piece_name):
@@ -1456,7 +1517,9 @@ def unplaced_inventory(mk, pieces=None, piece_errors=None, use_grading=True, geo
     warnings += marker_warnings(mk)
     if not mk.get('laid_state_sources', {}).get('agree', True): warnings.append('laid-state sources disagree: %s' % mk['laid_state_sources'])
     if 'other' in mk['header_sums'].values(): warnings.append('header @422/@454 sums fit no known mode: %s' % mk['header_sums'])
-    if slots and not pieces: warnings.append('no piece objects in the ZIP: no outlines, bounding boxes are the declared ones only')
+    n_stream = sum(1 for e in slots if e.get('note') == STREAM_NOTE)
+    if slots and not pieces and not n_stream: warnings.append('no piece objects in the ZIP: no outlines, bounding boxes are the declared ones only')
+    elif slots and not pieces: warnings.append('no piece objects in the ZIP: %d of %d slots have an outline from the marker\'s own stream, the rest have none' % (n_stream, len(slots)))
     for name in sorted(piece_errors): warnings.append('piece %r failed to decode: %s' % (name, piece_errors[name]))
     W = mk['width']; area = sum(s['declared_area'] for s in slots)
     by_size = Counter(s['size'] for s in slots); by_piece = Counter(s['piece'] for s in slots)
@@ -1465,7 +1528,8 @@ def unplaced_inventory(mk, pieces=None, piece_errors=None, use_grading=True, geo
         marker=dict(name=mk['name'], width_in=W, width_cm=W*2.54, length_in=mk['length'], laid_state=mk['laid_state'],
                     lay_history=mk['lay_history'],
                     models=list(mk['models']), fabric_types=sorted({t for p in mk['pieces'] for t in p.get('fabric_types', [])}),
-                    block_buffers=[list(b['sides']) for b in mk.get('block_buffers', [])], geometry_available=geo),
+                    block_buffers=[list(b['sides']) for b in mk.get('block_buffers', [])], geometry_available=geo,
+                    outline_source=('none' if not n_geo else ('stream' if n_stream == n_geo else ('piece' if not n_stream else 'mixed')))),
         order_lines=order_lines, slots=slots,
         totals=dict(slots=len(slots), placed=len(mk['placements']), area_to_lay=area,
                     perimeter=sum(s['perimeter'] or 0 for s in slots), min_length_in=area / W if W else None,

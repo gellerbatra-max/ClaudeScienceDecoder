@@ -988,7 +988,11 @@ if src:
     # the unplaced inventory of a marker-only ZIP: the cut order, read from structure alone
     inv_res = am.place_marker(os.path.join(HERE, 'markers', '2591A-SS21-UNLAID', '2591A-BD 157 AW SS21.zip'))
     inv = inv_res['markers'][0]['inventory']; bad = []
-    if inv_res['geometry_available'] != 'none' or inv['marker']['geometry_available'] != 'none': bad.append('a marker-only ZIP must report geometry_available none')
+    # no piece object in the ZIP (result-level 'none'), yet 14 of 35 slots (the LEG pieces) have an outline read from the marker's own
+    # stream, and its bounding box equals the slot's stored home box EXACTLY - a check the decode never used
+    if inv_res['geometry_available'] != 'none' or inv['marker']['geometry_available'] != 'some' or inv['marker']['outline_source'] != 'stream': bad.append('marker-only ZIP: expected no piece objects but stream outlines for some slots')
+    so = [x for x in inv['slots'] if x.get('outline')]
+    if len(so) != 14 or any(abs(x['checks']['bbox_dx']) > 1e-3 or abs(x['checks']['bbox_dy']) > 1e-3 or abs(x['checks']['area_ratio'] - 1) > 1e-3 for x in so): bad.append('stream outlines vs home box / area: %d slots' % len(so))
     if inv['marker']['laid_state'] != 'unlaid' or inv['totals']['slots'] != 35 or inv['totals']['placed'] != 0: bad.append('totals: %s' % inv['totals'])
     if [(o['size'], o['quantity']) for o in inv['order_lines']] != [(s, 1) for s in ['6/7', '7/8', '8/9', '9/10', '11/12', '13/14', '15/16']]: bad.append('order lines')
     pairs = {}
@@ -1000,7 +1004,7 @@ if src:
     if abs(inv['totals']['area_to_lay'] - a422) > 1e-9 or abs(inv['totals']['min_length_in'] - a422 / inv['marker']['width_in']) > 1e-9: bad.append('area / minimum length')
     if not inv_res['markers'][0]['inventory']['warnings'] or not any(w.startswith('no piece objects') for w in inv['warnings']): bad.append('no "no piece objects" warning')
     if not am.inventory_report(inv, inv_res['markers'][0]['checks']).endswith('DECODED CLEANLY'): bad.append('report does not end DECODED CLEANLY')
-    print(f"   {'ok ' if not bad else 'FAIL'} unplaced_inventory on a marker-only ZIP (2591A: 35 slots, 14 mirrored pairs, geometry none)  {'; '.join(bad)}")
+    print(f"   {'ok ' if not bad else 'FAIL'} unplaced_inventory on a marker-only ZIP (2591A: 35 slots, 14 mirrored pairs, 14 outlines from the stream)  {'; '.join(bad)}")
     if bad: fails.append('unplaced_inventory: ' + '; '.join(bad))
 # and the answer key can fail: the old area rule against the drawn DXF labels
 zp = os.path.join(HERE, 'markers', '2303-BD137-PLACED', '2303-BD 137 PLACED.zip')
@@ -1210,23 +1214,44 @@ if os.path.isfile(D2) and os.path.isfile(LAID):
     print(f"   {'ok ' if not bad else 'FAIL'} live twins of one order (laid vs as generated): records identical, slots differ only in centre / orientation / area ulp / @88 (= record head count + C per piece)  {'; '.join(bad)}")
     if bad: fails.append('D2 twins: ' + '; '.join(bad))
 
-# v4.7 [partial]: the leading points of a section-14 record stream decode to the piece's graded outline.
-# Ground truth = the piece objects bundled in the same ZIPs: the rectangle (all 4 points, sizes 2 and 18 of
-# CLAUDE-GRADE-MARKER, 8 of CLAUDE-QTY-TEST) and RUFFLE (the first 45 of 142 points at all five sizes).
+# v4.7 [V, partial]: the section-14 stream is the graded outline. Two independent grounds of truth:
+# (1) the piece objects bundled in the same ZIPs - the rectangle (4 of 4 points, sizes 2 / 8 / 18) and RUFFLE (all 142
+# points at all five sizes, plus its grain line); (2) the record head's OWN area and perimeter, which every decoded
+# outline must reproduce (shoelace, within 1%) - the only check available for a marker-only ZIP.
 sd_bad = []; sd_n = 0
 for zp, piece, want in (('markers/CLAUDE-GRADE-MARKER/CLAUDE-GRADE-MARKER.zip', 'CLAUDE-GRADE-TEST', 4), ('markers/CLAUDE-QTY-TEST.zip', 'CLAUDE-GRADE-TEST', 4),
-                        ('markers-live/CLAUDE-UNP-D2-TWIN/CLAUDE-D2-M0.zip', 'ID1005 - RUFFLE', 45)):
+                        ('markers-live/CLAUDE-UNP-D2-TWIN/CLAUDE-D2-M0.zip', 'ID1005 - RUFFLE', 142)):
     if not os.path.isfile(os.path.join(HERE, zp)): continue
     rr = am.place_marker(os.path.join(HERE, zp)); mm = rr['markers'][0]['marker']; dd = mm['object']['data']
     for rc in mm['records']:
         if rc.get('piece') != piece: continue
         o = rc['offset']; t = len(rc['text']); st = dd[o+t:o+t+rc['stream_len']]; dec = am.decode_record_stream(st)
         ref = [(round(x * 1e4), round(y * 1e4)) for x, y in am.graded_outline(rr['pieces'][piece]['block'], rc['size'])]
-        got = [(a, b) for a, b, _ in dec['points']]; sd_n += 1
-        if len(got) < want or got[:want] != ref[:want] or (want == 4 and dec['stop'] == 'end'): sd_bad.append(f"{zp.split('/')[-1]} size {rc['size']}: {len(got)} points, stop {dec['stop']}")
-mut = bytearray(dd[o+t:o+t+rc['stream_len']]); mut[4] ^= 1                                # flip one bit of the first absolute x
-if am.decode_record_stream(bytes(mut))['points'][:1] == [(a, b) for a, b, _ in dec['points']][:1]: sd_bad.append('a flipped coordinate bit did not change the decode')
-print(f"   {'ok ' if sd_n and not sd_bad else 'FAIL'} record stream (partial, v4.7): {sd_n} records - the decoded leading points equal the graded outline exactly (rectangle 4 of 4, RUFFLE 45 of 142); unknown items stop the decode  {'; '.join(sd_bad[:3])}")
+        got = [(a, b) for a, b, _ in dec['contours'][0]]; sd_n += 1
+        if got != ref or dec['stop'] != 'trailer' or not am.record_outline(dd, rc)['verified']: sd_bad.append(f"{zp.split('/')[-1]} size {rc['size']}: {len(got)} of {len(ref)} points, stop {dec['stop']}")
+        if want == 142 and rc['size'] == 'M':
+            gl = [(a, b) for a, b, _ in dec['contours'][1]] if len(dec['contours']) > 1 else None
+            if gl != [(543131, 45098), (584289, 45098)]: sd_bad.append(f'RUFFLE grain line {gl}')
+mut = bytearray(st); mut[23] ^= 0x40                                                     # the high byte of the first d1 step of the last (RUFFLE) stream
+if am.verify_stream_outline(am.decode_record_stream(bytes(mut))['contours'][0], rc['area'], rc['perimeter'])[0]: sd_bad.append('a flipped coordinate bit still verified')
+# corpus: distinct streams verified against their own record head, marker-only ZIPs included
+sd_seen = set(); sd_tot = sd_ok = 0; sd_named = {}
+for zp in sorted(glob.glob(os.path.join(HERE, 'markers', '**', '*.zip'), recursive=True) + glob.glob(os.path.join(HERE, 'markers-live', '**', '*.zip'), recursive=True)):
+    try: mos = am.list_zip(zp).get('marker', [])
+    except Exception: continue
+    for o_ in mos:
+        try: m_ = am.parse_marker(o_['data'])
+        except Exception: continue
+        for rc in m_['records']:
+            oo = rc['offset']; tt = len(rc['text']); key = (rc['text'], o_['data'][oo+tt:oo+tt+24], rc['stream_len'])
+            if key in sd_seen: continue
+            sd_seen.add(key); ro = am.record_outline(o_['data'], rc); sd_tot += 1; sd_ok += bool(ro and ro['verified'])
+            for nm in ('0418T TRS', '2591A LEG'):
+                if rc['text'].startswith(nm): sd_named.setdefault(nm, [0, 0]); sd_named[nm][0] += 1; sd_named[nm][1] += bool(ro and ro['verified'])
+if sd_ok < 120: sd_bad.append(f'only {sd_ok} of {sd_tot} corpus streams verify (was 124 of 255)')
+for nm, (nn, kk) in sd_named.items():
+    if nn == 0 or kk != nn: sd_bad.append(f'marker-only {nm}: {kk} of {nn} records verify')
+print(f"   {'ok ' if sd_n and not sd_bad else 'FAIL'} record stream (v4.7): {sd_n} records equal the piece's graded outline exactly (rectangle 4/4, RUFFLE 142/142 + grain line); {sd_ok} of {sd_tot} distinct corpus streams reproduce their own record area and perimeter within 1%, incl. every 0418T TRS and 2591A LEG record of the marker-only ZIPs  {'; '.join(sd_bad[:3])}")
 if not sd_n or sd_bad: fails.append('record stream decode: ' + '; '.join(sd_bad[:3]))
 
 print('-- marker byte map (v4.4, see accumark_marker.marker_coverage)')

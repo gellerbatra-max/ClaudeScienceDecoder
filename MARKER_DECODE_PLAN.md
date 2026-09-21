@@ -26,7 +26,13 @@
 > * **The harness is reproducible:** the same order processed again differs in 18 bytes (name
 >   digits + stamps).
 >
-> * **The section-14 stream is geometry** (partial, verified): points as 20 / 16 / 12-bit
+> * **The section-14 stream is geometry - the grammar is (mostly) solved.** One tag scheme (bit 7 main, bits
+>   6-5 width, bit 4 clear = extra byte); a point's step is the SUM of prefix parts + one main part; `0xa`
+>   prefix closes a contour; tag `0x00` and ASCII header records (S / M / F ...). 124 of 255 distinct corpus
+>   streams reproduce their own record's area + perimeter (max 0.29% / 0.04%) - marker-only 0418T and 2591A
+>   LEG included - and RUFFLE / the rectangle equal the piece outline exactly. Outlines from marker-only ZIPs now
+>   work for those pieces; 1825D / 5683D / fold / BPNL / POUTH / curved blouse contours still to do.
+> * (earlier, superseded by the line above) **The section-14 stream is geometry** (partial, verified): points as 20 / 16 / 12-bit
 >   deltas in 1e-4 in, ids counting down from 29999; `decode_record_stream()` equals the graded
 >   outline for the rectangle (4/4) and the first 45 of RUFFLE's 142 points; the items tagged
 >   0x33 0x53 0x4d 0x21 0x47 0x46 0xd8 0x7a are unknown, so 0/255 streams parse to the end.

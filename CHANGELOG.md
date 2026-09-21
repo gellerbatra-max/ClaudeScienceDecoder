@@ -86,6 +86,21 @@ each engine (`MARKER_DATASET_DESIGN.md`, F5).
 
 **Not run, and why.** F1-F3 (width, quantities, single-size markers) predict only header width / section 15 / size rows, all already decoded; F4 (block buffer) needs an unequal buffer object (the only one in the scratch area, ZZBB-1, is 1 cm on all four sides) and a place to assign it - the Step 4 fabric row shows no block-buffer column, and the Defaults dialog looks like app-level defaults (width 137.16 there against 134 on the order), i.e. the user's own settings, which I did not touch; F6 needs pieces of controlled topology from Pattern Design. None is needed to read an unplaced marker; each has its procedure in `MARKER_DATASET_DESIGN.md`.
 
+**The section-14 stream is geometry - the grammar (2nd step, same day).** The first partial decode stopped at
+eight unknown tags; they turned out to be one scheme. Every tag is `bit 7 main | bits 6-5 width | bit 4 clear =
+extra leading byte`, and **a point's step is the SUM of a chain of prefix parts and one main part** (so `0x33`
+= a 12-bit prefix, `0x53` a 16-bit one, `0x41` a 16-bit one with an extra byte, ...). A prefix with low nibble
+`0xa` closes the contour and its main part starts the next one (the grain line); tag `0x00` starts a contour
+too; the stream opens with 4-byte ASCII header records (`S 24 / M 2 / S 24` on 1825D). RUFFLE now decodes to
+**142 of 142** outline points at all five sizes plus its grain line, the rectangle 4 of 4, and - the independent
+ground truth for marker-only ZIPs - the polygon of the first contour reproduces the record head's own area and
+perimeter (median error 0.0000%, max 0.29% / 0.04%) on **124 of 255 distinct corpus streams**. That includes every
+0418T TRS (11) and 2591A LEG (7) record of the MARKER-ONLY ZIPs: `unplaced_inventory` now gives their outlines
+(`outline_source: stream`, 22 of 22 slots of 418T, 14 of 35 of 2591A) and on 2591A the bounding box of the
+stream outline equals the slot's stored home box exactly (0.000 in), a check the decode never used. Not decoded
+yet: 1825D, 5683D (0 parse to the end), the 2303 OUCF fold pieces, 2591A BPNL / POUTH, curved / notched blouse
+contours (spec section 8). New: `decode_record_stream`, `verify_stream_outline`, `record_outline`.
+
 **The section-14 stream is geometry - first verified decode (partial).** The plan had declared it
 "bounded-opaque"; the fixed part of the head (u16 @+10) and the twin gave the key. A record's stream is
 `00 02 00` then items `<tag> <data> <u16 point id>` and the points are the piece's **graded outline in

@@ -115,19 +115,39 @@ NUL-terminated label `<piece><cut description><size>G`, then the **stream** (ext
 to the next record). One record per (piece, size, cut). u16 @+10 of the head is the
 stream's per-size entry count (slot `@88 = it + C`, section 10).
 
-**The stream IS the graded outline (v4.7 [V, partial]).** `00 02 00`, then items `<tag>
-<data> <u16 point id>`; the id counts down from 29999 on a piece whose points carry none
-(RUFFLE) and up 1, 2, 3, 4 on a rectangle. Point tags, coordinates in 1e-4 in:
-`0x99` absolute i32 x, i32 y (8 B); `0xf8` / `0xfc` absolute 20-bit x, y (x lo16, y lo16, byte
-`x_hi<<4 | y_hi`, 5 B); `0xf9` the same layout as a signed delta; `0xd1` / `0xd9` signed 16-bit
-delta (x, y; 4 B); `0xb1` signed 12-bit delta (byte `x_hi<<4 | y_hi`, x lo8, y lo8; 3 B). Decoded
-points equal the piece's graded outline exactly: the rectangle 4 of 4 at sizes 2 / 8 / 18,
-RUFFLE the first 45 of 142 at all five sizes (`accumark_marker.decode_record_stream`, `selftest`).
-Not yet known [?]: the items with tags `0x33 0x53 0x4d 0x21 0x47 0x46 0xd8 0x7a` (255 streams:
-0 parse end to end) - `0x4d` precedes the first point on LADIES-BLOUSE-BK, `0x33` / `0x53`
-precede some points and carry 3-4 data bytes, and BK's stream is a denser polyline than its 35
-control points, so a marker's stream may hold the FINISHED cut line (curve-sampled), not the
-piece's control points. A full decode would give outlines from a marker-only ZIP.
+**The stream IS the graded outline (v4.7 [V, most of the grammar]).** `accumark_marker.decode_record_stream`.
+
+    00 02 00                              3-byte lead
+    [<tag> 00 <n> 00]*                    header records; tags are ASCII: S 0x53, M 0x4d, F 0x46, G 0x47,
+                                          I 0x49, H 0x48 ... with a point count n [?: read as contour kinds]
+    point items                           one per point: prefix parts + ONE main part + u16 point id
+    <attribute bytes 0x09 / 0x01 ...> <3 bytes>   trailer (first byte 0x09 or 0x01; last byte varies with size [?])
+
+A *part* is `<tag> <data>`. Tag bit 7 = MAIN (the last part of a point), bits 6-5 = width code (0: two
+i32 [8 B], 1: 12-bit [3 B: byte `x_hi<<4|y_hi`, x lo8, y lo8], 2: two i16 [4 B], 3: 20-bit [5 B: x lo16,
+y lo16, byte `x_hi<<4|y_hi`]), bit 4 CLEAR = ONE LEADING EXTRA BYTE before the data (meaning open [?]).
+Coordinates are 1e-4 in. **A point's step is the SUM of its parts** (a long or curved run is a chain of
+prefixes and one main part: 26 parts were seen on one point). The first point of a contour is absolute; every
+other point is a step from the previous. A prefix with low nibble `0xa` CLOSES the contour (its step returns to
+the start) and the main part after it is the absolute start of the next contour (the internal / grain line);
+tag `0x00` starts a contour with an absolute 20-bit pair. The point ids count 1, 2, 3, 4 on 'turn' points and
+down from 29999 on plain ones (restarting per contour). Low nibbles (1 plain, 9 turn, 8 / c / 4 ...) carry the
+point's attribute [?].
+
+Ground truth, two independent kinds: (1) the piece object: the stream's first contour equals the graded outline
+EXACTLY - the rectangle 4 of 4 at sizes 2 / 8 / 18, RUFFLE 142 of 142 at all five sizes, its grain line
+(543131, 45098)-(584289, 45098) too; (2) the record head's own `area` and `perimeter`: the shoelace of the first
+contour reproduces both (median error 0.0000%, max 0.29% area / 0.04% perimeter) on **124 of 255 distinct
+corpus streams**, including every 0418T TRS and 2591A LEG record of the MARKER-ONLY ZIPs, whose bounding boxes
+then equal the slot's stored home box EXACTLY (2591A) - an independent confirmation. So outlines can now be
+read from a marker with no piece objects: `record_outline`, and `unplaced_inventory` uses it
+(`outline_source: stream`).
+
+Not yet decoded [?]: 1825D and 5683D streams (0 parse to the end: 4-byte header records `S 24 / M 2 / S 24`,
+tag `0x00` contour starts, tag classes with a low nibble 4 / 5 on the item that follows), the 2303 OUCF fold
+pieces (20-21 points decode, area / perimeter off), 2591A BPNL / POUTH (parse to the trailer, area / perimeter
+off), and some LADIES-BLOUSE contours (curved / notched runs). What the header's contours are, and which
+contour is the cut line when there are several, is not established beyond "the first".
 
 ## 9. Section 15 - the order copy [V: 18 of 18]
 

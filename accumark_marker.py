@@ -721,6 +721,43 @@ def marker_warnings(mk):
         w.append('slot @88 is not (record head count + one constant per piece) for: ' + ', '.join(p for p, c in sm['constant'].items() if c is None))
     return w
 
+def decode_record_stream(st):
+    """v4.7 [PARTIAL, verified]: the leading points of a section-14 record's attribute
+    stream. The stream is `00 02 00` then items `<tag> <data> <u16 point id>`; the ids
+    count DOWN from 29999 on a piece whose points have no id (RUFFLE) and UP 1, 2, 3, 4
+    on a rectangle. The known point tags, coordinates in 1e-4 in:
+        0x99  absolute, two i32                      (8 data bytes)
+        0xf8 / 0xfc  absolute, 20 bit each           (x lo16, y lo16, byte x_hi<<4 | y_hi)
+        0xf9  delta, signed 20 bit each              (same layout)
+        0xd1 / 0xd9  delta, signed 16 bit each       (x, y)
+        0xb1  delta, signed 12 bit each              (byte x_hi<<4 | y_hi, x lo8, y lo8)
+    Other tags (0x33 0x53 0x4d 0x21 0x47 0x46 0xd8 0x7a ...) are items this reader does
+    not know yet - some precede a point, one (0x4d) precedes the first - so the decode
+    STOPS there: `stop` says why and `end` where, and nothing past it is guessed.
+    Checked equal to the piece's graded outline: the whole rectangle record (4 of 4
+    points, sizes 2 / 8 / 18) and the first 45 points of RUFFLE at all five sizes.
+    -> dict(points=[(x, y, id)], end, stop, size)"""
+    def sg(v, bits): return v - (1 << bits) if v >= 1 << (bits - 1) else v
+    p = 3 + (4 if len(st) > 3 and st[3] == 0x4d else 0)
+    pts = []; x = y = 0; stop = 'end'
+    while p < len(st):
+        t = st[p]
+        if t == 0x99:
+            n = 8; x = int.from_bytes(st[p+1:p+5], 'little', signed=True); y = int.from_bytes(st[p+5:p+9], 'little', signed=True)
+        elif t in (0xf8, 0xfc):
+            n = 5; hi = st[p+5]; x = u16(st, p+1) | (hi >> 4) << 16; y = u16(st, p+3) | (hi & 15) << 16
+        elif t == 0xf9 and pts:
+            n = 5; hi = st[p+5]; x += sg(u16(st, p+1) | (hi >> 4) << 16, 20); y += sg(u16(st, p+3) | (hi & 15) << 16, 20)
+        elif t in (0xd1, 0xd9) and pts:
+            n = 4; x += sg(u16(st, p+1), 16); y += sg(u16(st, p+3), 16)
+        elif t == 0xb1 and pts:
+            n = 3; hi = st[p+1]; x += sg(st[p+2] | (hi >> 4) << 8, 12); y += sg(st[p+3] | (hi & 15) << 8, 12)
+        else:
+            stop = 'unknown item %#04x at byte %d' % (t, p); break
+        if p + 3 + n > len(st): stop = 'truncated at byte %d' % p; break
+        pts.append((x, y, u16(st, p + 1 + n))); p += 3 + n
+    return dict(points=pts, end=p, stop=stop, size=len(st))
+
 def _header_sums(mk):
     """How the header doubles @422 / @454 relate to the slots - a MODE per
     double, not a pass/fail: 'all' (the sum over every slot's declared area /
@@ -984,6 +1021,7 @@ def marker_coverage(d, mk=None):
             if 'fabric_types' not in p: continue        # the regex fallback has no row layout
             r = p['offset'] - 28
             mark(r, r + 4, 'identified'); mark(r + 4, r + 28, 'raw')
+            mark(r + 18, r + 20, 'identified')                                                       # flag u16 @+14 == slot bit 0x0040 [V v4.7]
             mark(r + 8, r + 10, 'identified'); mark(r + 22, r + 24, 'identified')                    # buffer index, fabric-type count
             q = p['offset'] + len(p['name']) + len(p['fabric']); mark(p['offset'], q, 'identified')
             for ft in p['fabric_types']: mark(q, q + 2 + len(ft), 'identified'); q += 2 + len(ft)
@@ -1005,6 +1043,7 @@ def marker_coverage(d, mk=None):
             o = r['offset']; start = o - 48; nxt = (recs[i+1]['offset'] - 48) if i + 1 < len(recs) else end14
             mark(start, o, 'raw')                                                                    # 48-byte head ...
             mark(o - 30, o - 14, 'identified')                                                       # ... area, perimeter
+            mark(o - 38, o - 36, 'identified')                                                       # u16 @+10: per-size entry count (slot @88 = it + C) [V v4.7]
             mark(o - 10, o - 8, 'identified'); mark(o - 8, o, 'zero_pad')                            # stream length, 8 zeros
             t_end = o + len(r['text']) + 1; mark(o, t_end, 'identified'); mark(t_end, nxt, 'opaque')
     # -- section 15: the order copy

@@ -26,6 +26,11 @@
 > * **The harness is reproducible:** the same order processed again differs in 18 bytes (name
 >   digits + stamps).
 >
+> * **The section-14 stream is geometry** (partial, verified): points as 20 / 16 / 12-bit
+>   deltas in 1e-4 in, ids counting down from 29999; `decode_record_stream()` equals the graded
+>   outline for the rectangle (4/4) and the first 45 of RUFFLE's 142 points; the items tagged
+>   0x33 0x53 0x4d 0x21 0x47 0x46 0xd8 0x7a are unknown, so 0/255 streams parse to the end.
+>   Retracts "per-piece attribute table, not geometry". The next big step of the whole project.
 > * **E7 (two more harness runs):** a model none of whose pieces has a used fabric type is dropped
 >   from the order AND the marker; a fresh two-model marker (`CLAUDE-D2-E7B`) has header `@422` / `@454`
 >   = the LAST model's sums (generation-time behaviour); the same LADIES-BLOUSE pieces read `flag @+14` 0

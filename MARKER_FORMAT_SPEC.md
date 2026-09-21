@@ -111,9 +111,23 @@ size appears once per cut. `flags` is 0xffff on 12 markers and 0 on the rest [?]
 13 is a u32 array of the section-14 records' byte offsets, relative to `dir[14] - 6`.
 A record: 48 bytes of head (8 unexplained, then a 10-byte prefix of 5 u16, then
 `f64 area`, `f64 perimeter`, `u16 3`, `u16 1`, `u16 stream length`, 8 zero bytes), a
-NUL-terminated label `<piece><cut description><size>G`, then a per-point attribute
-stream (extent = up to the next record; content bounded, not decoded - it is a
-per-piece attribute table, not geometry). One record per (piece, size, cut).
+NUL-terminated label `<piece><cut description><size>G`, then the **stream** (extent = up
+to the next record). One record per (piece, size, cut). u16 @+10 of the head is the
+stream's per-size entry count (slot `@88 = it + C`, section 10).
+
+**The stream IS the graded outline (v4.7 [V, partial]).** `00 02 00`, then items `<tag>
+<data> <u16 point id>`; the id counts down from 29999 on a piece whose points carry none
+(RUFFLE) and up 1, 2, 3, 4 on a rectangle. Point tags, coordinates in 1e-4 in:
+`0x99` absolute i32 x, i32 y (8 B); `0xf8` / `0xfc` absolute 20-bit x, y (x lo16, y lo16, byte
+`x_hi<<4 | y_hi`, 5 B); `0xf9` the same layout as a signed delta; `0xd1` / `0xd9` signed 16-bit
+delta (x, y; 4 B); `0xb1` signed 12-bit delta (byte `x_hi<<4 | y_hi`, x lo8, y lo8; 3 B). Decoded
+points equal the piece's graded outline exactly: the rectangle 4 of 4 at sizes 2 / 8 / 18,
+RUFFLE the first 45 of 142 at all five sizes (`accumark_marker.decode_record_stream`, `selftest`).
+Not yet known [?]: the items with tags `0x33 0x53 0x4d 0x21 0x47 0x46 0xd8 0x7a` (255 streams:
+0 parse end to end) - `0x4d` precedes the first point on LADIES-BLOUSE-BK, `0x33` / `0x53`
+precede some points and carry 3-4 data bytes, and BK's stream is a denser polyline than its 35
+control points, so a marker's stream may hold the FINISHED cut line (curve-sampled), not the
+piece's control points. A full decode would give outlines from a marker-only ZIP.
 
 ## 9. Section 15 - the order copy [V: 18 of 18]
 
@@ -218,6 +232,7 @@ zero_pad 0.8%, opaque 91.3% (section 14's streams + section 30).
 |---|---|---|
 | side order of the four block-buffer doubles; what the table is for | home box ignores it (ZZC-M1 vs ZZC-BIG) | live: unequal buffers on a piece with real geometry |
 | what order / model option sets the piece-row flag @+14 (= the slot 0x0040 bit); the pre-set rot180 alternation | 0x0040 == flag @+14 on 9,122 / 9,122 slots [V]; alternates per bundle | live: flip one order / model option per run (DATASET_DESIGN F5) |
+| the remaining stream items (tags 0x33 0x53 0x4d 0x21 0x47 0x46 0xd8 0x7a) - the last big unknown: 91% of a marker's bytes | leading points decode exactly to the graded outline (rectangle, RUFFLE 45/142) | align each unknown item with the outline / curve points of RUFFLE and LADIES-BLOUSE-BK, whose pieces are in the corpus |
 | what C counts in @88 = head count + C; slot @52/@54/@60 | @88 = p1 + C(piece) [V], C tracks internal-line points; stored-empty and laid-then-returned read 0 alike | pieces with 0 / 1 / 2 / 4 internal lines built in Pattern Design (DATASET_DESIGN F6); @52/@54/@60 vs piece/size |
 | the y excess on July CP 150 unplaced slots (up to 0.0786 in, one-sided) | x fits the CP 150 table but the table does not drive home | live: known notch / curve |
 | placed slots 7.2% larger than their record (ZZC-M3, ZZN-F1) | 2 slots each | live: repeat with a plain piece |

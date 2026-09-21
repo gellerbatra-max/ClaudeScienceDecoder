@@ -1210,6 +1210,25 @@ if os.path.isfile(D2) and os.path.isfile(LAID):
     print(f"   {'ok ' if not bad else 'FAIL'} live twins of one order (laid vs as generated): records identical, slots differ only in centre / orientation / area ulp / @88 (= record head count + C per piece)  {'; '.join(bad)}")
     if bad: fails.append('D2 twins: ' + '; '.join(bad))
 
+# v4.7 [partial]: the leading points of a section-14 record stream decode to the piece's graded outline.
+# Ground truth = the piece objects bundled in the same ZIPs: the rectangle (all 4 points, sizes 2 and 18 of
+# CLAUDE-GRADE-MARKER, 8 of CLAUDE-QTY-TEST) and RUFFLE (the first 45 of 142 points at all five sizes).
+sd_bad = []; sd_n = 0
+for zp, piece, want in (('markers/CLAUDE-GRADE-MARKER/CLAUDE-GRADE-MARKER.zip', 'CLAUDE-GRADE-TEST', 4), ('markers/CLAUDE-QTY-TEST.zip', 'CLAUDE-GRADE-TEST', 4),
+                        ('markers-live/CLAUDE-UNP-D2-TWIN/CLAUDE-D2-M0.zip', 'ID1005 - RUFFLE', 45)):
+    if not os.path.isfile(os.path.join(HERE, zp)): continue
+    rr = am.place_marker(os.path.join(HERE, zp)); mm = rr['markers'][0]['marker']; dd = mm['object']['data']
+    for rc in mm['records']:
+        if rc.get('piece') != piece: continue
+        o = rc['offset']; t = len(rc['text']); st = dd[o+t:o+t+rc['stream_len']]; dec = am.decode_record_stream(st)
+        ref = [(round(x * 1e4), round(y * 1e4)) for x, y in am.graded_outline(rr['pieces'][piece]['block'], rc['size'])]
+        got = [(a, b) for a, b, _ in dec['points']]; sd_n += 1
+        if len(got) < want or got[:want] != ref[:want] or (want == 4 and dec['stop'] == 'end'): sd_bad.append(f"{zp.split('/')[-1]} size {rc['size']}: {len(got)} points, stop {dec['stop']}")
+mut = bytearray(dd[o+t:o+t+rc['stream_len']]); mut[4] ^= 1                                # flip one bit of the first absolute x
+if am.decode_record_stream(bytes(mut))['points'][:1] == [(a, b) for a, b, _ in dec['points']][:1]: sd_bad.append('a flipped coordinate bit did not change the decode')
+print(f"   {'ok ' if sd_n and not sd_bad else 'FAIL'} record stream (partial, v4.7): {sd_n} records - the decoded leading points equal the graded outline exactly (rectangle 4 of 4, RUFFLE 45 of 142); unknown items stop the decode  {'; '.join(sd_bad[:3])}")
+if not sd_n or sd_bad: fails.append('record stream decode: ' + '; '.join(sd_bad[:3]))
+
 print('-- marker byte map (v4.4, see accumark_marker.marker_coverage)')
 # Every byte owned by a section a parser reads must be classified (identified /
 # raw / zero_pad / opaque) - only the envelope, the header scalars, sections 2-5,

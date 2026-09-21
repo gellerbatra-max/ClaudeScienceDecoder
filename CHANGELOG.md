@@ -86,6 +86,21 @@ each engine (`MARKER_DATASET_DESIGN.md`, F5).
 
 **Not run, and why.** F1-F3 (width, quantities, single-size markers) predict only header width / section 15 / size rows, all already decoded; F4 (block buffer) needs an unequal buffer object (the only one in the scratch area, ZZBB-1, is 1 cm on all four sides) and a place to assign it - the Step 4 fabric row shows no block-buffer column, and the Defaults dialog looks like app-level defaults (width 137.16 there against 134 on the order), i.e. the user's own settings, which I did not touch; F6 needs pieces of controlled topology from Pattern Design. None is needed to read an unplaced marker; each has its procedure in `MARKER_DATASET_DESIGN.md`.
 
+**The section-14 stream is geometry - first verified decode (partial).** The plan had declared it
+"bounded-opaque"; the fixed part of the head (u16 @+10) and the twin gave the key. A record's stream is
+`00 02 00` then items `<tag> <data> <u16 point id>` and the points are the piece's **graded outline in
+1e-4 in**: tag `0x99` absolute i32 x/y, `0xf8` / `0xfc` absolute 20-bit x/y (x lo16, y lo16, byte
+`x_hi<<4|y_hi`), `0xf9` the same as a signed delta, `0xd1` / `0xd9` signed 16-bit delta, `0xb1` signed
+12-bit delta (byte `x_hi<<4|y_hi`, x lo8, y lo8). `accumark_marker.decode_record_stream()` decodes the
+leading points and STOPS at the first unknown item: they equal the graded outline **exactly** - the
+whole rectangle (4 of 4 points, sizes 2 / 8 / 18) and the first 45 of RUFFLE's 142 points at all five
+sizes (8 records, `selftest` row with a bit-flip mutation). Not yet known: the items tagged `0x33 0x53
+0x4d 0x21 0x47 0x46 0xd8 0x7a` (0 of 255 corpus streams parse to the end) - so nothing past them is
+guessed. The stream's point count exceeds the piece's control points (RUFFLE 209 items for 142
+points; LADIES-BLOUSE-BK 105 for 35), so it may hold the finished, curve-sampled cut line. A complete
+decode would give outlines from a marker-only ZIP, the one thing the format spec still says is
+impossible. The earlier "per-piece attribute table, not geometry" reading is retracted.
+
 **Robustness** 474 -> 561 (the twin is a new seed; canon carries `sig88_model`). The
 committed `ROBUSTNESS_REPORT.md` said 303 - it had been restored after every run and was
 stale; it is now the real report. selftest PASS, dataset_test 36/36.

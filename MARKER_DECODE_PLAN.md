@@ -26,7 +26,11 @@
 > * **The harness is reproducible:** the same order processed again differs in 18 bytes (name
 >   digits + stamps).
 >
-> * **The section-14 stream is geometry - the grammar is (mostly) solved.** One tag scheme (bit 7 main, bits
+> * **The section-14 stream is geometry - ALL 255 corpus streams decode** (pen-move rule + fold halves unfolded):
+>   area + perimeter reproduce on 255 / 255, and the bounding box equals the stored home box to 0.000 in on every
+>   slot of the marker-only ZIPs 1825D, 5683D, 2591A, 418T. Real outlines from marker-only ZIPs: done. Left:
+>   the attribute meaning (extra byte, tag low nibble), classify the stream bytes in the byte map.
+> * (superseded) **The section-14 stream is geometry - the grammar is (mostly) solved.** One tag scheme (bit 7 main, bits
 >   6-5 width, bit 4 clear = extra byte); a point's step is the SUM of prefix parts + one main part; `0xa`
 >   prefix closes a contour; tag `0x00` and ASCII header records (S / M / F ...). 124 of 255 distinct corpus
 >   streams reproduce their own record's area + perimeter (max 0.29% / 0.04%) - marker-only 0418T and 2591A

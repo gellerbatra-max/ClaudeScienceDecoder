@@ -990,9 +990,16 @@ if src:
     inv = inv_res['markers'][0]['inventory']; bad = []
     # no piece object in the ZIP (result-level 'none'), yet 14 of 35 slots (the LEG pieces) have an outline read from the marker's own
     # stream, and its bounding box equals the slot's stored home box EXACTLY - a check the decode never used
-    if inv_res['geometry_available'] != 'none' or inv['marker']['geometry_available'] != 'some' or inv['marker']['outline_source'] != 'stream': bad.append('marker-only ZIP: expected no piece objects but stream outlines for some slots')
+    if inv_res['geometry_available'] != 'none' or inv['marker']['geometry_available'] != 'all' or inv['marker']['outline_source'] != 'stream': bad.append('marker-only ZIP: expected no piece objects but a stream outline for every slot')
     so = [x for x in inv['slots'] if x.get('outline')]
-    if len(so) != 14 or any(abs(x['checks']['bbox_dx']) > 1e-3 or abs(x['checks']['bbox_dy']) > 1e-3 or abs(x['checks']['area_ratio'] - 1) > 1e-3 for x in so): bad.append('stream outlines vs home box / area: %d slots' % len(so))
+    if len(so) != 35 or any(abs(x['checks']['bbox_dx']) > 1e-3 or abs(x['checks']['bbox_dy']) > 1e-3 or abs(x['checks']['area_ratio'] - 1) > 1e-3 for x in so): bad.append('stream outlines vs home box / area: %d slots' % len(so))
+    # the same for every marker-only fixture: the stream outline's bounding box IS the stored home box (never used by the decode)
+    for zn_, mn_, ns_ in (('1825D-SS21-UNLAID', '1825D-BD 180 SS21.zip', 36), ('5683D-SS21-UNLAID', '5683D-BD 168 SS21.zip', 24), ('418T-SHAPESHIFTER-UNLAID', '418T-BD 160 SHAPESHIFTER.zip', 22)):
+        gs = []; geo_ = []
+        for mk_ in am.place_marker(os.path.join(HERE, 'markers', zn_, mn_))['markers']:
+            gs += [x for x in mk_['inventory']['slots'] if x.get('outline')]; geo_.append(mk_['inventory']['marker']['geometry_available'])
+        res_ = [(x['home_box_in'][0] - (max(q[0] for q in x['outline']) - min(q[0] for q in x['outline'])), x['home_box_in'][1] - (max(q[1] for q in x['outline']) - min(q[1] for q in x['outline']))) for x in gs]
+        if len(gs) != ns_ or set(geo_) != {'all'} or any(abs(a_) > 1e-3 or abs(b_) > 1e-3 for a_, b_ in res_): bad.append(f'{zn_}: {len(gs)} of {ns_} slots, {geo_}, home box vs stream bbox {max((abs(a_) for a_, _ in res_), default=None)}')
     if inv['marker']['laid_state'] != 'unlaid' or inv['totals']['slots'] != 35 or inv['totals']['placed'] != 0: bad.append('totals: %s' % inv['totals'])
     if [(o['size'], o['quantity']) for o in inv['order_lines']] != [(s, 1) for s in ['6/7', '7/8', '8/9', '9/10', '11/12', '13/14', '15/16']]: bad.append('order lines')
     pairs = {}
@@ -1004,7 +1011,7 @@ if src:
     if abs(inv['totals']['area_to_lay'] - a422) > 1e-9 or abs(inv['totals']['min_length_in'] - a422 / inv['marker']['width_in']) > 1e-9: bad.append('area / minimum length')
     if not inv_res['markers'][0]['inventory']['warnings'] or not any(w.startswith('no piece objects') for w in inv['warnings']): bad.append('no "no piece objects" warning')
     if not am.inventory_report(inv, inv_res['markers'][0]['checks']).endswith('DECODED CLEANLY'): bad.append('report does not end DECODED CLEANLY')
-    print(f"   {'ok ' if not bad else 'FAIL'} unplaced_inventory on a marker-only ZIP (2591A: 35 slots, 14 mirrored pairs, 14 outlines from the stream)  {'; '.join(bad)}")
+    print(f"   {'ok ' if not bad else 'FAIL'} unplaced_inventory on a marker-only ZIP (2591A: 35 slots, 14 mirrored pairs, 35 outlines from the stream; 1825D / 5683D / 418T bounding boxes == home boxes)  {'; '.join(bad)}")
     if bad: fails.append('unplaced_inventory: ' + '; '.join(bad))
 # and the answer key can fail: the old area rule against the drawn DXF labels
 zp = os.path.join(HERE, 'markers', '2303-BD137-PLACED', '2303-BD 137 PLACED.zip')
@@ -1246,12 +1253,12 @@ for zp in sorted(glob.glob(os.path.join(HERE, 'markers', '**', '*.zip'), recursi
             oo = rc['offset']; tt = len(rc['text']); key = (rc['text'], o_['data'][oo+tt:oo+tt+24], rc['stream_len'])
             if key in sd_seen: continue
             sd_seen.add(key); ro = am.record_outline(o_['data'], rc); sd_tot += 1; sd_ok += bool(ro and ro['verified'])
-            for nm in ('0418T TRS', '2591A LEG'):
+            for nm in ('0418T TRS', '2591A', '1825D', '5683D'):
                 if rc['text'].startswith(nm): sd_named.setdefault(nm, [0, 0]); sd_named[nm][0] += 1; sd_named[nm][1] += bool(ro and ro['verified'])
-if sd_ok < 120: sd_bad.append(f'only {sd_ok} of {sd_tot} corpus streams verify (was 124 of 255)')
+if sd_ok != sd_tot or sd_tot < 255: sd_bad.append(f'{sd_ok} of {sd_tot} distinct corpus streams verify (all 255 did)')
 for nm, (nn, kk) in sd_named.items():
     if nn == 0 or kk != nn: sd_bad.append(f'marker-only {nm}: {kk} of {nn} records verify')
-print(f"   {'ok ' if sd_n and not sd_bad else 'FAIL'} record stream (v4.7): {sd_n} records equal the piece's graded outline exactly (rectangle 4/4, RUFFLE 142/142 + grain line); {sd_ok} of {sd_tot} distinct corpus streams reproduce their own record area and perimeter within 1%, incl. every 0418T TRS and 2591A LEG record of the marker-only ZIPs  {'; '.join(sd_bad[:3])}")
+print(f"   {'ok ' if sd_n and not sd_bad else 'FAIL'} record stream (v4.7): {sd_n} records equal the piece's graded outline exactly (rectangle 4/4, RUFFLE 142/142 + grain line); {sd_ok} of {sd_tot} distinct corpus streams reproduce their own record area and perimeter within 1% - ALL of them, incl. every record of the marker-only ZIPs 1825D, 5683D, 2591A, 0418T (131 are fold halves, unfolded about their fold line)  {'; '.join(sd_bad[:3])}")
 if not sd_n or sd_bad: fails.append('record stream decode: ' + '; '.join(sd_bad[:3]))
 
 print('-- marker byte map (v4.4, see accumark_marker.marker_coverage)')

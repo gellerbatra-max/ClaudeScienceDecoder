@@ -723,6 +723,7 @@ def marker_warnings(mk):
 
 # --- section 14 stream grammar (v4.7, see MARKER_FORMAT_SPEC.md section 8) --------------------
 _STREAM_WBYTES = {0: 8, 1: 3, 2: 4, 3: 5}       # width code -> data bytes: 32 / 12 / 16 / 20 bit x,y pair
+_PEN_MOVE = 6                                    # parts in one point beyond which it is a pen move (seen: 7 - 52; ordinary points have 1 - 3)
 
 def _tag_len(t):
     """data bytes of a stream item with tag `t`: bits 6-5 pick the pair width, a CLEAR bit 4
@@ -780,7 +781,9 @@ def decode_record_stream(st):
         dx = dy = 0
         for t, dat in parts:
             a, b = _tag_delta(t, dat); dx += a; dy += b
-        if any((t & 0xf) == 0xa for t, _ in parts[:-1]):
+        if len(parts) > _PEN_MOVE and cur is not None:         # a long chain of parts = a pen move: the next contour starts where it ends
+            x += dx; y += dy; cur = []; contours.append(cur)
+        elif any((t & 0xf) == 0xa for t, _ in parts[:-1]):
             x, y = _tag_delta(*parts[-1]); cur = []; contours.append(cur)
         elif cur is None or st[p] == 0x00:
             x, y = dx, dy; cur = []; contours.append(cur)
@@ -802,14 +805,35 @@ def verify_stream_outline(contour, area, perimeter, tol=0.01):
     a = abs(a) / 2e8; pr /= 1e4
     return abs(a - area) <= tol * area + 0.01 and abs(pr - perimeter) <= tol * perimeter + 0.05, a, pr
 
+def _unfold_contour(half):
+    """a fold piece's stream holds ONE HALF whose first and last point lie on the fold line; the
+    full outline is that half plus its mirror image about the line, in reverse. [(x, y, id)] -> same"""
+    (x0, y0), (x1, y1) = half[0][:2], half[-1][:2]
+    dx, dy = x1 - x0, y1 - y0; l2 = dx * dx + dy * dy
+    if not l2: return list(half)
+    out = list(half)
+    for x, y, _ in reversed(half[1:-1]):
+        px, py = x - x0, y - y0; t = (px * dx + py * dy) / l2
+        out.append((x0 + 2 * t * dx - px, y0 + 2 * t * dy - py, 0))
+    return out
+
 def record_outline(data, rec):
     """the graded outline of section-14 record `rec` read from the STREAM alone (no piece object
-    needed): -> dict(points=[(x_in, y_in)], verified, holes / internal=[contours], stop) or None."""
+    needed): -> dict(points=[(x_in, y_in)], verified, unfolded, area, perimeter, other=[contours in],
+    stop, header) or None. The first contour is tried as it stands, then - for a fold piece, whose
+    stream holds one half - unfolded about the line through its first and last point; `verified` = the
+    polygon reproduces the record head's own area and perimeter (verify_stream_outline). Checked
+    against the stored home box too, which the verification never uses: bounding box == home box to
+    0.000 in on all 60 foreign marker-only slots (1825D, 5683D) and 2591A / 418T."""
     o = rec['offset']; t = len(rec['text']); st = data[o+t:o+t+rec['stream_len']]
     d = decode_record_stream(st)
     if not d['contours']: return None
-    ok, a, pr = verify_stream_outline(d['contours'][0], rec['area'], rec['perimeter'])
-    return dict(points=[(x / 1e4, y / 1e4) for x, y, _ in d['contours'][0]], verified=ok and d['stop'] == 'trailer',
+    c0 = d['contours'][0]; unfolded = False
+    ok, a, pr = verify_stream_outline(c0, rec['area'], rec['perimeter'])
+    if not ok and len(c0) >= 3:
+        full = _unfold_contour(c0); ok2, a2, pr2 = verify_stream_outline(full, rec['area'], rec['perimeter'])
+        if ok2: c0, ok, a, pr, unfolded = full, True, a2, pr2, True
+    return dict(points=[(x / 1e4, y / 1e4) for x, y, _ in c0], verified=ok and d['stop'] == 'trailer', unfolded=unfolded,
                 area=a, perimeter=pr, other=[[(x / 1e4, y / 1e4) for x, y, _ in c] for c in d['contours'][1:]], stop=d['stop'], header=d['header'])
 
 def _header_sums(mk):

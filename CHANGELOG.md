@@ -86,6 +86,18 @@ each engine (`MARKER_DATASET_DESIGN.md`, F5).
 
 **Not run, and why.** F1-F3 (width, quantities, single-size markers) predict only header width / section 15 / size rows, all already decoded; F4 (block buffer) needs an unequal buffer object (the only one in the scratch area, ZZBB-1, is 1 cm on all four sides) and a place to assign it - the Step 4 fabric row shows no block-buffer column, and the Defaults dialog looks like app-level defaults (width 137.16 there against 134 on the order), i.e. the user's own settings, which I did not touch; F6 needs pieces of controlled topology from Pattern Design. None is needed to read an unplaced marker; each has its procedure in `MARKER_DATASET_DESIGN.md`.
 
+**The section-14 stream is geometry - ALL 255 streams decode (3rd step, same day).** Two more rules finished
+it. (1) A point with more than 6 parts is a **pen move** (a long jump split into small steps): the next contour
+starts where it ends - that was the "unknown tag" chaos in 1825D and 5683D. (2) A **fold piece's** stream holds
+one half whose first and last point lie on the fold line (the record's area is twice the half's); the full
+outline is the half plus its mirror. Result: **255 of 255 distinct corpus streams** reproduce their own record's
+area and perimeter (131 of them after unfolding), and - the independent proof - the bounding box of the decoded
+outline equals the slot's stored home box to 0.000 in on all 36 slots of 1825D, 24 of 5683D, 35 of 2591A and 22 of
+418T, i.e. the four marker-only ZIPs (your real styles) now read as `GEOMETRY: outlines for every slot` with no
+piece object in sight. `record_outline()` returns the outline (`unfolded` flag), `unplaced_inventory` uses it.
+Open: the extra byte / low nibble of each tag (a point's attribute), curve-sampling vs control points, what the
+header contours are. The byte map still calls the stream opaque; identifying it is the next step.
+
 **The section-14 stream is geometry - the grammar (2nd step, same day).** The first partial decode stopped at
 eight unknown tags; they turned out to be one scheme. Every tag is `bit 7 main | bits 6-5 width | bit 4 clear =
 extra leading byte`, and **a point's step is the SUM of a chain of prefix parts and one main part** (so `0x33`

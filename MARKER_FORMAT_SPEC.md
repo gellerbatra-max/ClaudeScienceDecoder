@@ -134,20 +134,30 @@ tag `0x00` starts a contour with an absolute 20-bit pair. The point ids count 1,
 down from 29999 on plain ones (restarting per contour). Low nibbles (1 plain, 9 turn, 8 / c / 4 ...) carry the
 point's attribute [?].
 
-Ground truth, two independent kinds: (1) the piece object: the stream's first contour equals the graded outline
-EXACTLY - the rectangle 4 of 4 at sizes 2 / 8 / 18, RUFFLE 142 of 142 at all five sizes, its grain line
-(543131, 45098)-(584289, 45098) too; (2) the record head's own `area` and `perimeter`: the shoelace of the first
-contour reproduces both (median error 0.0000%, max 0.29% area / 0.04% perimeter) on **124 of 255 distinct
-corpus streams**, including every 0418T TRS and 2591A LEG record of the MARKER-ONLY ZIPs, whose bounding boxes
-then equal the slot's stored home box EXACTLY (2591A) - an independent confirmation. So outlines can now be
-read from a marker with no piece objects: `record_outline`, and `unplaced_inventory` uses it
-(`outline_source: stream`).
+A point with MORE THAN 6 parts is a **pen move**: a long jump decomposed into 12- / 16-bit steps (7 - 52
+parts seen; ordinary points have 1 - 3). The next contour starts where it ends (the far-away mirror line on a
+fold piece, a seam contour).
 
-Not yet decoded [?]: 1825D and 5683D streams (0 parse to the end: 4-byte header records `S 24 / M 2 / S 24`,
-tag `0x00` contour starts, tag classes with a low nibble 4 / 5 on the item that follows), the 2303 OUCF fold
-pieces (20-21 points decode, area / perimeter off), 2591A BPNL / POUTH (parse to the trailer, area / perimeter
-off), and some LADIES-BLOUSE contours (curved / notched runs). What the header's contours are, and which
-contour is the cut line when there are several, is not established beyond "the first".
+**Fold pieces.** When the first contour does not reproduce the record's area and perimeter, it is ONE HALF of
+the piece: its first and last point lie on the fold line, the record's `area` is twice the half's, and the full
+outline is the half plus its mirror image about that line, in reverse (131 of 255 streams: 1825D, 5683D, the
+2303 OUCF pieces, 2591A, half of the blouse). The header records `M` / `S` describe the extra contours
+(a mirror line, a seam offset by about +0.28 in) that follow.
+
+Ground truth, three independent kinds - (1) the piece object: the first contour equals the graded outline
+EXACTLY - the rectangle 4 of 4 at sizes 2 / 8 / 18, RUFFLE 142 of 142 at all five sizes, its grain line
+(543131, 45098)-(584289, 45098) too; (2) the record head's own `area` and `perimeter`: the shoelace of the
+outline (unfolded when needed) reproduces both on **255 of 255 distinct corpus streams** (median error
+0.0000%, max 0.29% area / 0.04% perimeter); (3) the slot's stored home box, which the decode never uses: its
+bounding box equals the home box to 0.000 in on every slot of the MARKER-ONLY ZIPs 1825D (36), 5683D (24), 2591A
+(35), 0418T (22) and of every fixture with a piece object (2303-CP 150: 0.118 - 0.183 in larger, the stored /
+block-buffer effect [?]). `record_outline` reads an outline from a marker with NO piece objects, and
+`unplaced_inventory` uses it (`outline_source: stream`).
+
+Still open [?]: the leading EXTRA byte and the low nibble of every tag (a point's attribute: turn / plain /
+notch?), the header records' exact meaning (which contour is the cut line when several are present - the first
+is), the trailer's attribute bytes and its last byte (varies with size), curve segments (the stream is the
+finished, sampled line; the piece object holds control points: 35 points against ~100 on LADIES-BLOUSE-BK).
 
 ## 9. Section 15 - the order copy [V: 18 of 18]
 
@@ -252,7 +262,7 @@ zero_pad 0.8%, opaque 91.3% (section 14's streams + section 30).
 |---|---|---|
 | side order of the four block-buffer doubles; what the table is for | home box ignores it (ZZC-M1 vs ZZC-BIG) | live: unequal buffers on a piece with real geometry |
 | what order / model option sets the piece-row flag @+14 (= the slot 0x0040 bit); the pre-set rot180 alternation | 0x0040 == flag @+14 on 9,122 / 9,122 slots [V]; alternates per bundle | live: flip one order / model option per run (DATASET_DESIGN F5) |
-| the remaining stream items (tags 0x33 0x53 0x4d 0x21 0x47 0x46 0xd8 0x7a) - the last big unknown: 91% of a marker's bytes | leading points decode exactly to the graded outline (rectangle, RUFFLE 45/142) | align each unknown item with the outline / curve points of RUFFLE and LADIES-BLOUSE-BK, whose pieces are in the corpus |
+| the stream's attribute meaning: the extra byte, each tag's low nibble, the trailer attribute bytes and last byte | outlines decode on 255 / 255 streams; the byte map still counts the stream as opaque | label points by the piece's own point kinds (turn / plain / notch) on RUFFLE, BK, the rectangle |
 | what C counts in @88 = head count + C; slot @52/@54/@60 | @88 = p1 + C(piece) [V], C tracks internal-line points; stored-empty and laid-then-returned read 0 alike | pieces with 0 / 1 / 2 / 4 internal lines built in Pattern Design (DATASET_DESIGN F6); @52/@54/@60 vs piece/size |
 | the y excess on July CP 150 unplaced slots (up to 0.0786 in, one-sided) | x fits the CP 150 table but the table does not drive home | live: known notch / curve |
 | placed slots 7.2% larger than their record (ZZC-M3, ZZN-F1) | 2 slots each | live: repeat with a plain piece |

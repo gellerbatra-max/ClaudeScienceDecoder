@@ -253,8 +253,10 @@ Pairs: slots sharing (bundle, record) form a group of 1 or 2; a group of 2 is a
 
 Every byte in sections 6, 11-15, 21, 30 is classified. Unknown = 1,187-1,829 bytes
 per marker (1.38% overall, the same on a 3 KB marker as a 280 KB one): trailer,
-section 1's unread bytes, sections 2-5, the envelope. identified 4.1%, raw 2.4%,
-zero_pad 0.8%, opaque 91.3% (section 14's streams + section 30).
+section 1's unread bytes, sections 2-5, the envelope. **identified 28.1%, raw 11.4%,
+zero_pad 0.8%, opaque 58.3%** (v4.7: was 4.1 / 2.4 / 0.8 / 91.3 before the section-14 stream was decoded; a
+stream that verifies against its record's area + perimeter is identified except each tag byte and extra byte,
+which stay raw). The opaque bytes are now almost entirely section 30, the embedded type-10 object.
 
 ## 14. Open, and what settles each
 

@@ -758,9 +758,9 @@ def decode_record_stream(st):
     the decode and says so.
     -> dict(contours=[[(x, y, id)]], header=[(tag, n)], end, stop, size)"""
     if len(st) < 3: return dict(contours=[], header=[], end=0, stop='short', size=len(st))
-    p = 3; header = []
+    p = 3; header = []; spans = [(0, 3, 'lead')]
     while p + 4 <= len(st) and st[p] < 0x80 and st[p+1] == 0 and st[p+3] == 0:
-        header.append((st[p], st[p+2])); p += 4
+        header.append((st[p], st[p+2])); spans.append((p, p + 4, 'header')); p += 4
     contours = []; cur = None; x = y = 0; stop = 'end'
     while p < len(st):
         parts = []; q = p; ok = True
@@ -769,15 +769,18 @@ def decode_record_stream(st):
             t = st[q]
             if t == 0x00 and not parts:                       # a new contour: absolute 20-bit pair, no tag class
                 if q + 6 > len(st): ok = False; stop = 'truncated at byte %d' % p; break
-                parts.append((0xf8, st[q+1:q+6])); q += 6; break
+                parts.append((0xf8, st[q+1:q+6])); spans += [(q, q + 1, 'tag'), (q + 1, q + 6, 'data')]; q += 6; break
             if t < 0x10 and not t & 0x70:                     # 0x09 ...: the trailer's attribute bytes
                 ok = False; stop = 'trailer'; break
             n = _tag_len(t)
             if q + 1 + n > len(st): ok = False; stop = 'truncated at byte %d' % p; break
-            parts.append((t, st[q+1:q+1+n])); q += 1 + n
+            parts.append((t, st[q+1:q+1+n])); spans.append((q, q + 1, 'tag'))
+            if not t & 0x10: spans.append((q + 1, q + 2, 'extra'))
+            spans.append((q + 1 + (0 if t & 0x10 else 1), q + 1 + n, 'data')); q += 1 + n
             if t & 0x80: break
         if not ok: break
         if q + 2 > len(st): stop = 'truncated at byte %d' % p; break
+        spans.append((q, q + 2, 'id'))
         dx = dy = 0
         for t, dat in parts:
             a, b = _tag_delta(t, dat); dx += a; dy += b
@@ -791,7 +794,7 @@ def decode_record_stream(st):
             x += dx; y += dy
         cur.append((x, y, u16(st, q))); p = q + 2
     if stop == 'end': stop = 'trailer'
-    return dict(contours=contours, header=header, end=p, stop=stop, size=len(st))
+    return dict(contours=contours, header=header, end=p, stop=stop, size=len(st), spans=spans)
 
 def verify_stream_outline(contour, area, perimeter, tol=0.01):
     """polygon area / perimeter (in, sq in) of a decoded contour against the record head's own
@@ -1123,7 +1126,17 @@ def marker_coverage(d, mk=None):
             mark(o - 30, o - 14, 'identified')                                                       # ... area, perimeter
             mark(o - 38, o - 36, 'identified')                                                       # u16 @+10: per-size entry count (slot @88 = it + C) [V v4.7]
             mark(o - 10, o - 8, 'identified'); mark(o - 8, o, 'zero_pad')                            # stream length, 8 zeros
-            t_end = o + len(r['text']) + 1; mark(o, t_end, 'identified'); mark(t_end, nxt, 'opaque')
+            t_end = o + len(r['text']) + 1; mark(o, t_end, 'identified')
+            # v4.7: the stream. Verified against the record's own area / perimeter, the coordinates, ids, lead and
+            # header records are identified; each tag byte (its low nibble is a point attribute [?]), each EXTRA byte
+            # and the trailer stay raw; a stream that does not verify stays opaque
+            ro = record_outline(d, r)
+            if ro and ro['verified']:
+                base = o + len(r['text']); dec = decode_record_stream(d[base:base + r['stream_len']])         # the stream starts AT the label's NUL
+                kind = dict(lead='identified', header='identified', data='identified', id='identified', tag='raw', extra='raw')
+                for a_, b_, k_ in dec['spans']: mark(base + a_, base + b_, kind[k_])
+                mark(base + dec['end'], nxt, 'raw')
+            else: mark(t_end, nxt, 'opaque')
     # -- section 15: the order copy
     if sec[SEC_ORDER_COPY]:
         p = sec[SEC_ORDER_COPY][0] - _LEAD

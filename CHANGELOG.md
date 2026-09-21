@@ -96,7 +96,9 @@ outline equals the slot's stored home box to 0.000 in on all 36 slots of 1825D, 
 418T, i.e. the four marker-only ZIPs (your real styles) now read as `GEOMETRY: outlines for every slot` with no
 piece object in sight. `record_outline()` returns the outline (`unfolded` flag), `unplaced_inventory` uses it.
 Open: the extra byte / low nibble of each tag (a point's attribute), curve-sampling vs control points, what the
-header contours are. The byte map still calls the stream opaque; identifying it is the next step.
+header contours are. The byte map now counts a verified stream as identified (tag and extra bytes stay
+raw): over the 18 markers **identified 4.3% -> 28.1%, raw 2.3 -> 11.4%, opaque 91.3 -> 58.3%**; the opaque bytes
+left are almost all section 30, the embedded type-10 object.
 
 **The section-14 stream is geometry - the grammar (2nd step, same day).** The first partial decode stopped at
 eight unknown tags; they turned out to be one scheme. Every tag is `bit 7 main | bits 6-5 width | bit 4 clear =

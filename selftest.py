@@ -1266,6 +1266,27 @@ for nm, (nn, kk) in sd_named.items():
 print(f"   {'ok ' if sd_n and not sd_bad else 'FAIL'} record stream (v4.7): {sd_n} records equal the piece's graded outline exactly (rectangle 4/4, RUFFLE 142/142 + grain line); {sd_ok} of {sd_tot} distinct corpus streams reproduce their own record area and perimeter within 1% - ALL of them, incl. every record of the marker-only ZIPs 1825D, 5683D, 2591A, 0418T (131 are fold halves, unfolded about their fold line)  {'; '.join(sd_bad[:3])}")
 if not sd_n or sd_bad: fails.append('record stream decode: ' + '; '.join(sd_bad[:3]))
 
+# v4.7: what a stream point IS - tag low nibble 1 = plain (a NOTCH when an extra byte follows: type = its low nibble), any
+# other low nibble = a TURN; against the kinds of the piece object's own perimeter points, wherever a piece is bundled and the
+# stream is a full (unfolded-free) 1:1 copy of its perimeter. The trailer's last bytes and the extra byte's high nibble stay open.
+pk_ok = pk_bad = pk_notch = 0
+for zp in ('markers/2303-CP150-JULY/2303-CP 150 CPL.zip', 'markers/2303-BD137-PLACED/2303-BD 137 PLACED.zip', 'markers-live/ZZ-SCRATCH-ALL-20260921/ZZ-SCRATCH-ALL-20260921.zip', 'markers/LADIES-BLOUSE TEST-2.zip'):
+    if not os.path.isfile(os.path.join(HERE, zp)): continue
+    rr = am.place_marker(os.path.join(HERE, zp)); seen_ = set()
+    for mm in rr['markers']:
+        m_ = mm['marker']; dd = m_['object']['data']
+        for rc in m_['records']:
+            pc = rr['pieces'].get(rc.get('piece'))
+            if not pc or (rc['text'], rc['stream_len']) in seen_: continue
+            seen_.add((rc['text'], rc['stream_len'])); ro = am.record_outline(dd, rc); per = pc['block']['perimeter']
+            if not ro or not ro['verified'] or ro['unfolded'] or len(ro['kinds']) != len(per): continue
+            for k_, pp in zip(ro['kinds'], per):
+                pk_ok += k_ == (pp['kind'], pp.get('notch_type') if pp['kind'] == 'notch' or pp.get('is_corner_notch') else None)
+                pk_bad += k_ != (pp['kind'], pp.get('notch_type') if pp['kind'] == 'notch' or pp.get('is_corner_notch') else None)
+            pk_notch += len(ro['notches'])
+print(f"   {'ok ' if pk_ok >= 5000 and pk_bad <= 1 and pk_notch >= 100 else 'FAIL'} stream point kinds (v4.7): {pk_ok} of {pk_ok + pk_bad} points agree with the piece's own turn / plain / notch kinds and notch types ({pk_notch} notches read from streams)")
+if not (pk_ok >= 5000 and pk_bad <= 1 and pk_notch >= 100): fails.append(f'stream point kinds: {pk_ok} ok, {pk_bad} bad, {pk_notch} notches')
+
 print('-- marker byte map (v4.4, see accumark_marker.marker_coverage)')
 # Every byte owned by a section a parser reads must be classified (identified /
 # raw / zero_pad / opaque) - only the envelope, the header scalars, sections 2-5,

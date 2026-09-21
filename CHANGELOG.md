@@ -86,6 +86,14 @@ each engine (`MARKER_DATASET_DESIGN.md`, F5).
 
 **Not run, and why.** F1-F3 (width, quantities, single-size markers) predict only header width / section 15 / size rows, all already decoded; F4 (block buffer) needs an unequal buffer object (the only one in the scratch area, ZZBB-1, is 1 cm on all four sides) and a place to assign it - the Step 4 fabric row shows no block-buffer column, and the Defaults dialog looks like app-level defaults (width 137.16 there against 134 on the order), i.e. the user's own settings, which I did not touch; F6 needs pieces of controlled topology from Pattern Design. None is needed to read an unplaced marker; each has its procedure in `MARKER_DATASET_DESIGN.md`.
 
+**Point attributes and notches from a marker alone (4th step).** A stream point's kind is in its main tag's low
+nibble and its extra byte: low nibble 1 = plain, or a NOTCH when an extra byte follows (type = its low nibble);
+any other low nibble = a turn (corner). Against the piece objects' own perimeter points this is right on **7,455 of
+7,455** points (notch types included), so `record_outline()` returns `kinds` and `notches`, and the inventory gives
+each stream-outlined slot its `notches` (5683D: 36 type-1 notches, from a ZIP with no piece objects). The byte map
+counts a verified stream as identified up to its trailer: **identified 32.4%, raw 7.1%, opaque 58.3%** over the 18
+markers (44% on 5683D). Left: the extra byte's high nibble and the trailer's last 3 bytes.
+
 **The section-14 stream is geometry - ALL 255 streams decode (3rd step, same day).** Two more rules finished
 it. (1) A point with more than 6 parts is a **pen move** (a long jump split into small steps): the next contour
 starts where it ends - that was the "unknown tag" chaos in 1825D and 5683D. (2) A **fold piece's** stream holds
@@ -96,9 +104,9 @@ outline equals the slot's stored home box to 0.000 in on all 36 slots of 1825D, 
 418T, i.e. the four marker-only ZIPs (your real styles) now read as `GEOMETRY: outlines for every slot` with no
 piece object in sight. `record_outline()` returns the outline (`unfolded` flag), `unplaced_inventory` uses it.
 Open: the extra byte / low nibble of each tag (a point's attribute), curve-sampling vs control points, what the
-header contours are. The byte map now counts a verified stream as identified (tag and extra bytes stay
-raw): over the 18 markers **identified 4.3% -> 28.1%, raw 2.3 -> 11.4%, opaque 91.3 -> 58.3%**; the opaque bytes
-left are almost all section 30, the embedded type-10 object.
+header contours are. The byte map now counts a verified stream as identified: over the 18 markers **identified
+4.3% -> 28.1%, opaque 91.3 -> 58.3%** (see the 4th step for the final figure); the opaque bytes left are almost all
+section 30, the embedded type-10 object.
 
 **The section-14 stream is geometry - the grammar (2nd step, same day).** The first partial decode stopped at
 eight unknown tags; they turned out to be one scheme. Every tag is `bit 7 main | bits 6-5 width | bit 4 clear =

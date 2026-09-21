@@ -761,7 +761,7 @@ def decode_record_stream(st):
     p = 3; header = []; spans = [(0, 3, 'lead')]
     while p + 4 <= len(st) and st[p] < 0x80 and st[p+1] == 0 and st[p+3] == 0:
         header.append((st[p], st[p+2])); spans.append((p, p + 4, 'header')); p += 4
-    contours = []; cur = None; x = y = 0; stop = 'end'
+    contours = []; kinds = []; cur = None; ck = None; x = y = 0; stop = 'end'
     while p < len(st):
         parts = []; q = p; ok = True
         while True:
@@ -785,16 +785,23 @@ def decode_record_stream(st):
         for t, dat in parts:
             a, b = _tag_delta(t, dat); dx += a; dy += b
         if len(parts) > _PEN_MOVE and cur is not None:         # a long chain of parts = a pen move: the next contour starts where it ends
-            x += dx; y += dy; cur = []; contours.append(cur)
+            x += dx; y += dy; cur = []; ck = []; contours.append(cur); kinds.append(ck)
         elif any((t & 0xf) == 0xa for t, _ in parts[:-1]):
-            x, y = _tag_delta(*parts[-1]); cur = []; contours.append(cur)
+            x, y = _tag_delta(*parts[-1]); cur = []; ck = []; contours.append(cur); kinds.append(ck)
         elif cur is None or st[p] == 0x00:
-            x, y = dx, dy; cur = []; contours.append(cur)
+            x, y = dx, dy; cur = []; ck = []; contours.append(cur); kinds.append(ck)
         else:
             x += dx; y += dy
-        cur.append((x, y, u16(st, q))); p = q + 2
+        cur.append((x, y, u16(st, q)))
+        # the point's KIND: main tag low nibble 1 = plain (or a NOTCH when an extra byte follows: type = its low nibble,
+        # high nibble = a flag); any other low nibble = a TURN (corner point), with a notch type in the extra byte for a
+        # corner notch [V 7,208 of 7,209 piece points]
+        ex_ = [dat[0] for t, dat in parts if not t & 0x10]
+        if parts[-1][0] & 0xf == 1: ck.append(('notch', ex_[-1] & 15) if ex_ else ('plain', None))
+        else: ck.append(('turn', (ex_[-1] & 15) or None) if ex_ else ('turn', None))
+        p = q + 2
     if stop == 'end': stop = 'trailer'
-    return dict(contours=contours, header=header, end=p, stop=stop, size=len(st), spans=spans)
+    return dict(contours=contours, header=header, end=p, stop=stop, size=len(st), spans=spans, kinds=kinds)
 
 def verify_stream_outline(contour, area, perimeter, tol=0.01):
     """polygon area / perimeter (in, sq in) of a decoded contour against the record head's own
@@ -831,12 +838,13 @@ def record_outline(data, rec):
     o = rec['offset']; t = len(rec['text']); st = data[o+t:o+t+rec['stream_len']]
     d = decode_record_stream(st)
     if not d['contours']: return None
-    c0 = d['contours'][0]; unfolded = False
+    c0 = d['contours'][0]; k0 = list(d['kinds'][0]); unfolded = False
     ok, a, pr = verify_stream_outline(c0, rec['area'], rec['perimeter'])
     if not ok and len(c0) >= 3:
         full = _unfold_contour(c0); ok2, a2, pr2 = verify_stream_outline(full, rec['area'], rec['perimeter'])
-        if ok2: c0, ok, a, pr, unfolded = full, True, a2, pr2, True
+        if ok2: c0, ok, a, pr, unfolded = full, True, a2, pr2, True; k0 = k0 + [k0[i] for i in range(len(k0) - 2, 0, -1)]
     return dict(points=[(x / 1e4, y / 1e4) for x, y, _ in c0], verified=ok and d['stop'] == 'trailer', unfolded=unfolded,
+                kinds=k0, notches=[(i, k[1], c0[i][0] / 1e4, c0[i][1] / 1e4) for i, k in enumerate(k0) if k[0] == 'notch'],
                 area=a, perimeter=pr, other=[[(x / 1e4, y / 1e4) for x, y, _ in c] for c in d['contours'][1:]], stop=d['stop'], header=d['header'])
 
 def _header_sums(mk):
@@ -1127,13 +1135,13 @@ def marker_coverage(d, mk=None):
             mark(o - 38, o - 36, 'identified')                                                       # u16 @+10: per-size entry count (slot @88 = it + C) [V v4.7]
             mark(o - 10, o - 8, 'identified'); mark(o - 8, o, 'zero_pad')                            # stream length, 8 zeros
             t_end = o + len(r['text']) + 1; mark(o, t_end, 'identified')
-            # v4.7: the stream. Verified against the record's own area / perimeter, the coordinates, ids, lead and
-            # header records are identified; each tag byte (its low nibble is a point attribute [?]), each EXTRA byte
-            # and the trailer stay raw; a stream that does not verify stays opaque
+            # v4.7: the stream. Verified against the record's own area / perimeter, everything up to the trailer is
+            # identified (tag byte: class + the point kind in its low nibble; extra byte: notch type + a flag nibble
+            # [flag open]); the trailer (attribute bytes + 3) stays raw; a stream that does not verify stays opaque
             ro = record_outline(d, r)
             if ro and ro['verified']:
                 base = o + len(r['text']); dec = decode_record_stream(d[base:base + r['stream_len']])         # the stream starts AT the label's NUL
-                kind = dict(lead='identified', header='identified', data='identified', id='identified', tag='raw', extra='raw')
+                kind = dict(lead='identified', header='identified', data='identified', id='identified', tag='identified', extra='identified')
                 for a_, b_, k_ in dec['spans']: mark(base + a_, base + b_, kind[k_])
                 mark(base + dec['end'], nxt, 'raw')
             else: mark(t_end, nxt, 'opaque')
@@ -1534,6 +1542,8 @@ def unplaced_inventory(mk, pieces=None, piece_errors=None, use_grading=True, geo
                                  pair_bit=bool(s['orient_code'] & 0x0040),
                                  other=s['orient_code'] & ~(ROT180_BIT | MIRROR_BIT | 0x0040)),
                      note=note)
+        if note == STREAM_NOTE and s.get('record'):
+            entry['notches'] = [dict(type=n_[1], x=n_[2], y=n_[3]) for n_ in record_outline(mk['object']['data'], s['record'])['notches']]
         if outline:
             xs = [p[0] for p in outline]; ys = [p[1] for p in outline]
             entry.update(outline=outline, checks=dict(

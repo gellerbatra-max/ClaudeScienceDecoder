@@ -154,8 +154,17 @@ bounding box equals the home box to 0.000 in on every slot of the MARKER-ONLY ZI
 block-buffer effect [?]). `record_outline` reads an outline from a marker with NO piece objects, and
 `unplaced_inventory` uses it (`outline_source: stream`).
 
-Still open [?]: the leading EXTRA byte and the low nibble of every tag (a point's attribute: turn / plain /
-notch?), the header records' exact meaning (which contour is the cut line when several are present - the first
+**Point attributes (v4.7 [V]).** The low nibble of a point's main tag and its extra byte say what the point is: low
+nibble `1` = a PLAIN point, or a NOTCH when the tag carries an extra byte (notch type = the extra byte's low
+nibble: 5 and 1 seen; the high nibble is a flag, 0 / 1 / 2 seen [?]); any other low nibble (`9 8 c 4 0`) = a TURN
+(corner) point, with a notch type in the extra byte for a corner notch. Against the piece object's own perimeter
+points this classifies **7,455 of 7,455** points correctly (turn / plain / notch and notch type), so notches can be
+read from a marker with no piece object (`record_outline()['notches']`, `unplaced_inventory` slot `notches`: 36 type-1
+notches on 5683D). Turn points carry ids 1, 2, 3 ... (their sequence), plain / notch points count down from 29999.
+The trailer's attribute bytes are the turn points' attributes (`09`, `0d` ...) over all contours, then 3 bytes.
+
+Still open [?]: the extra byte's high nibble, the trailer's last 3 bytes (`ff ff xx` / `fe ff xx` / `00 00 xx`,
+xx varies with size), the header records' exact meaning (which contour is the cut line when several are present - the first
 is), the trailer's attribute bytes and its last byte (varies with size), curve segments (the stream is the
 finished, sampled line; the piece object holds control points: 35 points against ~100 on LADIES-BLOUSE-BK).
 
@@ -253,10 +262,9 @@ Pairs: slots sharing (bundle, record) form a group of 1 or 2; a group of 2 is a
 
 Every byte in sections 6, 11-15, 21, 30 is classified. Unknown = 1,187-1,829 bytes
 per marker (1.38% overall, the same on a 3 KB marker as a 280 KB one): trailer,
-section 1's unread bytes, sections 2-5, the envelope. **identified 28.1%, raw 11.4%,
+section 1's unread bytes, sections 2-5, the envelope. **identified 32.4%, raw 7.1%,
 zero_pad 0.8%, opaque 58.3%** (v4.7: was 4.1 / 2.4 / 0.8 / 91.3 before the section-14 stream was decoded; a
-stream that verifies against its record's area + perimeter is identified except each tag byte and extra byte,
-which stay raw). The opaque bytes are now almost entirely section 30, the embedded type-10 object.
+stream that verifies against its record's area + perimeter is identified up to its trailer). The opaque bytes are now almost entirely section 30, the embedded type-10 object.
 
 ## 14. Open, and what settles each
 
@@ -264,7 +272,7 @@ which stay raw). The opaque bytes are now almost entirely section 30, the embedd
 |---|---|---|
 | side order of the four block-buffer doubles; what the table is for | home box ignores it (ZZC-M1 vs ZZC-BIG) | live: unequal buffers on a piece with real geometry |
 | what order / model option sets the piece-row flag @+14 (= the slot 0x0040 bit); the pre-set rot180 alternation | 0x0040 == flag @+14 on 9,122 / 9,122 slots [V]; alternates per bundle | live: flip one order / model option per run (DATASET_DESIGN F5) |
-| the stream's attribute meaning: the extra byte, each tag's low nibble, the trailer attribute bytes and last byte | outlines decode on 255 / 255 streams; the byte map still counts the stream as opaque | label points by the piece's own point kinds (turn / plain / notch) on RUFFLE, BK, the rectangle |
+| the extra byte's high nibble; the stream trailer's last 3 bytes | kinds and notch types classify 7,455 / 7,455 piece points | correlate with the piece's f2 / rule fields and the size |
 | what C counts in @88 = head count + C; slot @52/@54/@60 | @88 = p1 + C(piece) [V], C tracks internal-line points; stored-empty and laid-then-returned read 0 alike | pieces with 0 / 1 / 2 / 4 internal lines built in Pattern Design (DATASET_DESIGN F6); @52/@54/@60 vs piece/size |
 | the y excess on July CP 150 unplaced slots (up to 0.0786 in, one-sided) | x fits the CP 150 table but the table does not drive home | live: known notch / curve |
 | placed slots 7.2% larger than their record (ZZC-M3, ZZN-F1) | 2 slots each | live: repeat with a plain piece |

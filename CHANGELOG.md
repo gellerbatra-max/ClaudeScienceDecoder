@@ -86,6 +86,26 @@ each engine (`MARKER_DATASET_DESIGN.md`, F5).
 
 **Not run, and why.** F1-F3 (width, quantities, single-size markers) predict only header width / section 15 / size rows, all already decoded; F4 (block buffer) needs an unequal buffer object (the only one in the scratch area, ZZBB-1, is 1 cm on all four sides) and a place to assign it - the Step 4 fabric row shows no block-buffer column, and the Defaults dialog looks like app-level defaults (width 137.16 there against 134 on the order), i.e. the user's own settings, which I did not touch; F6 needs pieces of controlled topology from Pattern Design. None is needed to read an unplaced marker; each has its procedure in `MARKER_DATASET_DESIGN.md`.
 
+**The blind test - a marker AccuMark made for me, decoded without fitting (5th step).** You asked me to create
+this kind of marker myself. I built it in AccuMark (Easy Order on a fresh order for `ID1005 - TOP`, fabric row `S`,
+one of each size XS-XL, marker `CLAUDE-D3-BF`; the fabric-type cell is read-only and a COPIED order only keeps the row
+it had - a NEW order lists every fabric type of the model) from pieces that never appeared in a marker before:
+**`ID1005 - BACK` and `FRONT`**, real Gerber demo pieces with fold halves, curves, an internal line and seam allowances.
+Fixture `markers-live/CLAUDE-UNP-D3-BLIND/`: the full export (answer key) and the same marker with every piece object
+stripped (`-MARKER-ONLY.zip`). Result of decoding the marker-only ZIP with the code as it stood:
+- order lines, quantities, fabric type, piece list, laid state, warnings: right first time;
+- **outlines: none.** My pen-move rule (a chain of more than 6 parts starts a new contour) split a legitimate 7-part step
+  of BACK. Fix: `record_outline` tries thresholds 6, 20, never and keeps the first outline that reproduces the record's own
+  area and perimeter (the old 255 streams still verify at 6; BACK / FRONT at 20; 265 of 265 now);
+- then **10 of 10 slots get an outline whose bounding box equals the stored home box to 0.0001 in** (area within 0.7%);
+- **and the answer key disagreed with the old method:** the outline from the piece objects is 1.4 x 0.9 in smaller
+  (area ratio 0.89). The piece object holds the STITCH line plus per-segment seam allowances (BACK: 1.0 in on the fold edge,
+  0.375 in on three, 0.25 in on one); the marker lays the CUT line. Checked: the stitch-line points sit exactly 0.375 /
+  0.25 in inside the decoded outline. `_slot_geometry` therefore prefers the stream outline whenever the piece outline
+  fails the slot-area test but the stream verifies (note: "the piece object is the stitch line without its seam
+  allowance"). Every earlier fixture had no seam allowance, which is why the piece-side geometry had never disagreed.
+`selftest` BLIND TEST row; robustness 561 -> 647 (the blind marker is a seed).
+
 **Point attributes and notches from a marker alone (4th step).** A stream point's kind is in its main tag's low
 nibble and its extra byte: low nibble 1 = plain, or a NOTCH when an extra byte follows (type = its low nibble);
 any other low nibble = a turn (corner). Against the piece objects' own perimeter points this is right on **7,455 of

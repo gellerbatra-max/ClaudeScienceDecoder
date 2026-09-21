@@ -1260,7 +1260,7 @@ for zp in sorted(glob.glob(os.path.join(HERE, 'markers', '**', '*.zip'), recursi
             for nm in ('0418T TRS', '2591A', '1825D', '5683D'):
                 if rc['text'].startswith(nm): sd_named.setdefault(nm, [0, 0]); sd_named[nm][0] += 1; sd_named[nm][1] += bool(ro and ro['verified'])
 if sd_cross: sd_bad.append('unfolded outlines that cross themselves: %s' % sd_cross[:3])
-if sd_ok != sd_tot or sd_tot < 255: sd_bad.append(f'{sd_ok} of {sd_tot} distinct corpus streams verify (all 255 did)')
+if sd_ok != sd_tot or sd_tot < 265: sd_bad.append(f'{sd_ok} of {sd_tot} distinct corpus streams verify (all 265 did)')
 for nm, (nn, kk) in sd_named.items():
     if nn == 0 or kk != nn: sd_bad.append(f'marker-only {nm}: {kk} of {nn} records verify')
 print(f"   {'ok ' if sd_n and not sd_bad else 'FAIL'} record stream (v4.7): {sd_n} records equal the piece's graded outline exactly (rectangle 4/4, RUFFLE 142/142 + grain line); {sd_ok} of {sd_tot} distinct corpus streams reproduce their own record area and perimeter within 1% - ALL of them, incl. every record of the marker-only ZIPs 1825D, 5683D, 2591A, 0418T (131 are fold halves, unfolded about their fold line)  {'; '.join(sd_bad[:3])}")
@@ -1286,6 +1286,42 @@ for zp in ('markers/2303-CP150-JULY/2303-CP 150 CPL.zip', 'markers/2303-BD137-PL
             pk_notch += len(ro['notches'])
 print(f"   {'ok ' if pk_ok >= 5000 and pk_bad <= 1 and pk_notch >= 100 else 'FAIL'} stream point kinds (v4.7): {pk_ok} of {pk_ok + pk_bad} points agree with the piece's own turn / plain / notch kinds and notch types ({pk_notch} notches read from streams)")
 if not (pk_ok >= 5000 and pk_bad <= 1 and pk_notch >= 100): fails.append(f'stream point kinds: {pk_ok} ok, {pk_bad} bad, {pk_notch} notches')
+
+# v4.7 THE BLIND TEST (2026-09-21): a marker I had AccuMark make from pieces never seen in a marker before - ID1005 - BACK and FRONT
+# (real Gerber demo pieces: fold halves, curves, seam allowances 1.0 / 0.375 / 0.25 in). Fixture: markers-live/CLAUDE-UNP-D3-BLIND/
+# (the full export, and the same marker with every piece object stripped = what a marker-only ZIP looks like). Decoded BEFORE any fitting:
+# order lines and pieces right, but no outline - my pen-move rule split a legitimate 7-part step; fixed by trying thresholds and
+# keeping the first that reproduces the record's area and perimeter. What the run showed: the marker lays the CUT line (stitch line +
+# seam allowance), not the piece object's stitch line (area ratio 0.89, bbox 1.4 x 0.9 in smaller).
+bd = os.path.join(HERE, 'markers-live', 'CLAUDE-UNP-D3-BLIND'); bfull = os.path.join(bd, 'CLAUDE-D3-BF.zip'); bmo = os.path.join(bd, 'CLAUDE-D3-BF-MARKER-ONLY.zip')
+if os.path.isfile(bfull) and os.path.isfile(bmo):
+    bad = []; ro_ = am.place_marker(bmo)['markers'][0]; rf_ = am.place_marker(bfull); rfm = rf_['markers'][0]
+    iv = ro_['inventory']; ivf = rfm['inventory']
+    if set(am.list_zip(bmo)) != {'marker'}: bad.append('marker-only ZIP still holds other objects')
+    if not (iv['marker']['outline_source'] == 'stream' and iv['marker']['geometry_available'] == 'all' and len(iv['slots']) == 10 and iv['marker']['lay_history'] == 'as_generated'): bad.append('marker-only inventory shape')
+    if [(o['size'], o['quantity']) for o in iv['order_lines']] != [(z, 1) for z in ('XS', 'S', 'M', 'L', 'XL')] or iv['marker']['fabric_types'] != ['S']: bad.append('order lines / fabric type')
+    for e in iv['slots']:
+        if abs(e['checks']['bbox_dx']) > 2e-4 or abs(e['checks']['bbox_dy']) > 2e-4 or abs(e['checks']['area_ratio'] - 1) > 0.01: bad.append(f"{e['piece']} {e['size']}: home box residual {e['checks']['bbox_dx']:.4f} / {e['checks']['bbox_dy']:.4f}, area ratio {e['checks']['area_ratio']:.4f}")
+    mko = ro_['marker']; dd_ = mko['object']['data']
+    if any(am.record_outline(dd_, rc)['pen_move'] != 20 or not am.record_outline(dd_, rc)['unfolded'] for rc in mko['records']): bad.append('expected every BACK / FRONT stream at pen_move 20, unfolded')
+    if [n for n, ok, _ in ro_['checks'] if not ok] or am.marker_warnings(mko): bad.append('a check or warning fires on the blind marker')
+    # the answer key: the piece objects. Their stitch line is smaller by the seam allowance; the stitch points sit 0.25 / 0.375 in inside the cut line
+    def _dseg(pt, a, b):
+        dx_, dy_ = b[0]-a[0], b[1]-a[1]; l2_ = dx_*dx_ + dy_*dy_; t_ = max(0, min(1, ((pt[0]-a[0])*dx_ + (pt[1]-a[1])*dy_) / l2_)) if l2_ else 0
+        return ((pt[0]-a[0]-t_*dx_)**2 + (pt[1]-a[1]-t_*dy_)**2) ** 0.5
+    for e in iv['slots']:
+        if e['size'] != 'M': continue
+        stitch, _ = am.piece_outline(rf_['pieces'][e['piece']], 'M'); cut = e['outline']
+        if abs(am._shoelace(stitch) / am._shoelace(cut) - 0.885) > 0.03: bad.append(f"{e['piece']}: stitch / cut area {am._shoelace(stitch) / am._shoelace(cut):.3f}")
+        ds = [min(_dseg(pt, cut[i], cut[(i+1) % len(cut)]) for i in range(len(cut))) for pt in stitch]
+        near = sum(1 for x_ in ds if min(abs(x_ - 0.375), abs(x_ - 0.25)) < 0.02)
+        if near < 0.8 * len(ds): bad.append(f"{e['piece']}: only {near} of {len(ds)} stitch points are 0.25 / 0.375 in inside the cut line")
+    segs = {sg['seam_begin'] for sg in rf_['pieces']['ID1005 - BACK']['block']['segments']}
+    if segs != {10000, 3750, 2500}: bad.append(f'BACK seam allowances {segs}')
+    # with the piece objects present the geometry falls back to the stream outline (the piece-object outline fails the area test)
+    if ivf['marker']['outline_source'] != 'stream' or any(abs(e['checks']['area_ratio'] - 1) > 0.01 for e in ivf['slots']): bad.append('with pieces present the stream outline was not preferred')
+    print(f"   {'ok ' if not bad else 'FAIL'} BLIND TEST CLAUDE-D3-BF (BACK + FRONT never seen before): marker-only ZIP -> 10 outlines, bounding box == stored home box (<= 0.0001 in), area within 1%; the piece objects' stitch lines sit 0.25 / 0.375 in inside the decoded cut line (seam allowances 1.0 / 0.375 / 0.25)  {'; '.join(bad[:3])}")
+    if bad: fails.append('D3 blind test: ' + '; '.join(bad[:5]))
 
 print('-- marker byte map (v4.4, see accumark_marker.marker_coverage)')
 # Every byte owned by a section a parser reads must be classified (identified /

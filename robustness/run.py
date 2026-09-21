@@ -43,6 +43,8 @@ SEEDS = [
     ('5683D-SS21-UNLAID', 'markers/5683D-SS21-UNLAID/5683D-BD 168 SS21.zip', 'marker'),
     # v4.7: an as-generated marker that BUNDLES its pieces (the fresh twin of a laid order)
     ('CLAUDE-D2-M0', 'markers-live/CLAUDE-UNP-D2-TWIN/CLAUDE-D2-M0.zip', 'marker'),
+    # v4.7: the blind-test marker (BACK + FRONT: fold halves with seam allowances), pieces included
+    ('CLAUDE-D3-BF', 'markers-live/CLAUDE-UNP-D3-BLIND/CLAUDE-D3-BF.zip', 'marker'),
 ]
 QUICK_SEEDS = SEEDS[:2]
 

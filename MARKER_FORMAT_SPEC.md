@@ -154,6 +154,13 @@ bounding box equals the home box to 0.000 in on every slot of the MARKER-ONLY ZI
 block-buffer effect [?]). `record_outline` reads an outline from a marker with NO piece objects, and
 `unplaced_inventory` uses it (`outline_source: stream`).
 
+**The stream is the CUT line (v4.7 blind test).** For a piece with seam allowances the stream is the stitch line
+offset by each segment's allowance (BACK: 1.0 in fold edge, 0.375, 0.25), not the piece object's perimeter - verified on
+`CLAUDE-D3-BF` (BACK / FRONT, never seen before): the stitch points lie exactly 0.375 / 0.25 in inside the stream outline
+and the stream's bounding box equals the stored home box to 0.0001 in. Contours are split by a pen-move threshold that is
+the one guess in the grammar (`_PEN_MOVE` 6; BACK / FRONT need 20: 7 parts is a normal long step there): `record_outline`
+tries 6, 20, never and keeps the first that reproduces the record's area and perimeter.
+
 **Point attributes (v4.7 [V]).** The low nibble of a point's main tag and its extra byte say what the point is: low
 nibble `1` = a PLAIN point, or a NOTCH when the tag carries an extra byte (notch type = the extra byte's low
 nibble: 5 and 1 seen; the high nibble is a flag, 0 / 1 / 2 seen [?]); any other low nibble (`9 8 c 4 0`) = a TURN

@@ -26,6 +26,11 @@
 > * **The harness is reproducible:** the same order processed again differs in 18 bytes (name
 >   digits + stamps).
 >
+> * **THE BLIND TEST (`CLAUDE-D3-BF`, ID1005 BACK + FRONT, made in AccuMark for this):** the marker-only ZIP decoded right
+>   except outlines - my pen-move threshold was wrong for a 7-part step; fixed by trying 6 / 20 / never against the record's
+>   area + perimeter. Then 10 / 10 outlines, bounding box == stored home box (0.0001 in). And the answer key showed the
+>   marker lays the CUT line (stitch + seam allowance 0.375 / 0.25 / 1.0 in), not the piece object's stitch line -
+>   `_slot_geometry` now prefers the verified stream outline. 265 / 265 corpus streams verify.
 > * **The section-14 stream is geometry - ALL 255 corpus streams decode** (pen-move rule + fold halves unfolded):
 >   area + perimeter reproduce on 255 / 255, and the bounding box equals the stored home box to 0.000 in on every
 >   slot of the marker-only ZIPs 1825D, 5683D, 2591A, 418T. Real outlines from marker-only ZIPs: done. Left:

@@ -739,7 +739,7 @@ def _tag_delta(t, dat):
     if w == 3: return sg(u16(dat, 0) | (dat[4] >> 4) << 16, 20), sg(u16(dat, 2) | (dat[4] & 15) << 16, 20)
     return int.from_bytes(dat[:4], 'little', signed=True), int.from_bytes(dat[4:8], 'little', signed=True)
 
-def decode_record_stream(st):
+def decode_record_stream(st, pen_move=None):
     """v4.7 [V, partial]: a section-14 record's stream as CONTOURS of (x, y, id) points in
     1e-4 in - the piece's graded outline first, then internal lines. Grammar:
 
@@ -784,7 +784,7 @@ def decode_record_stream(st):
         dx = dy = 0
         for t, dat in parts:
             a, b = _tag_delta(t, dat); dx += a; dy += b
-        if len(parts) > _PEN_MOVE and cur is not None:         # a long chain of parts = a pen move: the next contour starts where it ends
+        if len(parts) > (_PEN_MOVE if pen_move is None else pen_move) and cur is not None:         # a long chain of parts = a pen move: the next contour starts where it ends
             x += dx; y += dy; cur = []; ck = []; contours.append(cur); kinds.append(ck)
         elif any((t & 0xf) == 0xa for t, _ in parts[:-1]):
             x, y = _tag_delta(*parts[-1]); cur = []; ck = []; contours.append(cur); kinds.append(ck)
@@ -836,15 +836,25 @@ def record_outline(data, rec):
     against the stored home box too, which the verification never uses: bounding box == home box to
     0.000 in on all 60 foreign marker-only slots (1825D, 5683D) and 2591A / 418T."""
     o = rec['offset']; t = len(rec['text']); st = data[o+t:o+t+rec['stream_len']]
-    d = decode_record_stream(st)
-    if not d['contours']: return None
-    c0 = d['contours'][0]; k0 = list(d['kinds'][0]); unfolded = False
-    ok, a, pr = verify_stream_outline(c0, rec['area'], rec['perimeter'])
-    if not ok and len(c0) >= 3:
-        full = _unfold_contour(c0); ok2, a2, pr2 = verify_stream_outline(full, rec['area'], rec['perimeter'])
-        if ok2: c0, ok, a, pr, unfolded = full, True, a2, pr2, True; k0 = k0 + [k0[i] for i in range(len(k0) - 2, 0, -1)]
+    # the split between contours is the one guess in the grammar (a chain of MORE than `pen_move` parts starts a new
+    # contour: 7 parts is a legitimate long step on a BACK piece of the blind test and a real pen move on 2303, 46 on
+    # ID1005 - BACK's jump to its mirror line), so try a few values and keep the first whose outline reproduces the
+    # record's own area and perimeter - as is, or unfolded
+    best = None
+    for pm in (_PEN_MOVE, 20, 10 ** 9):
+        d = decode_record_stream(st, pm)
+        if not d['contours']: continue
+        c0 = d['contours'][0]; k0 = list(d['kinds'][0]); unfolded = False
+        ok, a, pr = verify_stream_outline(c0, rec['area'], rec['perimeter'])
+        if not ok and len(c0) >= 3:
+            full = _unfold_contour(c0); ok2, a2, pr2 = verify_stream_outline(full, rec['area'], rec['perimeter'])
+            if ok2: c0, ok, a, pr, unfolded = full, True, a2, pr2, True; k0 = k0 + [k0[i] for i in range(len(k0) - 2, 0, -1)]
+        if best is None or (ok and not best[0]): best = (ok, d, c0, k0, unfolded, a, pr, pm)
+        if ok: break
+    if best is None: return None
+    ok, d, c0, k0, unfolded, a, pr, pm = best
     return dict(points=[(x / 1e4, y / 1e4) for x, y, _ in c0], verified=ok and d['stop'] == 'trailer', unfolded=unfolded,
-                kinds=k0, notches=[(i, k[1], c0[i][0] / 1e4, c0[i][1] / 1e4) for i, k in enumerate(k0) if k[0] == 'notch'],
+                pen_move=pm, kinds=k0, notches=[(i, k[1], c0[i][0] / 1e4, c0[i][1] / 1e4) for i, k in enumerate(k0) if k[0] == 'notch'],
                 area=a, perimeter=pr, other=[[(x / 1e4, y / 1e4) for x, y, _ in c] for c in d['contours'][1:]], stop=d['stop'], header=d['header'])
 
 def _header_sums(mk):
@@ -1463,6 +1473,12 @@ def _slot_geometry(s, pieces, piece_errors, use_grading, mk=None):
             if ro and ro['verified']: return s['piece'], s['size'], ro['points'], STREAM_NOTE
         return s['piece'], s['size'], None, note
     outline, note = piece_outline(piece, s['size'] if use_grading else None)
+    # v4.7 (blind test CLAUDE-D3-BF): a piece object holds the STITCH line and its seam allowances; the marker lays the CUT
+    # line (stitch + allowance, e.g. 0.375 / 0.25 in, 1.0 in on a fold edge). When the piece outline does not reproduce the
+    # slot's declared area (0.89 there) but the marker's own stream does, the stream outline is the right one
+    if mk is not None and s.get('record') and s.get('area') and outline and abs(_shoelace(outline) / s['area'] - 1) > 0.02:
+        ro = record_outline(mk['object']['data'], s['record'])
+        if ro and ro['verified']: return s['piece'], s['size'], ro['points'], STREAM_NOTE + '; the piece object is the stitch line without its seam allowance'
     return s['piece'], s['size'], outline, note
 
 def unplaced_slots(mk, pieces, piece_errors, use_grading=True):
@@ -1542,7 +1558,7 @@ def unplaced_inventory(mk, pieces=None, piece_errors=None, use_grading=True, geo
                                  pair_bit=bool(s['orient_code'] & 0x0040),
                                  other=s['orient_code'] & ~(ROT180_BIT | MIRROR_BIT | 0x0040)),
                      note=note)
-        if note == STREAM_NOTE and s.get('record'):
+        if note.startswith(STREAM_NOTE) and s.get('record'):
             entry['notches'] = [dict(type=n_[1], x=n_[2], y=n_[3]) for n_ in record_outline(mk['object']['data'], s['record'])['notches']]
         if outline:
             xs = [p[0] for p in outline]; ys = [p[1] for p in outline]
@@ -1564,7 +1580,7 @@ def unplaced_inventory(mk, pieces=None, piece_errors=None, use_grading=True, geo
     warnings += marker_warnings(mk)
     if not mk.get('laid_state_sources', {}).get('agree', True): warnings.append('laid-state sources disagree: %s' % mk['laid_state_sources'])
     if 'other' in mk['header_sums'].values(): warnings.append('header @422/@454 sums fit no known mode: %s' % mk['header_sums'])
-    n_stream = sum(1 for e in slots if e.get('note') == STREAM_NOTE)
+    n_stream = sum(1 for e in slots if e.get('note', '').startswith(STREAM_NOTE))
     if slots and not pieces and not n_stream: warnings.append('no piece objects in the ZIP: no outlines, bounding boxes are the declared ones only')
     elif slots and not pieces: warnings.append('no piece objects in the ZIP: %d of %d slots have an outline from the marker\'s own stream, the rest have none' % (n_stream, len(slots)))
     for name in sorted(piece_errors): warnings.append('piece %r failed to decode: %s' % (name, piece_errors[name]))

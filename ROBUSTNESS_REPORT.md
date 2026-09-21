@@ -1,14 +1,14 @@
 # Robustness report (v2)
 decoder_version: accumark_pds=3.0 accumark_marker=3.0
 
-561 cases, 561 passed, 0 failed, 151.0s
+647 cases, 647 passed, 0 failed, 105.8s
 
 ## Supported
 
-- ZIP structural variants (Oracle A, 252/252): STORED/DEFLATED/BZIP2/LZMA and mixed compression, reversed/shuffled member order, folder prefixes, deep nesting, backslash paths, directory entries, extra junk members, non-ASCII/long names, `.TMP`/`.dat` renamed members, dropped `ver.5`/`comments.txt`, missing/replaced archive comment, zeroed timestamps - decode identically to the original on every seed.
+- ZIP structural variants (Oracle A, 294/294): STORED/DEFLATED/BZIP2/LZMA and mixed compression, reversed/shuffled member order, folder prefixes, deep nesting, backslash paths, directory entries, extra junk members, non-ASCII/long names, `.TMP`/`.dat` renamed members, dropped `ver.5`/`comments.txt`, missing/replaced archive comment, zeroed timestamps - decode identically to the original on every seed.
 - Malformed-input contract (Oracle B, 12/12): every case below raises a named `accumark_errors.AccuMarkError` subclass (or `zipfile.BadZipFile` for a non-ZIP container) - never `SystemExit`, never a bare `IndexError`/`struct.error`, never a silent wrong answer.
 
-## Oracle A (252/252 ok)
+## Oracle A (294/294 ok)
 
 | case | seed | verdict | detail |
 |---|---|---|---|
@@ -264,6 +264,48 @@ decoder_version: accumark_pds=3.0 accumark_marker=3.0
 | CLAUDE-D2-M0/place_marker/v_no_comment | CLAUDE-D2-M0 | ok | ok |
 | CLAUDE-D2-M0/place_marker/v_replaced_comment | CLAUDE-D2-M0 | ok | ok |
 | CLAUDE-D2-M0/place_marker/v_zeroed_timestamps | CLAUDE-D2-M0 | ok | ok |
+| CLAUDE-D3-BF/v_stored | CLAUDE-D3-BF | ok | ok |
+| CLAUDE-D3-BF/v_deflated | CLAUDE-D3-BF | ok | ok |
+| CLAUDE-D3-BF/v_bzip2 | CLAUDE-D3-BF | ok | ok |
+| CLAUDE-D3-BF/v_lzma | CLAUDE-D3-BF | ok | ok |
+| CLAUDE-D3-BF/v_mixed_compression | CLAUDE-D3-BF | ok | ok |
+| CLAUDE-D3-BF/v_reversed_order | CLAUDE-D3-BF | ok | ok |
+| CLAUDE-D3-BF/v_shuffled_order | CLAUDE-D3-BF | ok | ok |
+| CLAUDE-D3-BF/v_folder_prefix | CLAUDE-D3-BF | ok | ok |
+| CLAUDE-D3-BF/v_deep_nesting | CLAUDE-D3-BF | ok | ok |
+| CLAUDE-D3-BF/v_backslash_paths | CLAUDE-D3-BF | ok | ok |
+| CLAUDE-D3-BF/v_directory_entries | CLAUDE-D3-BF | ok | ok |
+| CLAUDE-D3-BF/v_extra_junk | CLAUDE-D3-BF | ok | ok |
+| CLAUDE-D3-BF/v_nonascii_name | CLAUDE-D3-BF | ok | ok |
+| CLAUDE-D3-BF/v_long_name | CLAUDE-D3-BF | ok | ok |
+| CLAUDE-D3-BF/v_upper_tmp | CLAUDE-D3-BF | ok | ok |
+| CLAUDE-D3-BF/v_renamed_ext | CLAUDE-D3-BF | ok | ok |
+| CLAUDE-D3-BF/v_drop_ver5 | CLAUDE-D3-BF | ok | ok |
+| CLAUDE-D3-BF/v_drop_comments | CLAUDE-D3-BF | ok | ok |
+| CLAUDE-D3-BF/v_no_comment | CLAUDE-D3-BF | ok | ok |
+| CLAUDE-D3-BF/v_replaced_comment | CLAUDE-D3-BF | ok | ok |
+| CLAUDE-D3-BF/v_zeroed_timestamps | CLAUDE-D3-BF | ok | ok |
+| CLAUDE-D3-BF/place_marker/v_stored | CLAUDE-D3-BF | ok | ok |
+| CLAUDE-D3-BF/place_marker/v_deflated | CLAUDE-D3-BF | ok | ok |
+| CLAUDE-D3-BF/place_marker/v_bzip2 | CLAUDE-D3-BF | ok | ok |
+| CLAUDE-D3-BF/place_marker/v_lzma | CLAUDE-D3-BF | ok | ok |
+| CLAUDE-D3-BF/place_marker/v_mixed_compression | CLAUDE-D3-BF | ok | ok |
+| CLAUDE-D3-BF/place_marker/v_reversed_order | CLAUDE-D3-BF | ok | ok |
+| CLAUDE-D3-BF/place_marker/v_shuffled_order | CLAUDE-D3-BF | ok | ok |
+| CLAUDE-D3-BF/place_marker/v_folder_prefix | CLAUDE-D3-BF | ok | ok |
+| CLAUDE-D3-BF/place_marker/v_deep_nesting | CLAUDE-D3-BF | ok | ok |
+| CLAUDE-D3-BF/place_marker/v_backslash_paths | CLAUDE-D3-BF | ok | ok |
+| CLAUDE-D3-BF/place_marker/v_directory_entries | CLAUDE-D3-BF | ok | ok |
+| CLAUDE-D3-BF/place_marker/v_extra_junk | CLAUDE-D3-BF | ok | ok |
+| CLAUDE-D3-BF/place_marker/v_nonascii_name | CLAUDE-D3-BF | ok | ok |
+| CLAUDE-D3-BF/place_marker/v_long_name | CLAUDE-D3-BF | ok | ok |
+| CLAUDE-D3-BF/place_marker/v_upper_tmp | CLAUDE-D3-BF | ok | ok |
+| CLAUDE-D3-BF/place_marker/v_renamed_ext | CLAUDE-D3-BF | ok | ok |
+| CLAUDE-D3-BF/place_marker/v_drop_ver5 | CLAUDE-D3-BF | ok | ok |
+| CLAUDE-D3-BF/place_marker/v_drop_comments | CLAUDE-D3-BF | ok | ok |
+| CLAUDE-D3-BF/place_marker/v_no_comment | CLAUDE-D3-BF | ok | ok |
+| CLAUDE-D3-BF/place_marker/v_replaced_comment | CLAUDE-D3-BF | ok | ok |
+| CLAUDE-D3-BF/place_marker/v_zeroed_timestamps | CLAUDE-D3-BF | ok | ok |
 
 ## Oracle B (12/12 ok)
 
@@ -282,7 +324,7 @@ decoder_version: accumark_pds=3.0 accumark_marker=3.0
 | truncated_object_123B_list_zip | CAP-C00-BASE | ok | ok (no exception, as required) |
 | truncated_object_200B_list_zip | 2303-BD137-PLACED | ok | ok (no exception, as required) |
 
-## Oracle C (297/297 ok)
+## Oracle C (341/341 ok)
 
 | case | seed | verdict | detail |
 |---|---|---|---|
@@ -583,6 +625,50 @@ decoder_version: accumark_pds=3.0 accumark_marker=3.0
 | CLAUDE-D2-M0/off=0x22c4/flip_bit | CLAUDE-D2-M0 | ok | ok (decode changed, as required) |
 | CLAUDE-D2-M0/off=0x22c4/zero | CLAUDE-D2-M0 | ok | ok (decode changed, as required) |
 | CLAUDE-D2-M0/off=0x22c4/ff | CLAUDE-D2-M0 | ok | ok (decode changed, as required) |
+| CLAUDE-D3-BF/off=0x3a53/flip_bit | CLAUDE-D3-BF | ok | ok (decode changed, as required) |
+| CLAUDE-D3-BF/off=0x3a53/zero | CLAUDE-D3-BF | ok | ok (decode changed, as required) |
+| CLAUDE-D3-BF/off=0x3a53/ff | CLAUDE-D3-BF | ok | ok (decode changed, as required) |
+| CLAUDE-D3-BF/off=0x3af3/flip_bit | CLAUDE-D3-BF | ok | ok (decode changed, as required) |
+| CLAUDE-D3-BF/off=0x3af3/ff | CLAUDE-D3-BF | ok | ok (decode changed, as required) |
+| CLAUDE-D3-BF/off=0x3a44/flip_bit | CLAUDE-D3-BF | ok | ok (decode changed, as required) |
+| CLAUDE-D3-BF/off=0x3a44/zero | CLAUDE-D3-BF | ok | ok (decode changed, as required) |
+| CLAUDE-D3-BF/off=0x3a44/ff | CLAUDE-D3-BF | ok | ok (decode changed, as required) |
+| CLAUDE-D3-BF/off=0x3891/flip_bit | CLAUDE-D3-BF | ok | ok (decode changed, as required) |
+| CLAUDE-D3-BF/off=0x3891/zero | CLAUDE-D3-BF | ok | ok (decode changed, as required) |
+| CLAUDE-D3-BF/off=0x3891/ff | CLAUDE-D3-BF | ok | ok (decode changed, as required) |
+| CLAUDE-D3-BF/off=0x3b73/flip_bit | CLAUDE-D3-BF | ok | ok (decode changed, as required) |
+| CLAUDE-D3-BF/off=0x3b73/zero | CLAUDE-D3-BF | ok | ok (decode changed, as required) |
+| CLAUDE-D3-BF/off=0x3b73/ff | CLAUDE-D3-BF | ok | ok (decode changed, as required) |
+| CLAUDE-D3-BF/off=0x1d93/flip_bit | CLAUDE-D3-BF | ok | ok (decode changed, as required) |
+| CLAUDE-D3-BF/off=0x1d93/zero | CLAUDE-D3-BF | ok | ok (decode changed, as required) |
+| CLAUDE-D3-BF/off=0x1d93/ff | CLAUDE-D3-BF | ok | ok (decode changed, as required) |
+| CLAUDE-D3-BF/off=0x3993/flip_bit | CLAUDE-D3-BF | ok | ok (decode changed, as required) |
+| CLAUDE-D3-BF/off=0x3993/zero | CLAUDE-D3-BF | ok | ok (decode changed, as required) |
+| CLAUDE-D3-BF/off=0x3993/ff | CLAUDE-D3-BF | ok | ok (decode changed, as required) |
+| CLAUDE-D3-BF/off=0x3933/flip_bit | CLAUDE-D3-BF | ok | ok (decode changed, as required) |
+| CLAUDE-D3-BF/off=0x3933/zero | CLAUDE-D3-BF | ok | ok (decode changed, as required) |
+| CLAUDE-D3-BF/off=0x3933/ff | CLAUDE-D3-BF | ok | ok (decode changed, as required) |
+| CLAUDE-D3-BF/off=0x37f2/flip_bit | CLAUDE-D3-BF | ok | ok (decode changed, as required) |
+| CLAUDE-D3-BF/off=0x37f2/zero | CLAUDE-D3-BF | ok | ok (decode changed, as required) |
+| CLAUDE-D3-BF/off=0x37f2/ff | CLAUDE-D3-BF | ok | ok (decode changed, as required) |
+| CLAUDE-D3-BF/off=0x38f1/flip_bit | CLAUDE-D3-BF | ok | ok (decode changed, as required) |
+| CLAUDE-D3-BF/off=0x38f1/zero | CLAUDE-D3-BF | ok | ok (decode changed, as required) |
+| CLAUDE-D3-BF/off=0x38f1/ff | CLAUDE-D3-BF | ok | ok (decode changed, as required) |
+| CLAUDE-D3-BF/off=0x3b2f/flip_bit | CLAUDE-D3-BF | ok | ok (decode changed, as required) |
+| CLAUDE-D3-BF/off=0x3b2f/zero | CLAUDE-D3-BF | ok | ok (decode changed, as required) |
+| CLAUDE-D3-BF/off=0x3b2f/ff | CLAUDE-D3-BF | ok | ok (decode changed, as required) |
+| CLAUDE-D3-BF/off=0x38ef/flip_bit | CLAUDE-D3-BF | ok | ok (decode changed, as required) |
+| CLAUDE-D3-BF/off=0x38ef/zero | CLAUDE-D3-BF | ok | ok (decode changed, as required) |
+| CLAUDE-D3-BF/off=0x38ef/ff | CLAUDE-D3-BF | ok | ok (decode changed, as required) |
+| CLAUDE-D3-BF/off=0xa31/flip_bit | CLAUDE-D3-BF | ok | ok (decode changed, as required) |
+| CLAUDE-D3-BF/off=0xa31/zero | CLAUDE-D3-BF | ok | ok (decode changed, as required) |
+| CLAUDE-D3-BF/off=0xa31/ff | CLAUDE-D3-BF | ok | ok (decode changed, as required) |
+| CLAUDE-D3-BF/off=0x38aa/flip_bit | CLAUDE-D3-BF | ok | ok (decode changed, as required) |
+| CLAUDE-D3-BF/off=0x38aa/zero | CLAUDE-D3-BF | ok | ok (decode changed, as required) |
+| CLAUDE-D3-BF/off=0x38aa/ff | CLAUDE-D3-BF | ok | ok (decode changed, as required) |
+| CLAUDE-D3-BF/off=0x394d/flip_bit | CLAUDE-D3-BF | ok | ok (decode changed, as required) |
+| CLAUDE-D3-BF/off=0x394d/zero | CLAUDE-D3-BF | ok | ok (decode changed, as required) |
+| CLAUDE-D3-BF/off=0x394d/ff | CLAUDE-D3-BF | ok | ok (decode changed, as required) |
 
 ## Unsupported (0)
 

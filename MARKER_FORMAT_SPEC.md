@@ -35,8 +35,11 @@ counts them unknown.
 
 - **Words 0-39 are section offsets.** Used on the corpus: 1, 2, 3, 4, 5, 6, 10, 11,
   12, 13, 14, 15, 21, 30. A section's span runs to the next used offset.
-- **Word 40 is a STATE code, not an offset:** 0 = nothing placed, 1 = some, 2 = all
-  [V: 18 of 18]. **Word 41 is 0.** Reading them as offsets fabricated a section 40.
+- **Word 40 is a STATE code, not an offset:** 0 = AS GENERATED (never stored by Easy
+  Marking), 1 = stored by Easy Marking with fewer than all pieces placed - **including
+  none at all** - and 2 = all placed [V: 60 markers; live: a marker opened in Easy
+  Marking and stored empty reads 1]. It is not a count of placed slots. **Word 41 is 0.**
+  Reading them as offsets fabricated a section 40.
 - **The `-6` convention:** every list section's chain starts 6 bytes BEFORE its
   directory offset and closes 6 bytes before the next section's [V for 6, 10-13,
   15, 21]. The directory offset points 6 bytes into the first structure.
@@ -128,15 +131,17 @@ for that (model, size)** - the marker states its own cut quantities.
 
 `(dir[30] - dir[21]) / 96` slots of 96 bytes; slot `i` starts at `dir[21] + 96 i`.
 
-    +0   f64 placed centre x     +8   f64 placed centre y      (0.0 when unplaced;
-                                                                 -1000 on older exports)
+    +0   f64 placed centre x     +8   f64 placed centre y      (0.0 while as generated;
+                                                                 -1000 once Easy Marking has
+                                                                 stored the slot unplaced [V live])
     +16  f64 home x              +24  f64 home y     (half the piece's box; the block-buffer table does not drive it [?])
     +32  u16 orientation         +34..+41  const  ff ff ff ff 00 00 00 00 [?]
     +42  f64 declared area       +50..+63  raw (u16 @52, @54, @60 vary) [?]
     +64  u32 bundle (low 16) + flags (high 16, 0)    +68..+87 const [?]
-    +88  u16 NEVER-LAID SIGNATURE [V]: 0 on every placed slot and on EVERY slot of a
-         partly laid marker, non-zero (constant per piece+size, meaning open) on every
-         slot of a never-laid one - 59 markers
+    +88  u16 AS-GENERATED SIGNATURE [V]: non-zero (constant per piece+size, meaning open)
+         on every slot of a marker Easy Marking has never stored, 0 on every slot of
+         every marker it has - laid, part-laid, or stored EMPTY. `@88 != 0  <=>  word 40
+         == 0` holds on all 60 markers, and on the live twins below.
     +90..+95  the NEXT slot's head (below)
 
 **The head.** 6 bytes BEFORE each slot body: `<u16 record index (0-based, section 14
@@ -147,14 +152,29 @@ next slot's head.)
 **Orientation.** Bit 0x2000 = rotate 180, bit 0x0080 = mirror [V vs drawn DXF]. Bit
 0x0040 is MARKER-level: set on all slots of a marker or on none, never mixed [V: 58
 markers, 28 / 30]; it is not the mirrored-pair bit (2303 has pairs and no 0x0040) and
-what sets it is open [?]. A placed slot's word also carries lay-
+what sets it is open [?]. **Bit 0x8000 = "stored by Easy Marking"** [V live: every slot
+gains it on a plain store, `0x0000 -> 0x8000`, and `0x2000 -> 0xa004` - a rot180 preset
+also gains 0x0004]. A placed slot's word also carries lay-
 session bits (0x8000, 0x0200, 0x0020 ... ). On a never-laid marker only the three
 known bits appear [V: 6 of 6]; on a PARTLY laid marker an unplaced slot keeps the
 bits it had before it was lifted (61 of 71 on July CP 150). So on a never-laid
 marker the word is a PRE-SET lay pattern, not a placement.
 
-**Placed vs unplaced** is a sentinel test on the centre (0,0, or x < -900); the
-laid state cross-checks it with directory word 40 and `@430`.
+**Placed vs unplaced** is a sentinel test on the centre (0,0 as generated, -1000 once
+stored, i.e. x < -900); the laid state cross-checks it with directory word 40 and `@430`.
+
+**What Easy Marking's STORE does to an unplaced marker** [V live, 2026-09-21,
+`markers-live/CLAUDE-UNP-E1-TWINS`]: `CLAUDE-QTY-TEST` (as generated) was opened and
+Saved As E1A with nothing placed; then one piece was dragged onto the marker, returned
+(Piece > Return > Unplaced) and stored as E1B. E1A vs the original: directory word 40
+0 -> 1; every slot's centre 0,0 -> -1000,-1000, orientation gains 0x8000 (and 0x0004
+beside rot180), `@88` 9 -> 0, home box +5e-5 in in x (rounding to the 1e-4 in unit);
+the header doubles, areas and every list section are unchanged; the type-10 object
+grows (1958 -> 2818 B). **E1B vs E1A differs in 12 bytes - the name, timestamps, session
+residue and the last byte of one slot's area double (1 ulp).** Laying a piece and
+returning it leaves no trace, so "laid once and cleared" cannot be told from "opened and
+stored empty", and "never laid" cannot be told from "never stored" by anything but the
+as-generated signature above.
 
 ## 11. Section 30 - the embedded type-10 object [V structure, ? content]
 
@@ -194,7 +214,7 @@ zero_pad 0.8%, opaque 91.3% (section 14's streams + section 30).
 |---|---|---|
 | side order of the four block-buffer doubles; what the table is for | home box ignores it (ZZC-M1 vs ZZC-BIG) | live: unequal buffers on a piece with real geometry |
 | what sets the marker-level 0x0040 bit; the pre-set rot180 alternation | 58 markers all-or-none; alternates per bundle | live: vary order / lay-limit settings |
-| slot u16 @88 values; @52/@54/@60 | @88 = never-laid signature [V]; a CLEARED marker is predicted to read 0 | live: place one piece, return it, export |
+| slot u16 @88 values (9, 33, 54 ... per piece+size); @52/@54/@60 | @88 = as-generated signature [V]; stored-empty and laid-then-returned read 0 alike | @88 vs the piece's geometry; @52/@54/@60 vs piece/size |
 | the y excess on July CP 150 unplaced slots (up to 0.0786 in, one-sided) | x fits the CP 150 table but the table does not drive home | live: known notch / curve |
 | placed slots 7.2% larger than their record (ZZC-M3, ZZN-F1) | 2 slots each | live: repeat with a plain piece |
 | why `@422` / `@454` are last-model sums; LADIES-BLOUSE 2x | modes observed exactly | two-model live order |

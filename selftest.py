@@ -1078,7 +1078,7 @@ if os.path.isfile(LIVE):
         fl = tuple(sorted(n for n, ok, _ in am.check_marker(mk) if not ok)); warns = am.marker_warnings(mk) + am.coverage_warnings(mk)
         if fl or warns: found[o['name']] = (mk['laid_state'], len(mk['slots']), fl, len(warns))
         # the never-laid signature: slot @88 non-zero <=> nothing has ever been placed
-        if (mk['lay_history'] == 'never_laid') != (mk['laid_state'] == 'unlaid'): bad.append(f"{o['name']}: lay_history {mk['lay_history']} vs {mk['laid_state']}")
+        if (mk['lay_history'] == 'as_generated') != (mk['laid_state'] == 'unlaid'): bad.append(f"{o['name']}: lay_history {mk['lay_history']} vs {mk['laid_state']}")
         leaks += sum(1 for a, b, k in am.marker_coverage(o['data'], mk)['unknown_runs'] if k in am.PARSED_SECTIONS)
     if len(lobjs['marker']) != 41 or dict(states) != {'unlaid': 17, 'laid': 22, 'partial': 2}: bad.append(f'{len(lobjs["marker"])} markers, states {dict(states)}')
     if found != LIVE_ANOMALIES: bad.append(f'anomalies changed: {found}')
@@ -1100,19 +1100,49 @@ if os.path.isfile(LIVE):
     ok = rows['sum(slot areas) == W*L*U'] and not {n: ok for n, ok, _ in am.check_marker(za2)}['sum(slot areas) == W*L*U']
     print(f"   {'ok ' if ok else 'FAIL'} utilisation identity tolerates AutoMark's 0.01% rounding (2e-4) yet still fails on a 1% error")
     if not ok: fails.append('utilisation tolerance')
-    # slot @88: zero on every slot once anything is placed; the prediction for a CLEARED marker
+    # slot @88 / directory word 40 / orientation 0x8000: what Easy Marking's STORE does (below)
     zn = _mk(('5683D-SS21-UNLAID', '5683D-BD 168 SS21.zip'), '5683D-BD 168 SS21')
     if zn:
+        row = 'slot @88 signature <=> directory word 40 is 0 (as generated)'
         b = bytearray(zn[0]['data'])
-        for s in zn[1]['slots']: struct.pack_into('<H', b, s['slot'] + 88, 0)
-        cleared = am.parse_marker(bytes(b))
+        for s in zn[1]['slots']: struct.pack_into('<H', b, s['slot'] + 88, 0)          # zero @88 but leave word 40 = 0
         lo = next(o for o in lobjs['marker'] if o['name'] == 'ZZN-1'); bl = bytearray(lo['data']); ml = am.parse_marker(lo['data'])
-        struct.pack_into('<H', bl, ml['slots'][3]['slot'] + 88, 9)
-        row = 'slot @88 signature is zero once anything is placed'
-        ok = (zn[1]['lay_history'] == 'never_laid' and cleared['lay_history'] == 'cleared' and cleared['laid_state'] == 'unlaid'
-              and {n: ok for n, ok, _ in am.check_marker(ml)}[row] and not {n: ok for n, ok, _ in am.check_marker(am.parse_marker(bytes(bl)))}[row])
-        print(f"   {'ok ' if ok else 'FAIL'} slot @88: non-zero = never laid; zeroed = 'cleared' (a prediction, unobserved); non-zero on a laid marker fails its row")
-        if not ok: fails.append('slot @88 signature')
+        struct.pack_into('<H', bl, ml['slots'][3]['slot'] + 88, 9)                    # a non-zero @88 on a stored, laid marker
+        ok = (zn[1]['lay_history'] == 'as_generated' and {n: ok for n, ok, _ in am.check_marker(zn[1])}[row] and {n: ok for n, ok, _ in am.check_marker(ml)}[row]
+              and not {n: ok for n, ok, _ in am.check_marker(am.parse_marker(bytes(b)))}[row]
+              and not {n: ok for n, ok, _ in am.check_marker(am.parse_marker(bytes(bl)))}[row])
+        print(f"   {'ok ' if ok else 'FAIL'} slot @88 <=> word 40 = 0: holds on 5683D and ZZN-1, and fails when either side is broken in the bytes")
+        if not ok: fails.append('slot @88 / word 40 identity')
+
+# The live experiment (2026-09-21): what does Easy Marking's STORE do to an unplaced marker?
+# CLAUDE-QTY-TEST (as generated) was opened in Easy Marking and Saved As E1A with NOTHING
+# placed; then one piece was dragged onto the marker, returned with Piece > Return >
+# Unplaced, and stored as E1B. Prediction going in: E1B ("laid once, cleared") reads @88 = 0
+# and E1A does not. Result: BOTH read 0 - a plain store clears the as-generated signature -
+# and laying + returning a piece leaves no trace (12 differing bytes: name, timestamps,
+# session residue, and the last byte of ONE slot's area double).
+E1 = os.path.join(HERE, 'markers-live', 'CLAUDE-UNP-E1-TWINS', 'CLAUDE-UNP-E1-TWINS.zip')
+if os.path.isfile(E1) and lobjs:
+    eo = {o['name']: o for o in am.list_zip(E1)['marker']}
+    A, B = eo['CLAUDE-UNP-E1A'], eo['CLAUDE-UNP-E1B']; mA, mB = am.parse_marker(A['data']), am.parse_marker(B['data'])
+    O = am.parse_marker(next(o for o in lobjs['marker'] if o['name'] == 'CLAUDE-QTY-TEST')['data'])
+    bad = []
+    for m, nm in ((mA, 'E1A'), (mB, 'E1B')):
+        if not (m['laid_state'] == 'unlaid' and m['lay_history'] == 'stored_empty' and m['placed_word'] == 1 and len(m['placements']) == 0): bad.append(f'{nm}: {m["laid_state"]}/{m["lay_history"]}/word {m["placed_word"]}')
+        if any(s['sig88'] for s in m['slots']): bad.append(f'{nm}: @88 not zero')
+        if {(s['x'], s['y']) for s in m['slots']} != {(-1000.0, -1000.0)}: bad.append(f'{nm}: centres not -1000')
+        if {s['orient_code'] for s in m['slots']} != {0x8000, 0xa004}: bad.append(f'{nm}: orientation words {sorted(hex(s["orient_code"]) for s in m["slots"])[:3]}')
+        if [n for n, ok, _ in am.check_marker(m) if not ok] or am.marker_warnings(m): bad.append(f'{nm}: a check or warning fires')
+    # the original, as generated: word 0, @88 non-zero, centres 0, orientation without 0x8000; home box and areas unchanged by the store
+    if not (O['placed_word'] == 0 and O['lay_history'] == 'as_generated' and all(s['sig88'] == 9 for s in O['slots']) and {(s['x'], s['y']) for s in O['slots']} == {(0.0, 0.0)}): bad.append('original not as generated')
+    # a store re-derives the home box, rounded to the format's 1e-4 in unit: 5e-5 in x here, 0 in y (areas are unchanged)
+    if any(abs(a['home_x'] - o['home_x']) > 1e-4 or abs(a['home_y'] - o['home_y']) > 1e-4 or abs(a['area'] - o['area']) > 1e-6 for a, o in zip(mA['slots'], O['slots'])): bad.append('a store moved a home box or changed an area')
+    if [(s['orient_code'] & ~0x8004) for s in mA['slots']] != [s['orient_code'] for s in O['slots']]: bad.append('a store changed more than 0x8000 / 0x0004 on the orientation word')
+    diff = [i for i in range(len(A['data'])) if A['data'][i] != B['data'][i]]
+    s21 = mA['sections'][am.SEC_SLOTS]; in21 = [i for i in diff if s21[0] <= i < s21[1]]
+    if len(A['data']) != len(B['data']) or len(diff) != 12 or len(in21) != 1 or (in21[0] - s21[0]) % 96 != 42: bad.append(f'twins differ in {len(diff)} bytes, {len(in21)} in the slots')
+    print(f"   {'ok ' if not bad else 'FAIL'} live twins: a plain store clears @88, sets word 40 = 1, orientation 0x8000, centres -1000; laying + returning a piece changes 12 bytes (1 area ulp)  {'; '.join(bad)}")
+    if bad: fails.append('E1 twins: ' + '; '.join(bad))
 
 print('-- marker byte map (v4.4, see accumark_marker.marker_coverage)')
 # Every byte owned by a section a parser reads must be classified (identified /

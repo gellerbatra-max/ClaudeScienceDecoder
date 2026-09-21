@@ -1,5 +1,26 @@
 # Marker decode plan — AccuMark native marker export
 
+> ## STATUS 2026-09-21 (v4.5, live) - a store changes an unplaced marker in six ways; "never laid" was the wrong label
+>
+> Live experiment on Save-As copies of my own scratch marker (`markers-live/
+> CLAUDE-UNP-E1-TWINS/`): `CLAUDE-QTY-TEST` (as generated) opened in Easy Marking and
+> stored as **E1A with nothing placed**; one piece dragged on, returned with Piece >
+> Return > Unplaced, stored as **E1B**. Prediction: E1B (laid once, cleared) reads slot
+> `@88` = 0, E1A does not. **Both read 0.** What ANY Easy Marking store does to an
+> unplaced marker [V]: directory word 40 `0 -> 1` (with zero placed - it is a store
+> code, not a count); every slot's centre `0,0 -> -1000,-1000`; orientation `+0x8000`
+> (and `+0x0004` beside a rot180 preset); `@88` -> 0; home box +5e-5 in (rounding).
+> **E1B vs E1A: 12 bytes, one of them the last byte of one slot's area double** - laying
+> a piece and returning it leaves no trace, so "laid once and cleared" is not
+> distinguishable from "opened and stored empty". `lay_history` is now `as_generated |
+> stored_empty | partial | laid`; `@88 != 0 <=> word 40 == 0` on all 60 markers.
+> Also explains the July CP 150 unplaced slots that carry `0x80c7` (they were stored).
+> Full write-up: `CHANGELOG.md` v4.5 (continued).
+>
+> Still open: what `@88` counts, `@52/@54/@60`, what sets the marker-level `0x0040`,
+> the block-buffer table's purpose. `selftest.py` PASS, `dataset_test.py` 36/36,
+> `robustness/run.py` 474/474.
+
 > ## STATUS 2026-09-21 (v4.6) - a marker unlike the corpus announces itself; the marker spec has its own file
 >
 > The goal is a decoder that reads WHATEVER never-laid marker AccuMark produces

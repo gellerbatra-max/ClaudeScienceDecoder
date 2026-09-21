@@ -621,20 +621,28 @@ def _add_order_and_state(d, mk, sec):
     # authoritative (they are what a nesting run consumes); the others must agree
     n, k = len(mk['slots']), len(mk['placements'])
     by_slots = 'unlaid' if k == 0 else ('laid' if k == n else 'partial')
-    by_word = {0: 'unlaid', 1: 'partial', 2: 'laid'}.get(mk['placed_word'])
+    # v4.5 (live experiment): directory word 40 is NOT a count of placed slots. It is
+    # 0 on a marker as generated (Marker Wizard / AutoMark / Easy Order), 1 once Easy
+    # Marking has stored it with fewer than all pieces placed - INCLUDING none at all
+    # (CLAUDE-UNP-E1A: opened and stored empty reads 1) - and 2 when all are placed.
+    w = mk['placed_word']
+    by_word = {0: 'as_generated', 1: 'stored', 2: 'all_placed'}.get(w)
     by_header = 'unlaid' if not mk['laid'] else 'laid or partial'
+    word_ok = (w == 0 and k == 0) or (w == 1 and k < n) or (w == 2 and k == n and n > 0)
     mk['laid_state'] = by_slots
     mk['laid_state_sources'] = dict(slots=by_slots, placed_word=by_word, header=by_header,
-                                    agree=(by_word == by_slots and (by_header == 'unlaid') == (by_slots == 'unlaid')))
-    # v4.5: slot u16 @88 is a NEVER-LAID signature. Across 59 markers it is 0 on
-    # every placed slot, 0 on EVERY slot (placed or not) of all 6 partly laid
-    # markers, and non-zero on the slots of all 24 never-laid markers - so it is
-    # what tells "never laid" from "laid once and cleared". The cleared case is a
-    # PREDICTION (no such marker in the corpus): an unlaid marker whose slots all
-    # read 0 there. Its values (9, 33, 54, 66, 107 ...) are constant per (piece,
-    # size) and unexplained [?].
+                                    agree=word_ok and ((by_header == 'unlaid') == (by_slots == 'unlaid')))
+    # v4.5: slot u16 @88 is an AS-GENERATED signature, not a "never laid" one. Across
+    # 61 markers it is non-zero on every slot of the 24 markers Easy Marking has never
+    # stored and 0 on every slot of every marker it has (laid, part-laid, and - live,
+    # CLAUDE-UNP-E1A - opened and stored with nothing placed). Laying a piece and
+    # returning it leaves NO further trace (E1B differs from E1A by one 1-ulp area byte),
+    # so "laid once then cleared" cannot be told from "opened and stored empty". The
+    # same store also sets directory word 40 to 1, every slot's orientation bit 0x8000
+    # and its centre to (-1000, -1000). Values of @88 (9, 33, 54, ...) are constant per
+    # (piece, size) and unexplained [?].
     sig = [s['sig88'] for s in mk['slots']]
-    mk['lay_history'] = (('never_laid' if any(sig) else 'cleared') if by_slots == 'unlaid' else by_slots)
+    mk['lay_history'] = (('as_generated' if any(sig) else 'stored_empty') if by_slots == 'unlaid' else by_slots)
     mk['header_sums'] = _header_sums(mk)
 
 KNOWN_SECTIONS = frozenset({1, 2, 3, 4, 5, 6, 10, 11, 12, 13, 14, 15, 21, 30})    # every directory slot ever seen used
@@ -647,12 +655,12 @@ def marker_warnings(mk):
 
       an unknown directory slot in use (a section this reader has never seen)
       directory word 40 outside 0/1/2, or word 41 non-zero
-      a slot of a NEVER-LAID marker whose orientation word carries bits outside
-        rot180 / mirror / the 0x0040 pair bit (true of none of the six such
-        markers). Not applied to a partly laid marker: its unplaced slots were
-        lifted from a lay and keep that history - on the July CP 150 markers
-        61 of 71 carry words like 0x80c7 - so their `preset` is what the slot
-        last was, not a clean pre-set pattern
+      a slot of an AS-GENERATED marker (never stored by Easy Marking) whose
+        orientation word carries bits outside rot180 / mirror / the 0x0040 bit
+        (true of none of them). Not applied once Easy Marking has stored the
+        marker: a store sets 0x8000 on every slot (and 0x0004 beside a rot180
+        preset), so a stored marker's `preset` is not a clean pre-set pattern -
+        on the July CP 150 markers 61 of 71 unplaced slots carry 0x80c7
       the record index missing, so the records came from the regex fallback
       slots the structure could not bind (the area rule filled in, or none)
       a section chain that does not close where the directory says
@@ -665,8 +673,8 @@ def marker_warnings(mk):
             w.append('directory slot %d is in use but this reader has never seen that section' % k)
     if mk['placed_word'] not in (0, 1, 2): w.append('directory word 40 is %d, expected 0 / 1 / 2' % mk['placed_word'])
     if mk['directory'][41] != 0: w.append('directory word 41 is %#x, expected 0' % mk['directory'][41])
-    odd = [s['index'] for s in mk['slots'] if s['orient_code'] & ~KNOWN_ORIENT_BITS] if mk['laid_state'] == 'unlaid' else []
-    if odd: w.append('%d slots of a never-laid marker carry orientation bits outside rot180 / mirror / pair (first: slot %d, word %#06x)'
+    odd = [s['index'] for s in mk['slots'] if s['orient_code'] & ~KNOWN_ORIENT_BITS] if mk['lay_history'] == 'as_generated' else []
+    if odd: w.append('%d slots of an as-generated marker carry orientation bits outside rot180 / mirror / pair (first: slot %d, word %#06x)'
                      % (len(odd), odd[0], mk['slots'][odd[0]]['orient_code']))
     if mk['sections'][SEC_INDEX] and mk.get('records_source') != 'index':
         w.append('section 13 (record index) did not validate: records were read by the fallback regex')
@@ -859,10 +867,10 @@ def check_marker(mk):
         out.append(('header @430 == sum of placed slot areas',
                     abs(mk['placed_area'] - mk['sum_slot_areas']) <= 1e-6 * max(1.0, mk['sum_slot_areas']),
                     f'{mk["placed_area"]:.4f} vs {mk["sum_slot_areas"]:.4f}'))
-    if mk.get('lay_history') in ('laid', 'partial'):
-        out.append(('slot @88 signature is zero once anything is placed',
-                    all(s['sig88'] == 0 for s in mk['slots']),
-                    f'{sum(1 for s in mk["slots"] if s["sig88"])} slots with a non-zero @88'))
+    if mk['slots']:
+        out.append(('slot @88 signature <=> directory word 40 is 0 (as generated)',
+                    any(s['sig88'] for s in mk['slots']) == (mk['placed_word'] == 0),
+                    f'{sum(1 for s in mk["slots"] if s["sig88"])} slots with a non-zero @88, word 40 = {mk["placed_word"]}'))
     if mk.get('block_buffers'):
         # v4.5: the table holds buffer DEFINITIONS and a piece points at one (0-based)
         # or at none - not "entry k is piece k's". Live scratch markers (ZZC-M1..3,
@@ -1464,7 +1472,7 @@ def inventory_report(inv, checks=()):
     """A readable cut order for one marker (the CLI's --inventory). Ends with
     DECODED CLEANLY, or NEEDS A LOOK plus every failing check and warning."""
     m, t = inv['marker'], inv['totals']
-    state = ({'never_laid': 'UNLAID (never laid)', 'cleared': 'UNLAID (laid before and cleared [?])'}[m['lay_history']]
+    state = ({'as_generated': 'UNLAID (as generated, never stored by Easy Marking)', 'stored_empty': 'UNLAID (stored by Easy Marking with nothing placed)'}[m['lay_history']]
              if m['laid_state'] == 'unlaid' else {'partial': 'PARTLY LAID', 'laid': 'LAID'}[m['laid_state']])
     lines = [f"== {m['name']} - {state} ==",
              f"width {m['width_cm']:.1f} cm ({m['width_in']:.2f} in) | models {', '.join(m['models']) or '-'} | "

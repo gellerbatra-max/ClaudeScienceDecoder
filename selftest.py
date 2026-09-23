@@ -1260,7 +1260,7 @@ for zp in sorted(glob.glob(os.path.join(HERE, 'markers', '**', '*.zip'), recursi
             for nm in ('0418T TRS', '2591A', '1825D', '5683D'):
                 if rc['text'].startswith(nm): sd_named.setdefault(nm, [0, 0]); sd_named[nm][0] += 1; sd_named[nm][1] += bool(ro and ro['verified'])
 if sd_cross: sd_bad.append('unfolded outlines that cross themselves: %s' % sd_cross[:3])
-if sd_ok != sd_tot or sd_tot < 265: sd_bad.append(f'{sd_ok} of {sd_tot} distinct corpus streams verify (all 265 did)')
+if sd_ok != sd_tot or sd_tot < 268: sd_bad.append(f'{sd_ok} of {sd_tot} distinct corpus streams verify (all 268 did)')
 for nm, (nn, kk) in sd_named.items():
     if nn == 0 or kk != nn: sd_bad.append(f'marker-only {nm}: {kk} of {nn} records verify')
 print(f"   {'ok ' if sd_n and not sd_bad else 'FAIL'} record stream (v4.7): {sd_n} records equal the piece's graded outline exactly (rectangle 4/4, RUFFLE 142/142 + grain line); {sd_ok} of {sd_tot} distinct corpus streams reproduce their own record area and perimeter within 1% - ALL of them, incl. every record of the marker-only ZIPs 1825D, 5683D, 2591A, 0418T (131 are fold halves, unfolded about their fold line)  {'; '.join(sd_bad[:3])}")
@@ -1322,6 +1322,73 @@ if os.path.isfile(bfull) and os.path.isfile(bmo):
     if ivf['marker']['outline_source'] != 'stream' or any(abs(e['checks']['area_ratio'] - 1) > 0.01 for e in ivf['slots']): bad.append('with pieces present the stream outline was not preferred')
     print(f"   {'ok ' if not bad else 'FAIL'} BLIND TEST CLAUDE-D3-BF (BACK + FRONT never seen before): marker-only ZIP -> 10 outlines, bounding box == stored home box (<= 0.0001 in), area within 1%; the piece objects' stitch lines sit 0.25 / 0.375 in inside the decoded cut line (seam allowances 1.0 / 0.375 / 0.25)  {'; '.join(bad[:3])}")
     if bad: fails.append('D3 blind test: ' + '; '.join(bad[:5]))
+
+# v4.7 SECOND BLIND TEST (2026-09-23): a piece I designed and imported myself, then a marker made from it - CLAUDE-CURVE (a 20 x 15 cm
+# panel with a rounded corner, 2 notches, a drill hole, a grain line, an internal line and two DIFFERENT grade rules on one chain of
+# points; made with the accumark-pattern-marker skill: make_aama_dxf.py -> DCU import -> Easy Order -> CLAUDE-D4). Fixture
+# markers-live/CLAUDE-UNP-D4-CURVE/ (full export = answer key; -MARKER-ONLY.zip = the same marker with the piece object stripped).
+# What it showed: (1) order data, pieces, notches, grain, internal line, drill and the outline all right from the marker alone once the
+# contour split used the header counts; (2) the FIRST bundled piece with two different rule numbers on one chain - and the piece-side
+# grading (blend of the two moves by chain length, unverified before) was 0.295 in off, while the marker's own stream matched a
+# SIMILARITY of the chord between the ruled points to 1e-4 in. graded_outline now uses that.
+d4d = os.path.join(HERE, 'markers-live', 'CLAUDE-UNP-D4-CURVE'); d4f = os.path.join(d4d, 'CLAUDE-D4.zip'); d4m = os.path.join(d4d, 'CLAUDE-D4-MARKER-ONLY.zip')
+if os.path.isfile(d4f) and os.path.isfile(d4m):
+    bad = []; rmo = am.place_marker(d4m)['markers'][0]; rfu = am.place_marker(d4f); ivm = rmo['inventory']
+    if set(am.list_zip(d4m)) != {'marker'}: bad.append('marker-only ZIP holds other objects')
+    if not (ivm['marker']['outline_source'] == 'stream' and ivm['marker']['geometry_available'] == 'all' and len(ivm['slots']) == 6 and ivm['marker']['lay_history'] == 'as_generated'): bad.append('inventory shape')
+    if [(o['size'], o['quantity']) for o in ivm['order_lines']] != [(z, 1) for z in ('S', 'M', 'L')]: bad.append('order lines')
+    if [n for n, ok, _ in rmo['checks'] if not ok] or am.marker_warnings(rmo['marker']): bad.append('a check or warning fires')
+    pcb = rfu['pieces']['CLAUDE-CURVE']['block']; dd4 = rmo['marker']['object']['data']; mkf = rfu['markers'][0]['marker']; ddf = mkf['object']['data']
+    def _linear_blend(block, size):                     # the pre-v4.7 rule: blend the two ruled moves by chain length
+        names = [z['name'] for z in block['meta']['sizes']]; t_, b_ = names.index(size), block['meta']['base_index']; rl = {o['id']: o['deltas'] for o in block['objects']}
+        def mv(pp):
+            if pp['rule_ref'] not in rl: return None
+            rows = rl[pp['rule_ref']]; sel = rows[b_:t_] if t_ > b_ else [(-a_, -c_) for a_, c_ in rows[t_:b_]]
+            return (sum(r_[0] for r_ in sel), sum(r_[1] for r_ in sel))
+        pts_ = block['perimeter']; mvs = [mv(pp) for pp in pts_]; n_ = len(pts_); rd = [i for i in range(n_) if mvs[i] is not None]; xy_ = [(pp['x'], pp['y']) for pp in pts_]; o_ = [None] * n_
+        for i in rd: o_[i] = (xy_[i][0] + mvs[i][0], xy_[i][1] + mvs[i][1])
+        for k_, i in enumerate(rd):
+            j = rd[(k_ + 1) % len(rd)]; seq = []; q_ = (i + 1) % n_
+            while q_ != j: seq.append(q_); q_ = (q_ + 1) % n_
+            ch = [xy_[i]] + [xy_[q_] for q_ in seq] + [xy_[j]]; acc = am._chain_lengths(ch); tot = acc[-1] or 1.0
+            for ix, q_ in enumerate(seq):
+                f_ = acc[ix + 1] / tot; o_[q_] = (xy_[q_][0] + mvs[i][0] * (1 - f_) + mvs[j][0] * f_, xy_[q_][1] + mvs[i][1] * (1 - f_) + mvs[j][1] * f_)
+        return o_
+    lin_err = {}
+    for rc in rmo['marker']['records']:
+        ro4 = am.record_outline(dd4, rc); got = [(x * 1e4, y * 1e4) for x, y in ro4['points']]; ref = [(x * 1e4, y * 1e4) for x, y in am.graded_outline(pcb, rc['size'])]
+        if not ro4['verified'] or len(got) != 12 or max(max(abs(a_[0] - b_[0]), abs(a_[1] - b_[1])) for a_, b_ in zip(got, ref)) > 1.5: bad.append(f"size {rc['size']}: stream outline != graded piece outline (1e-4 in)")
+        lin = _linear_blend(pcb, rc['size']); lin_err[rc['size']] = max(max(abs(a_[0] - b_[0]), abs(a_[1] - b_[1])) for a_, b_ in zip(got, lin))
+        # notches, grain, internal line, drill: exactly the piece object's, at every size (they are not graded)
+        want = {k_: [(q['x'], q['y']) for q in l] for k_, l in zip(pcb['internal_kinds'], pcb['internal_lines'])}
+        lines = {l['kind']: [(round(x * 1e4), round(y * 1e4)) for x, y in l['points']] for l in ro4['lines']}
+        if lines != want: bad.append(f"size {rc['size']}: grain / internal / drill {lines} != {want}")
+        nn = sorted((round(x * 1e4), round(y * 1e4), t) for _, t, x, y in ro4['notches']); wn = sorted((q['x'], q['y'], q['notch_type']) for q in pcb['perimeter'] if q['kind'] == 'notch')
+        if [(a_, b_, t) for a_, b_, t in nn] != [(a_, b_, t) for a_, b_, t in wn] and rc['size'] == 'M': bad.append(f'M notches {nn} != {wn}')
+        if len(nn) != 2 or any(t != 5 for *_, t in nn): bad.append(f"size {rc['size']}: notches {nn}")
+    if lin_err.get('S', 0) < 2000 or lin_err.get('L', 0) < 2000: bad.append(f'the old chain-length blend should be off by > 0.2 in on S and L (it was {lin_err})')
+    for e in ivm['slots']:
+        if abs(e['checks']['bbox_dx']) > 2e-4 or abs(e['checks']['bbox_dy']) > 2e-4 or abs(e['checks']['area_ratio'] - 1) > 1e-3 or len(e['notches']) != 2 or len(e['drills']) != 1 or not e['grain']: bad.append(f"slot {e['size']}: box residual {e['checks']['bbox_dx']:.4f}, {e['checks']['bbox_dy']:.4f} / area {e['checks']['area_ratio']:.4f} / notches {len(e['notches'])}")
+    print(f"   {'ok ' if not bad else 'FAIL'} SECOND BLIND TEST CLAUDE-D4 (a piece I built: rounded corner, 2 notches, drill, grain, internal line, two grade rules): marker-only ZIP -> outline == graded piece to 1e-4 in at S / M / L, notches, grain, internal line and drill exactly the piece's; the old chain-length grading blend was {max(lin_err.values(), default=0) / 1e4:.3f} in off  {'; '.join(bad[:3])}")
+    if bad: fails.append('D4 blind test: ' + '; '.join(bad[:5]))
+
+# the contour split by header counts, over every fixture whose piece object is bundled: grain, internal lines, cutouts and drills equal the piece's exactly
+il_n = il_bad = 0
+for zp in ('markers/2303-BD137-UNLAID/2303-BD 137.zip', 'markers-live/CLAUDE-UNP-D2-TWIN/CLAUDE-D2-M0.zip', 'markers-live/CLAUDE-UNP-D4-CURVE/CLAUDE-D4.zip', 'markers/CLAUDE-GRADE-MARKER/CLAUDE-GRADE-MARKER.zip', 'markers/2303-CP150-JULY/2303-CP 150 CPL.zip'):
+    if not os.path.isfile(os.path.join(HERE, zp)): continue
+    rr = am.place_marker(os.path.join(HERE, zp)); seen_ = set()
+    for mm in rr['markers']:
+        m_ = mm['marker']; dd = m_['object']['data']
+        for rc in m_['records']:
+            pc = rr['pieces'].get(rc.get('piece'))
+            if not pc or (rc['text'], rc['stream_len']) in seen_: continue
+            seen_.add((rc['text'], rc['stream_len'])); ro = am.record_outline(dd, rc)
+            if not ro or not ro['verified'] or not ro['lines']: continue
+            nm = {'internal_cutout': 'cutout'}; want = [(nm.get(k, k), [(q['x'], q['y']) for q in l]) for k, l in zip(pc['block']['internal_kinds'], pc['block']['internal_lines'])]
+            got = [(l['kind'], [(round(x * 1e4), round(y * 1e4)) for x, y in l['points']]) for l in ro['lines']]
+            il_n += 1; il_bad += want != got
+print(f"   {'ok ' if il_n >= 60 and not il_bad else 'FAIL'} stream internal lines (v4.7): grain, internal lines, cutouts and drills split by the header counts equal the piece objects' exactly on {il_n - il_bad} of {il_n} records (2303 pieces carry up to 10 lines each)")
+if il_n < 60 or il_bad: fails.append(f'stream internal lines: {il_bad} of {il_n} differ')
 
 print('-- marker byte map (v4.4, see accumark_marker.marker_coverage)')
 # Every byte owned by a section a parser reads must be classified (identified /

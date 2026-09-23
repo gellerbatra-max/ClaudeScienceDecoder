@@ -761,7 +761,7 @@ def decode_record_stream(st, pen_move=None):
     p = 3; header = []; spans = [(0, 3, 'lead')]
     while p + 4 <= len(st) and st[p] < 0x80 and st[p+1] == 0 and st[p+3] == 0:
         header.append((st[p], st[p+2])); spans.append((p, p + 4, 'header')); p += 4
-    contours = []; kinds = []; cur = None; ck = None; x = y = 0; stop = 'end'
+    contours = []; kinds = []; raws = []; cur = None; ck = None; cr = None; x = y = 0; stop = 'end'
     while p < len(st):
         parts = []; q = p; ok = True
         while True:
@@ -784,15 +784,17 @@ def decode_record_stream(st, pen_move=None):
         dx = dy = 0
         for t, dat in parts:
             a, b = _tag_delta(t, dat); dx += a; dy += b
-        if len(parts) > (_PEN_MOVE if pen_move is None else pen_move) and cur is not None:         # a long chain of parts = a pen move: the next contour starts where it ends
-            x += dx; y += dy; cur = []; ck = []; contours.append(cur); kinds.append(ck)
+        mx, my = _tag_delta(*parts[-1])          # the MAIN part alone: a contour's absolute start (the prefix parts of a contour-start item
+                                                 # are not a movement - 2303 OUMO-1: six prefixes, then the absolute point)
+        if len(parts) > (_PEN_MOVE if pen_move is None else pen_move) and cur is not None:         # a long chain of parts = a pen move / contour start
+            x, y = mx, my; cur = []; ck = []; cr = []; contours.append(cur); kinds.append(ck); raws.append(cr)
         elif any((t & 0xf) == 0xa for t, _ in parts[:-1]):
-            x, y = _tag_delta(*parts[-1]); cur = []; ck = []; contours.append(cur); kinds.append(ck)
+            x, y = mx, my; cur = []; ck = []; cr = []; contours.append(cur); kinds.append(ck); raws.append(cr)
         elif cur is None or st[p] == 0x00:
-            x, y = dx, dy; cur = []; ck = []; contours.append(cur); kinds.append(ck)
+            x, y = dx, dy; cur = []; ck = []; cr = []; contours.append(cur); kinds.append(ck); raws.append(cr)
         else:
             x += dx; y += dy
-        cur.append((x, y, u16(st, q)))
+        cur.append((x, y, u16(st, q))); cr.append((dx, dy, mx, my))
         # the point's KIND: main tag low nibble 1 = plain (or a NOTCH when an extra byte follows: type = its low nibble,
         # high nibble = a flag); any other low nibble = a TURN (corner point), with a notch type in the extra byte for a
         # corner notch [V 7,208 of 7,209 piece points]
@@ -801,7 +803,28 @@ def decode_record_stream(st, pen_move=None):
         else: ck.append(('turn', (ex_[-1] & 15) or None) if ex_ else ('turn', None))
         p = q + 2
     if stop == 'end': stop = 'trailer'
-    return dict(contours=contours, header=header, end=p, stop=stop, size=len(st), spans=spans, kinds=kinds)
+    # v4.7 (blind test CLAUDE-D4): after the perimeter the stream holds the piece's OTHER lines back to back - the grain line
+    # (2 points, implicit unless the header has a 'G'), then one contour per header record I (internal line), H (cutout), D (drill),
+    # each `n` points, each starting with an ABSOLUTE point that carries no marker of its own. Split by those counts when the
+    # header is only I / H / D / G / ! records and the counts add up exactly to the points left over (RUFFLE, 2303 OUMO,
+    # CLAUDE-D4, CLAUDE-GRADE-TEST, ...); anything else (fold pieces: S / M / F records) keeps the earlier split.
+    labels = ['perimeter'] + ['other'] * max(0, len(contours) - 1)
+    hl = [chr(t) for t, _ in header]
+    if len(contours) >= 2 and all(c in 'IHDG!' for c in hl):
+        counts = ([] if 'G' in hl else [2]) + [n for t, n in header if chr(t) in 'IHDG']
+        names = ([] if 'G' in hl else ['grain']) + [{'I': 'internal', 'H': 'cutout', 'D': 'drill', 'G': 'grain'}[chr(t)] for t, n in header if chr(t) in 'IHDG']
+        flat = [r for cr_ in raws[1:] for r in cr_]; ids = [pt[2] for c_ in contours[1:] for pt in c_]
+        if sum(counts) == len(flat):
+            nc = [contours[0]]; nk = [kinds[0]]; labels = ['perimeter']; i0 = 0
+            for c_, nm in zip(counts, names):
+                pts = []; xx = yy = 0
+                for j in range(c_):
+                    sx, sy, mx_, my_ = flat[i0 + j]
+                    xx, yy = (mx_, my_) if j == 0 else (xx + sx, yy + sy)
+                    pts.append((xx, yy, ids[i0 + j]))
+                nc.append(pts); nk.append([('plain', None)] * c_); labels.append(nm); i0 += c_
+            contours, kinds = nc, nk
+    return dict(contours=contours, header=header, end=p, stop=stop, size=len(st), spans=spans, kinds=kinds, labels=labels)
 
 def verify_stream_outline(contour, area, perimeter, tol=0.01):
     """polygon area / perimeter (in, sq in) of a decoded contour against the record head's own
@@ -854,7 +877,9 @@ def record_outline(data, rec):
     if best is None: return None
     ok, d, c0, k0, unfolded, a, pr, pm = best
     return dict(points=[(x / 1e4, y / 1e4) for x, y, _ in c0], verified=ok and d['stop'] == 'trailer', unfolded=unfolded,
-                pen_move=pm, kinds=k0, notches=[(i, k[1], c0[i][0] / 1e4, c0[i][1] / 1e4) for i, k in enumerate(k0) if k[0] == 'notch'],
+                pen_move=pm, labels=d.get('labels'), kinds=k0,
+                lines=[dict(kind=lb, points=[(x / 1e4, y / 1e4) for x, y, _ in c]) for lb, c in zip((d.get('labels') or [])[1:], d['contours'][1:]) if lb in ('grain', 'internal', 'cutout', 'drill')],
+                notches=[(i, k[1], c0[i][0] / 1e4, c0[i][1] / 1e4) for i, k in enumerate(k0) if k[0] == 'notch'],
                 area=a, perimeter=pr, other=[[(x / 1e4, y / 1e4) for x, y, _ in c] for c in d['contours'][1:]], stop=d['stop'], header=d['header'])
 
 def _header_sums(mk):
@@ -1357,9 +1382,15 @@ def graded_outline(block, size):
     inches. Rule deltas are per size-break increments smallest-first
     (FORMAT_SPEC section 3); a point's cumulative move from the base size to
     the target is the sum of the rows between them. Points without a rule
-    (curve points, f1 == 1) move by chain-proportional interpolation between
-    their neighbouring ruled points - the rule the user settled for
-    dxfparser (2026-08-02). Returns None if the size is not in the table."""
+    (curve points, f1 == 1) between two ruled points move by a SIMILARITY of
+    the chord joining those two points (the chain keeps its shape while the
+    chord is rotated and scaled onto the graded chord) - v4.7, from the blind
+    test CLAUDE-D4: 20 unruled points at two sizes match the marker's own
+    stream to 1e-4 in, where the earlier chain-proportional blend of the two
+    moves (dxfparser, 2026-08-02) is off by up to 0.295 in. Both rules give the
+    same answer when the two ruled moves are equal - true of every piece in the
+    older corpus, none of which had two different rules on one chain.
+    Returns None if the size is not in the table."""
     m = block['meta']; names = [s['name'] for s in m['sizes']]
     if size not in names: return None
     t, b = names.index(size), m['base_index']
@@ -1389,13 +1420,14 @@ def graded_outline(block, size):
         while q != j:
             seq.append(q); q = (q+1) % n
         if not seq: continue
-        chain = [xy[i]] + [xy[q] for q in seq] + [xy[j]]
-        acc = _chain_lengths(chain); total = acc[-1] or 1.0
-        for idx, q in enumerate(seq):
-            f = acc[idx+1]/total
-            mx = moves[i][0]*(1-f) + moves[j][0]*f
-            my = moves[i][1]*(1-f) + moves[j][1]*f
-            out[q] = (xy[q][0]+mx, xy[q][1]+my)
+        a = complex(*xy[i]); c = complex(*xy[j]) - a
+        if abs(c) < 1e-9:              # one ruled point (or two coincident): a plain translation
+            for q in seq: out[q] = (xy[q][0]+moves[i][0], xy[q][1]+moves[i][1])
+            continue
+        ga = complex(*out[i]); kf = (complex(*out[j]) - ga) / c
+        for q in seq:
+            z = ga + (complex(*xy[q]) - a) * kf
+            out[q] = (z.real, z.imag)
     return [(x/1e4, y/1e4) for x, y in out]
 
 def fold_axis_indices(block, data):
@@ -1559,7 +1591,12 @@ def unplaced_inventory(mk, pieces=None, piece_errors=None, use_grading=True, geo
                                  other=s['orient_code'] & ~(ROT180_BIT | MIRROR_BIT | 0x0040)),
                      note=note)
         if note.startswith(STREAM_NOTE) and s.get('record'):
-            entry['notches'] = [dict(type=n_[1], x=n_[2], y=n_[3]) for n_ in record_outline(mk['object']['data'], s['record'])['notches']]
+            ro_ = record_outline(mk['object']['data'], s['record'])
+            entry['notches'] = [dict(type=n_[1], x=n_[2], y=n_[3]) for n_ in ro_['notches']]
+            # the piece's other lines from the stream: grain (direction of the fabric), internal lines, cutouts, drill holes (inches, piece frame)
+            entry['grain'] = next((l['points'] for l in ro_['lines'] if l['kind'] == 'grain'), None)
+            entry['internal_lines'] = [l['points'] for l in ro_['lines'] if l['kind'] in ('internal', 'cutout')]
+            entry['drills'] = [l['points'][0] for l in ro_['lines'] if l['kind'] == 'drill']
         if outline:
             xs = [p[0] for p in outline]; ys = [p[1] for p in outline]
             entry.update(outline=outline, checks=dict(

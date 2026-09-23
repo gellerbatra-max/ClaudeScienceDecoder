@@ -86,6 +86,31 @@ each engine (`MARKER_DATASET_DESIGN.md`, F5).
 
 **Not run, and why.** F1-F3 (width, quantities, single-size markers) predict only header width / section 15 / size rows, all already decoded; F4 (block buffer) needs an unequal buffer object (the only one in the scratch area, ZZBB-1, is 1 cm on all four sides) and a place to assign it - the Step 4 fabric row shows no block-buffer column, and the Defaults dialog looks like app-level defaults (width 137.16 there against 134 on the order), i.e. the user's own settings, which I did not touch; F6 needs pieces of controlled topology from Pattern Design. None is needed to read an unplaced marker; each has its procedure in `MARKER_DATASET_DESIGN.md`.
 
+**The second blind test - a piece I designed, imported and made a marker from (6th step).** You asked me to
+create the pattern too. With the `accumark-pattern-marker` skill: a 20 x 15 cm panel `CLAUDE-CURVE` written as an ASTM DXF
+(`dataset/claude_curve_spec.json`: a rounded corner of 5 points on a 90 degree arc, 2 notches, a drill hole, a grain line, an
+internal line, 3 sizes S / M / L, two DIFFERENT grade rules on one chain), imported with the Data Conversion Utility as my own
+process, Easy Order -> marker `CLAUDE-D4`, exported (`markers-live/CLAUDE-UNP-D4-CURVE/`, full export = answer key, and a marker-only copy).
+Decoded blind, then compared with the piece object I authored:
+- order lines, quantities, piece list, laid state, outline verification, 2 type-5 notches per slot: right at once;
+- **grain line, internal line and drill hole: wrong.** The stream lays the piece's other lines back to back after the perimeter, each
+  starting with an ABSOLUTE point that carries no marker, and I integrated the second and third as steps. Fix: the header records
+  `I` (internal line), `H` (cutout), `D` (drill), `G` (grain, implicit 2 points when absent) give each contour's point count, and the counts
+  add up exactly to the points left after the perimeter - so the stream is split by them. A contour's start is the item's MAIN part alone
+  (a contour-start item can carry up to 6 prefix parts that are not a movement: 2303 OUMO-1). Result: grain, internal lines, cutouts and
+  drills equal the piece objects' coordinates on **77 of 77** fixture records (up to 10 lines per 2303 piece), at every size
+  (they are not graded), and `unplaced_inventory` slots gain `grain`, `internal_lines`, `drills`;
+- **piece-side grading was wrong.** CLAUDE-D4 is the first bundled piece with two different rule numbers on one chain of points (all
+  older ones have 0 or 1 ruled point, where any rule gives the same answer). The old rule - blend the two ruled moves by chain length,
+  taken from the dxfparser notes - was **0.295 in off** at S and L; the marker's own stream matches a **similarity of the chord**
+  between the two ruled points (the chain keeps its shape, the chord is rotated and scaled onto the graded chord) to 1e-4 in on all 20 unruled
+  points at both sizes. `graded_outline` now uses it (identical when the two moves are equal, so nothing older changes);
+- what the import did: AccuMark rotated the piece 90 degrees so the grain runs along x, and re-ordered the vertices;
+- streams: 268 of 268 distinct corpus streams verify (the 3 new ones included). `selftest`: SECOND BLIND TEST row + a corpus row for the
+  internal lines; robustness 647 -> 730 (D4 is a seed).
+Not covered: a curve AccuMark itself smooths (a DXF has only straight points, so this 'curve' is 5 explicit points), notch types other than 5,
+a piece with seam allowance AND a drill.
+
 **The blind test - a marker AccuMark made for me, decoded without fitting (5th step).** You asked me to create
 this kind of marker myself. I built it in AccuMark (Easy Order on a fresh order for `ID1005 - TOP`, fabric row `S`,
 one of each size XS-XL, marker `CLAUDE-D3-BF`; the fabric-type cell is read-only and a COPIED order only keeps the row

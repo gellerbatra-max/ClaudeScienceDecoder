@@ -161,6 +161,18 @@ and the stream's bounding box equals the stored home box to 0.0001 in. Contours 
 the one guess in the grammar (`_PEN_MOVE` 6; BACK / FRONT need 20: 7 parts is a normal long step there): `record_outline`
 tries 6, 20, never and keeps the first that reproduces the record's area and perimeter.
 
+**The other lines of the piece (v4.7 [V], blind test CLAUDE-D4).** After the perimeter the stream holds, back to back, the grain
+line (2 points; implicit unless the header has a `G`) and then one contour per header record - `I` internal line, `H` cutout, `D` drill hole
+(1 point) - each `n` points (`!`: 3 points' worth of something else, adds none). Each contour starts with an ABSOLUTE point that carries no
+marker of its own; the counts add up exactly to the points left after the perimeter, so that is how they are split. A contour-start item's
+absolute position is its MAIN part alone: the prefix parts in front of it (up to 6 on a 2303 piece) are not a movement. Internal lines and
+drills are NOT graded (identical at every size). Verified equal to the piece objects on 77 records (grain, internal, cutout, drill).
+Fold pieces (`S` / `M` / `F` records) are not split this way yet [?].
+
+**Grading between two ruled points (v4.7 [V], blind test CLAUDE-D4).** Points without a rule between two ruled points move by a SIMILARITY
+of the chord joining them: the chord is rotated and scaled onto the graded chord and the chain keeps its shape (matched to 1e-4 in on 20 points
+at two sizes; a blend of the two moves by chain length is up to 0.295 in off). Identical to a plain translation when both ruled moves are equal.
+
 **Point attributes (v4.7 [V]).** The low nibble of a point's main tag and its extra byte say what the point is: low
 nibble `1` = a PLAIN point, or a NOTCH when the tag carries an extra byte (notch type = the extra byte's low
 nibble: 5 and 1 seen; the high nibble is a flag, 0 / 1 / 2 seen [?]); any other low nibble (`9 8 c 4 0`) = a TURN

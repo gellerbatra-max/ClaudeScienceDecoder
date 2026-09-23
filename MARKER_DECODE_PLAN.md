@@ -26,6 +26,11 @@
 > * **The harness is reproducible:** the same order processed again differs in 18 bytes (name
 >   digits + stamps).
 >
+> * **SECOND BLIND TEST (`CLAUDE-D4`, a piece I designed with make_aama_dxf.py, imported with the DCU, Easy Order):** grain, internal
+>   line and drill were wrong until the contours after the perimeter were split by the header counts (`I` / `H` / `D` / `G`) with each contour's
+>   absolute start = the main part alone - now identical to the piece objects on 77 / 77 records; and the piece-side grading rule (blend by chain
+>   length) was 0.295 in off where two different rules sit on one chain - the marker's stream matches a chord SIMILARITY to 1e-4 in, which
+>   `graded_outline` now uses. 268 / 268 streams verify.
 > * **THE BLIND TEST (`CLAUDE-D3-BF`, ID1005 BACK + FRONT, made in AccuMark for this):** the marker-only ZIP decoded right
 >   except outlines - my pen-move threshold was wrong for a 7-part step; fixed by trying 6 / 20 / never against the record's
 >   area + perimeter. Then 10 / 10 outlines, bounding box == stored home box (0.0001 in). And the answer key showed the

@@ -45,6 +45,8 @@ SEEDS = [
     ('CLAUDE-D2-M0', 'markers-live/CLAUDE-UNP-D2-TWIN/CLAUDE-D2-M0.zip', 'marker'),
     # v4.7: the blind-test marker (BACK + FRONT: fold halves with seam allowances), pieces included
     ('CLAUDE-D3-BF', 'markers-live/CLAUDE-UNP-D3-BLIND/CLAUDE-D3-BF.zip', 'marker'),
+    # v4.7: the second blind marker - a piece built from numbers (curve, notches, drill, two grade rules)
+    ('CLAUDE-D4', 'markers-live/CLAUDE-UNP-D4-CURVE/CLAUDE-D4.zip', 'marker'),
 ]
 QUICK_SEEDS = SEEDS[:2]
 

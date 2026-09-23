@@ -3,7 +3,7 @@
 touching AccuMark.  Decodes every capture under captures/, checks each against
 its DXF, and re-runs the known structural-diff cases (including the two that
 must report NO change).  Exits non-zero on any failure."""
-import copy, glob, os, sys, subprocess
+import copy, glob, math, os, sys, subprocess
 HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, HERE)
 import accumark_pds as ap
@@ -1383,12 +1383,85 @@ for zp in ('markers/2303-BD137-UNLAID/2303-BD 137.zip', 'markers-live/CLAUDE-UNP
             pc = rr['pieces'].get(rc.get('piece'))
             if not pc or (rc['text'], rc['stream_len']) in seen_: continue
             seen_.add((rc['text'], rc['stream_len'])); ro = am.record_outline(dd, rc)
-            if not ro or not ro['verified'] or not ro['lines']: continue
+            if not ro or not ro['verified'] or not ro['lines'] or any(l['kind'] == 'mirror' for l in ro['lines']): continue      # fold pieces: their own block below
             nm = {'internal_cutout': 'cutout'}; want = [(nm.get(k, k), [(q['x'], q['y']) for q in l]) for k, l in zip(pc['block']['internal_kinds'], pc['block']['internal_lines'])]
             got = [(l['kind'], [(round(x * 1e4), round(y * 1e4)) for x, y in l['points']]) for l in ro['lines']]
             il_n += 1; il_bad += want != got
 print(f"   {'ok ' if il_n >= 60 and not il_bad else 'FAIL'} stream internal lines (v4.7): grain, internal lines, cutouts and drills split by the header counts equal the piece objects' exactly on {il_n - il_bad} of {il_n} records (2303 pieces carry up to 10 lines each)")
 if il_n < 60 or il_bad: fails.append(f'stream internal lines: {il_bad} of {il_n} differ')
+
+# v4.7: FOLD PIECES. A fold half's stream is: the CUT half (the outline), the grain line (2 points), the internal lines (header I / H / D counts), the SEW
+# half (the stitch line, as many points as are left over) and the mirror line (2 points). Verified against the piece objects of ID1005 - BACK / FRONT (blind
+# test D3: at the base size M the grain, internal line and sew half equal the piece object's exactly, at XS / L / XL the sew half equals the piece's GRADED stitch
+# line to 1e-4 in - seven ruled points and six different rule numbers per piece, so this also confirms the chord-similarity grading), and the 2303 OUCF pieces.
+# The layout is only accepted when it closes geometrically (cut and sew half ends on the mirror line): the older vintage (1825D / 5683D / 2591A / 418T markers) lays
+# these lines out differently and is left unlabelled.
+bad = []; fb = os.path.join(HERE, 'markers-live', 'CLAUDE-UNP-D3-BLIND', 'CLAUDE-D3-BF.zip')
+if os.path.isfile(fb):
+    rfb = am.place_marker(fb); mfb = rfb['markers'][0]['marker']; dfb = mfb['object']['data']
+    for pn in ('ID1005 - BACK', 'ID1005 - FRONT'):
+        blk = rfb['pieces'][pn]['block']; want = {k_: [(q['x'], q['y']) for q in l] for k_, l in zip(blk['internal_kinds'], blk['internal_lines'])}
+        for sz in ('XS', 'S', 'M', 'L', 'XL'):
+            rc = next(r_ for r_ in mfb['records'] if r_['piece'] == pn and r_['size'] == sz); ro = am.record_outline(dfb, rc)
+            o_ = rc['offset']; t_ = len(rc['text']); dec = am.decode_record_stream(dfb[o_+t_:o_+t_+rc['stream_len']], ro['pen_move'])
+            if 'sew' not in dec['labels'] or dec['labels'][-1] != 'mirror': bad.append(f'{pn} {sz}: fold layout not recognised {dec["labels"]}'); continue
+            sew = [(x, y) for x, y, _ in dec['contours'][dec['labels'].index('sew')]]; stitch = [(x * 1e4, y * 1e4) for x, y in am.graded_outline(blk, sz)]
+            if max(max(abs(a_[0] - b_[0]), abs(a_[1] - b_[1])) for a_, b_ in zip(sew, stitch)) > 1.5: bad.append(f'{pn} {sz}: sew half != graded stitch line')
+            lines = {l['kind']: [(round(x * 1e4), round(y * 1e4)) for x, y in l['points']] for l in ro['lines']}
+            if any(lines.get(k_) != want[k_] for k_ in ('grain', 'internal') if k_ in want): bad.append(f'{pn} {sz}: grain / internal line differ')
+            if sz == 'M' and lines.get('mirror') != want.get('mirror'): bad.append(f'{pn} M: mirror {lines.get("mirror")} != {want.get("mirror")}')
+            mir = lines['mirror']; fold = (sew[0], sew[-1])
+            if max(abs((p_[0] - mir[0][0]) * (mir[1][1] - mir[0][1]) - (p_[1] - mir[0][1]) * (mir[1][0] - mir[0][0])) / max(1, math.hypot(mir[1][0] - mir[0][0], mir[1][1] - mir[0][1])) for p_ in fold) > 3: bad.append(f'{pn} {sz}: sew ends off the mirror line')
+            if not (ro['sew'] and len(ro['sew']) == 2 * len(sew) - 2): bad.append(f'{pn} {sz}: unfolded sew line has {len(ro["sew"] or [])} points')
+# 2303 OUCF fold pieces (their piece objects are bundled with the placed marker; the piece perimeter IS the cut line there): the grain line equals the piece's
+# grain line up to the rigid shift between the marker's frame and the piece's (0 on three pieces, 12 x 1e-4 in in y on A2), and the stream's mirror line is the chord of
+# the SEW half (the piece's own mirror line is the chord of the cut half)
+ou_n = ou_bad = 0
+z23 = os.path.join(HERE, 'markers', '2303-BD137-PLACED', '2303-BD 137 PLACED.zip')
+if os.path.isfile(z23):
+    r23 = am.place_marker(z23); seen_ = set()
+    for mm in r23['markers']:
+        m_ = mm['marker']; dd = m_['object']['data']
+        for rc in m_['records']:
+            pc = r23['pieces'].get(rc.get('piece'))
+            if not pc or 'OUCF' not in rc['piece'] or (rc['text'], rc['stream_len']) in seen_: continue
+            seen_.add((rc['text'], rc['stream_len'])); ro = am.record_outline(dd, rc)
+            if not ro or not ro['verified']: continue
+            blk = pc['block']; want = {k_: [(q['x'], q['y']) for q in l] for k_, l in zip(blk['internal_kinds'], blk['internal_lines'])}
+            o_ = rc['offset']; t_ = len(rc['text']); dec = am.decode_record_stream(dd[o_+t_:o_+t_+rc['stream_len']], ro['pen_move'])
+            if 'sew' not in dec['labels']: ou_bad += 1; ou_n += 1; continue
+            cut0 = dec['contours'][0][0]; sew = dec['contours'][dec['labels'].index('sew')]
+            lines = {l['kind']: [(round(x * 1e4), round(y * 1e4)) for x, y in l['points']] for l in ro['lines']}; ou_n += 1
+            sh = (cut0[0] - blk['perimeter'][0]['x'], cut0[1] - blk['perimeter'][0]['y'])
+            if [(x - sh[0], y - sh[1]) for x, y in lines['grain']] != want['grain'] or lines['mirror'] != [(sew[0][0], sew[0][1]), (sew[-1][0], sew[-1][1])]: ou_bad += 1
+if ou_n < 20 or ou_bad: bad.append(f'2303 OUCF: {ou_bad} of {ou_n} records differ from the piece objects (grain up to the frame shift / mirror = sew chord)')
+# the older vintage is left alone (no wrong lines): 1825D marker-only records have no `mirror` label
+for zn_, mn_ in (('1825D-SS21-UNLAID', '1825D-BD 180 SS21.zip'), ('5683D-SS21-UNLAID', '5683D-BD 168 SS21.zip')):
+    for mk_ in am.place_marker(os.path.join(HERE, 'markers', zn_, mn_))['markers']:
+        for rc in mk_['marker']['records']:
+            ro = am.record_outline(mk_['marker']['object']['data'], rc)
+            if ro and any(l['kind'] == 'mirror' for l in ro['lines']): bad.append(f'{zn_}: a mirror line was labelled on the older vintage')
+print(f"   {'ok ' if not bad else 'FAIL'} fold pieces (v4.7): cut half + grain + internal lines + sew half + mirror line split from the stream - BACK / FRONT at 5 sizes and {ou_n} 2303 OUCF records equal the piece objects; the older vintage stays unlabelled  {'; '.join(bad[:3])}")
+if bad: fails.append('fold pieces: ' + '; '.join(bad[:5]))
+
+# v4.7: the grain line of the marker-only ZIPs (older vintage: 1825D / 5683D / 2591A / 418T, their other lines are not decoded). Read as `inferred`: the second
+# contour's first two points are a horizontal segment, and every one of the corpus's bundled piece objects has a horizontal grain line (counted here too, 81 in the fixtures; 135 over every capture folder).
+gr_n = gr_bad = 0; gr_basis = set()
+for zn_, mn_ in (('1825D-SS21-UNLAID', '1825D-BD 180 SS21.zip'), ('5683D-SS21-UNLAID', '5683D-BD 168 SS21.zip'), ('2591A-SS21-UNLAID', '2591A-BD 157 AW SS21.zip'), ('418T-SHAPESHIFTER-UNLAID', '418T-BD 160 SHAPESHIFTER.zip')):
+    for mk_ in am.place_marker(os.path.join(HERE, 'markers', zn_, mn_))['markers']:
+        for e in mk_['inventory']['slots']:
+            gr_n += 1; g_ = e.get('grain'); gr_basis.add(e.get('grain_basis'))
+            if not g_ or len(g_) != 2 or abs(g_[0][1] - g_[1][1]) > 1e-9 or g_[0][0] == g_[1][0]: gr_bad += 1
+po_n = po_h = 0
+for zp_ in glob.glob(os.path.join(HERE, 'markers', '**', '*.zip'), recursive=True) + glob.glob(os.path.join(HERE, 'markers-live', '**', '*.zip'), recursive=True):
+    try: pcs, _ = am.load_pieces(am.list_zip(zp_))
+    except Exception: continue
+    for pc_ in pcs.values():
+        if not pc_: continue
+        for k_, l_ in zip(pc_['block']['internal_kinds'], pc_['block']['internal_lines']):
+            if k_ == 'grain' and len(l_) == 2: po_n += 1; po_h += l_[0]['y'] == l_[1]['y']
+print(f"   {'ok ' if gr_n >= 110 and not gr_bad and gr_basis <= {'inferred', 'stream'} and po_n and po_h == po_n else 'FAIL'} grain of the marker-only ZIPs (v4.7): {gr_n - gr_bad} of {gr_n} slots have a horizontal grain line, basis {sorted(b for b in gr_basis if b)}; every one of {po_n} grain lines in the bundled piece objects is horizontal ({po_h})")
+if gr_n < 110 or gr_bad or po_h != po_n: fails.append(f'marker-only grain: {gr_bad} of {gr_n} slots without a horizontal grain; piece objects {po_h} of {po_n} horizontal')
 
 print('-- marker byte map (v4.4, see accumark_marker.marker_coverage)')
 # Every byte owned by a section a parser reads must be classified (identified /

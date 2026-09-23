@@ -86,6 +86,21 @@ each engine (`MARKER_DATASET_DESIGN.md`, F5).
 
 **Not run, and why.** F1-F3 (width, quantities, single-size markers) predict only header width / section 15 / size rows, all already decoded; F4 (block buffer) needs an unequal buffer object (the only one in the scratch area, ZZBB-1, is 1 cm on all four sides) and a place to assign it - the Step 4 fabric row shows no block-buffer column, and the Defaults dialog looks like app-level defaults (width 137.16 there against 134 on the order), i.e. the user's own settings, which I did not touch; F6 needs pieces of controlled topology from Pattern Design. None is needed to read an unplaced marker; each has its procedure in `MARKER_DATASET_DESIGN.md`.
 
+**Fold pieces, and a grain line for every marker-only ZIP (7th step).** The next step after the blind tests: the fold halves of your real styles.
+- **The layout of a fold half's stream** (verified against the piece objects of `ID1005 - BACK` / `FRONT` and the 2303 OUCF pieces): the CUT half (the
+  outline), then the grain line (2 points), the internal lines (header `I` / `H` / `D` counts), the SEW half - the stitch line, as many points as are left over -
+  and the mirror line (2 points). The sew half from the stream equals the piece's stitch line at the base size exactly and at XS / L / XL to 1e-4 in; that piece
+  has 7 ruled points and 6 different rule numbers, so it also confirms the chord-similarity grading of the previous step. Grain and internal line are identical at
+  every size, the mirror line moves with size (it is the chord of the sew half). So a marker-only ZIP of such a piece now carries its SEAM ALLOWANCE too
+  (`sew_outline` in the inventory). The layout is accepted only when it closes geometrically (cut and sew ends lie on the mirror line); 2303 OUCF: the piece's
+  perimeter is the cut line there and the marker frame differs from the piece frame by a rigid shift (12 x 1e-4 in on one piece).
+- **The older vintage** (the 1825D / 5683D / 2591A / 418T markers - your real styles) lays these lines out differently (id 0 items `(-10000, -1)`, chains
+  ending in a `00`-tag item, per-point attribute bytes after the mirror data) and is NOT decoded. Its grain line, however, is recognisable: the second contour's
+  first two points are a segment with dy exactly 0 - **89 of 89 records** (88 inside the outline's box) - and every grain line in the bundled piece objects is
+  horizontal (81 in the fixtures, 135 over every capture folder). `unplaced_inventory` slots report `grain` with `grain_basis: 'inferred'` for those (117 of 117
+  slots of the four marker-only ZIPs), `'stream'` where the layout was verified. It is a position inferred from structure, not a verified read.
+- selftest: fold-pieces row (BACK / FRONT at 5 sizes, 35 OUCF records) and a marker-only grain row.
+
 **The second blind test - a piece I designed, imported and made a marker from (6th step).** You asked me to
 create the pattern too. With the `accumark-pattern-marker` skill: a 20 x 15 cm panel `CLAUDE-CURVE` written as an ASTM DXF
 (`dataset/claude_curve_spec.json`: a rounded corner of 5 points on a 90 degree arc, 2 notches, a drill hole, a grain line, an

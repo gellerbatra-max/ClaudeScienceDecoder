@@ -803,27 +803,50 @@ def decode_record_stream(st, pen_move=None):
         else: ck.append(('turn', (ex_[-1] & 15) or None) if ex_ else ('turn', None))
         p = q + 2
     if stop == 'end': stop = 'trailer'
-    # v4.7 (blind test CLAUDE-D4): after the perimeter the stream holds the piece's OTHER lines back to back - the grain line
-    # (2 points, implicit unless the header has a 'G'), then one contour per header record I (internal line), H (cutout), D (drill),
-    # each `n` points, each starting with an ABSOLUTE point that carries no marker of its own. Split by those counts when the
-    # header is only I / H / D / G / ! records and the counts add up exactly to the points left over (RUFFLE, 2303 OUMO,
-    # CLAUDE-D4, CLAUDE-GRADE-TEST, ...); anything else (fold pieces: S / M / F records) keeps the earlier split.
+    # v4.7 (blind tests CLAUDE-D4 and D3): after the perimeter the stream holds the piece's OTHER lines back to back, each contour
+    # starting with an ABSOLUTE point that carries no marker of its own. The order (verified against the piece objects of
+    # CLAUDE-D4, ID1005 - BACK / FRONT and the 2303 pieces):
+    #     perimeter (the CUT line; a fold piece stores ONE HALF)
+    #     grain line            2 points - implicit unless the header has a `G`
+    #     one contour per header record I (internal line) / H (cutout) / D (drill) / G (grain), `n` points each
+    #     the SEW line          a fold piece with seam allowance: the stitch half, as many points as are left over
+    #     the mirror line       2 points (`M`) - a fold piece
+    # Split only when the arithmetic closes exactly (the points left over = the counts, with a sew half of at least 3 points when the
+    # header has S records); F and other records keep the plain split.
     labels = ['perimeter'] + ['other'] * max(0, len(contours) - 1)
     hl = [chr(t) for t, _ in header]
-    if len(contours) >= 2 and all(c in 'IHDG!' for c in hl):
-        counts = ([] if 'G' in hl else [2]) + [n for t, n in header if chr(t) in 'IHDG']
-        names = ([] if 'G' in hl else ['grain']) + [{'I': 'internal', 'H': 'cutout', 'D': 'drill', 'G': 'grain'}[chr(t)] for t, n in header if chr(t) in 'IHDG']
+    if len(contours) >= 2 and all(c in 'IHDG!SM' for c in hl):
+        lines = [(n, {'I': 'internal', 'H': 'cutout', 'D': 'drill', 'G': 'grain'}[chr(t)]) for t, n in header if chr(t) in 'IHDG']
+        plan = ([] if 'G' in hl else [(2, 'grain')]) + lines
+        tail = [(2, 'mirror')] if 'M' in hl else []
         flat = [r for cr_ in raws[1:] for r in cr_]; ids = [pt[2] for c_ in contours[1:] for pt in c_]
-        if sum(counts) == len(flat):
+        left = len(flat) - sum(n for n, _ in plan) - sum(n for n, _ in tail)
+        if 'S' in hl:
+            # the sew half exists only in the verified fold layout: two S records around an M
+            plan = plan + ([(left, 'sew')] if left >= 3 and hl.count('S') == 2 and 'M' in hl else [(-1, 'bad')])
+        elif left != 0: plan = [(-1, 'bad')]
+        plan = plan + tail
+        if all(n >= 0 for n, _ in plan):
             nc = [contours[0]]; nk = [kinds[0]]; labels = ['perimeter']; i0 = 0
-            for c_, nm in zip(counts, names):
+            for c_, nm in plan:
                 pts = []; xx = yy = 0
                 for j in range(c_):
                     sx, sy, mx_, my_ = flat[i0 + j]
                     xx, yy = (mx_, my_) if j == 0 else (xx + sx, yy + sy)
                     pts.append((xx, yy, ids[i0 + j]))
-                nc.append(pts); nk.append([('plain', None)] * c_); labels.append(nm); i0 += c_
-            contours, kinds = nc, nk
+                nc.append(pts); nk.append([('turn', None)] * c_); labels.append(nm); i0 += c_
+            # a fold piece must close geometrically: the cut half's and the sew half's first / last points lie ON the mirror line. The
+            # newer streams do (BACK, FRONT, the 2303 OUCF pieces, the blouse); the 1825D / 5683D / 2591A / 418T vintage lays these
+            # lines out differently (id 0 items, other chains) and fails - then nothing is labelled rather than something wrong
+            ok_ = True
+            if 'M' in hl:
+                mi = labels.index('mirror'); ma, mb = [(x_, y_) for x_, y_, _ in nc[mi]]
+                dx_, dy_ = mb[0] - ma[0], mb[1] - ma[1]; ln_ = math.hypot(dx_, dy_)
+                def _on(pt): return ln_ < 1 or abs((pt[0] - ma[0]) * dy_ - (pt[1] - ma[1]) * dx_) / ln_ <= 3
+                chk = [nc[0][0], nc[0][-1]] + ([nc[labels.index('sew')][0], nc[labels.index('sew')][-1]] if 'sew' in labels else [])
+                ok_ = all(_on(pt_[:2]) for pt_ in chk)
+            if ok_: contours, kinds = nc, nk
+            else: labels = ['perimeter'] + ['other'] * (len(contours) - 1)
     return dict(contours=contours, header=header, end=p, stop=stop, size=len(st), spans=spans, kinds=kinds, labels=labels)
 
 def verify_stream_outline(contour, area, perimeter, tol=0.01):
@@ -876,11 +899,21 @@ def record_outline(data, rec):
         if ok: break
     if best is None: return None
     ok, d, c0, k0, unfolded, a, pr, pm = best
-    return dict(points=[(x / 1e4, y / 1e4) for x, y, _ in c0], verified=ok and d['stop'] == 'trailer', unfolded=unfolded,
+    ro = dict(points=[(x / 1e4, y / 1e4) for x, y, _ in c0], verified=ok and d['stop'] == 'trailer', unfolded=unfolded,
                 pen_move=pm, labels=d.get('labels'), kinds=k0,
-                lines=[dict(kind=lb, points=[(x / 1e4, y / 1e4) for x, y, _ in c]) for lb, c in zip((d.get('labels') or [])[1:], d['contours'][1:]) if lb in ('grain', 'internal', 'cutout', 'drill')],
+                lines=[dict(kind=lb, points=[(x / 1e4, y / 1e4) for x, y, _ in c]) for lb, c in zip((d.get('labels') or [])[1:], d['contours'][1:]) if lb in ('grain', 'internal', 'cutout', 'drill', 'mirror')],
+                sew=next(([(x / 1e4, y / 1e4) for x, y, _ in (_unfold_contour(c) if unfolded else c)] for lb, c in zip((d.get('labels') or [])[1:], d['contours'][1:]) if lb == 'sew'), None),
                 notches=[(i, k[1], c0[i][0] / 1e4, c0[i][1] / 1e4) for i, k in enumerate(k0) if k[0] == 'notch'],
                 area=a, perimeter=pr, other=[[(x / 1e4, y / 1e4) for x, y, _ in c] for c in d['contours'][1:]], stop=d['stop'], header=d['header'])
+    # every line above came from a stream whose layout was verified against a piece object (basis 'stream'). The 1825D / 5683D / 2591A / 418T vintage
+    # lays its other lines out differently and is not decoded, but its grain line is recognisable: the second contour's first two points are a
+    # horizontal segment (exactly dy = 0) - 89 of 89 records, 88 of them inside the outline's box - and every one of 135 grain lines in the bundled piece
+    # objects of the corpus is horizontal in the piece frame. Reported as `inferred`, never as verified.
+    for l_ in ro['lines']: l_['basis'] = 'stream'
+    if not any(l_['kind'] == 'grain' for l_ in ro['lines']) and len(d['contours']) >= 2 and len(d['contours'][1]) >= 2:
+        (gx0, gy0, _), (gx1, gy1, _) = d['contours'][1][0], d['contours'][1][1]
+        if gy0 == gy1 and gx0 != gx1: ro['lines'].append(dict(kind='grain', points=[(gx0 / 1e4, gy0 / 1e4), (gx1 / 1e4, gy1 / 1e4)], basis='inferred'))
+    return ro
 
 def _header_sums(mk):
     """How the header doubles @422 / @454 relate to the slots - a MODE per
@@ -1594,9 +1627,12 @@ def unplaced_inventory(mk, pieces=None, piece_errors=None, use_grading=True, geo
             ro_ = record_outline(mk['object']['data'], s['record'])
             entry['notches'] = [dict(type=n_[1], x=n_[2], y=n_[3]) for n_ in ro_['notches']]
             # the piece's other lines from the stream: grain (direction of the fabric), internal lines, cutouts, drill holes (inches, piece frame)
-            entry['grain'] = next((l['points'] for l in ro_['lines'] if l['kind'] == 'grain'), None)
+            gl_ = next((l for l in ro_['lines'] if l['kind'] == 'grain'), None)
+            entry['grain'] = gl_['points'] if gl_ else None
+            entry['grain_basis'] = gl_['basis'] if gl_ else None      # 'stream' (layout verified against piece objects) | 'inferred' (older vintage: horizontal 2-point segment)
             entry['internal_lines'] = [l['points'] for l in ro_['lines'] if l['kind'] in ('internal', 'cutout')]
             entry['drills'] = [l['points'][0] for l in ro_['lines'] if l['kind'] == 'drill']
+            entry['sew_outline'] = ro_.get('sew')      # a fold piece with seam allowance: the STITCH line (the outline above is the cut line)
         if outline:
             xs = [p[0] for p in outline]; ys = [p[1] for p in outline]
             entry.update(outline=outline, checks=dict(

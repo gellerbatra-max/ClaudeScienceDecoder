@@ -169,6 +169,11 @@ absolute position is its MAIN part alone: the prefix parts in front of it (up to
 drills are NOT graded (identical at every size). Verified equal to the piece objects on 77 records (grain, internal, cutout, drill).
 Fold pieces (`S` / `M` / `F` records) are not split this way yet [?].
 
+**Fold halves (v4.7 [V for the newer vintage]).** After the cut half: the grain line (2 points), the internal lines (I / H / D counts), the SEW half (the
+stitch line - every point left over) and the mirror line (2 points). Accepted only when the cut and sew halves' end points lie on the mirror line. The mirror line is
+the chord of the sew half and moves with the size; the grain and internal lines do not. The 1825D / 5683D / 2591A / 418T vintage differs (id 0 items `(-10000, -1)`, a
+`00`-tag item at the end of a chain, more attribute bytes) - not decoded [?]; its grain is the second contour's first two points, a horizontal segment (89 of 89 records).
+
 **Grading between two ruled points (v4.7 [V], blind test CLAUDE-D4).** Points without a rule between two ruled points move by a SIMILARITY
 of the chord joining them: the chord is rotated and scaled onto the graded chord and the chain keeps its shape (matched to 1e-4 in on 20 points
 at two sizes; a blend of the two moves by chain length is up to 0.295 in off). Identical to a plain translation when both ruled moves are equal.

@@ -26,6 +26,9 @@
 > * **The harness is reproducible:** the same order processed again differs in 18 bytes (name
 >   digits + stamps).
 >
+> * **FOLD PIECES:** the stream of a fold half is cut half + grain + internal lines + SEW half + mirror line (verified on BACK / FRONT at 5 sizes and
+>   35 2303 OUCF records; the marker-only ZIP now carries the seam allowance), accepted only if the ends lie on the mirror line. The older vintage (1825D / 5683D /
+>   2591A / 418T) lays them out differently and is not decoded; its grain is inferred (horizontal 2-point segment, 89 / 89 records) and flagged `inferred`.
 > * **SECOND BLIND TEST (`CLAUDE-D4`, a piece I designed with make_aama_dxf.py, imported with the DCU, Easy Order):** grain, internal
 >   line and drill were wrong until the contours after the perimeter were split by the header counts (`I` / `H` / `D` / `G`) with each contour's
 >   absolute start = the main part alone - now identical to the piece objects on 77 / 77 records; and the piece-side grading rule (blend by chain

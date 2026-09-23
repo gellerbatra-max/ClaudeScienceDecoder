@@ -86,6 +86,18 @@ each engine (`MARKER_DATASET_DESIGN.md`, F5).
 
 **Not run, and why.** F1-F3 (width, quantities, single-size markers) predict only header width / section 15 / size rows, all already decoded; F4 (block buffer) needs an unequal buffer object (the only one in the scratch area, ZZBB-1, is 1 cm on all four sides) and a place to assign it - the Step 4 fabric row shows no block-buffer column, and the Defaults dialog looks like app-level defaults (width 137.16 there against 134 on the order), i.e. the user's own settings, which I did not touch; F6 needs pieces of controlled topology from Pattern Design. None is needed to read an unplaced marker; each has its procedure in `MARKER_DATASET_DESIGN.md`.
 
+**The nest spec (8th step) - the deliverable.** `python nest_spec.py "<marker>.zip" --json job.json [--dxf] [--svg] [--units cm|mm|in]` (also
+`accumark_marker.py <zip> --nest-spec`) turns a marker-only ZIP into the whole unplaced job for a nesting engine: fabric width and the shortest 100%-efficient length,
+one SHAPE per (piece, size, cut) with its cut outline, seam line when the marker holds one, notches, grain, internal lines, drills, area, stored box and `padding`,
+and the DEMAND (quantities, with the mirrored outline written out for the mirrored instances). Documented in `NEST_SPEC.md`. Every spec carries its own checks (instances ==
+slots, sum of areas == the marker's area to lay, each outline's area == the area AccuMark declared, each outline fits the stored box) and ends `NEST SPEC COMPLETE`.
+Verified: the four real marker-only styles (1825D x 2 markers, 5683D, 2591A, 418T), both blind tests, a twin and the 2303 markers - **176 shapes / 243 pieces, all complete**; JSON and DXF
+round trips; the spec of a marker-only ZIP equals the spec of the full ZIP (whose outlines come from the piece objects) to 6e-4 cm; units in / cm / mm agree; mirrored geometry;
+a part-laid marker (CP 150) lists only what is left; and shapely, knowing nothing about AccuMark, accepts every outline as a valid polygon of exactly the stated area with every
+seam line inside its cut line. Found while writing it: the stored home box equals the outline's own box on every marker-only ZIP (even with a block-buffer table present) and is
+about 0.12 x 0.19 in larger on the July CP 150 markers - reported as `padding`, not hidden. Not in the spec, and said so: positions, one-way / two-way fabric (Lay Limits are a
+separate object - `rotation` is an assumption), notch / drill sizes, and for the older vintage the internal lines, seam lines and a verified grain.
+
 **Fold pieces, and a grain line for every marker-only ZIP (7th step).** The next step after the blind tests: the fold halves of your real styles.
 - **The layout of a fold half's stream** (verified against the piece objects of `ID1005 - BACK` / `FRONT` and the 2303 OUCF pieces): the CUT half (the
   outline), then the grain line (2 points), the internal lines (header `I` / `H` / `D` counts), the SEW half - the stitch line, as many points as are left over -

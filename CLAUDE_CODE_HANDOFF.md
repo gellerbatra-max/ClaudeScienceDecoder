@@ -120,6 +120,9 @@ as-generated marker on demand, reproducible to 18 bytes), follow the harness in
 `MARKER_DATASET_DESIGN.md` - and never use Explorer's *Generate Marker* on a copy of an
 order, it targets the original's marker.
 
+To hand the job to a nesting engine: `python nest_spec.py "some marker.zip" --json job.json [--dxf pieces.dxf] [--svg pieces.svg]` (format in `NEST_SPEC.md`;
+ends `NEST SPEC COMPLETE` or names the failing check).
+
 `--inventory --json` gives the same thing as data. The byte-level spec is
 `MARKER_FORMAT_SPEC.md`; `python -c "import accumark_marker as m; ..."`
 `m.marker_coverage(data)` says where the unexplained bytes are.

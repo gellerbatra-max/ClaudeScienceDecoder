@@ -26,6 +26,9 @@
 > * **The harness is reproducible:** the same order processed again differs in 18 bytes (name
 >   digits + stamps).
 >
+> * **NEST SPEC (`nest_spec.py`, `NEST_SPEC.md`):** the deliverable of the plan - one command from a marker-only ZIP to fabric width, shapes (cut outline, seam, notches, grain,
+>   internal lines, drills, stored box / padding) and demand (with mirrored geometry written out); 176 shapes / 243 pieces over the real and blind markers, all complete, read back
+>   by shapely and by a DXF round trip. Says what it does not know: positions, one-way fabric, and for the older vintage the seam / internal lines / verified grain.
 > * **FOLD PIECES:** the stream of a fold half is cut half + grain + internal lines + SEW half + mirror line (verified on BACK / FRONT at 5 sizes and
 >   35 2303 OUCF records; the marker-only ZIP now carries the seam allowance), accepted only if the ends lie on the mirror line. The older vintage (1825D / 5683D /
 >   2591A / 418T) lays them out differently and is not decoded; its grain is inferred (horizontal 2-point segment, 89 / 89 records) and flagged `inferred`.

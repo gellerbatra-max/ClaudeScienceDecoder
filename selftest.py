@@ -1463,6 +1463,85 @@ for zp_ in glob.glob(os.path.join(HERE, 'markers', '**', '*.zip'), recursive=Tru
 print(f"   {'ok ' if gr_n >= 110 and not gr_bad and gr_basis <= {'inferred', 'stream'} and po_n and po_h == po_n else 'FAIL'} grain of the marker-only ZIPs (v4.7): {gr_n - gr_bad} of {gr_n} slots have a horizontal grain line, basis {sorted(b for b in gr_basis if b)}; every one of {po_n} grain lines in the bundled piece objects is horizontal ({po_h})")
 if gr_n < 110 or gr_bad or po_h != po_n: fails.append(f'marker-only grain: {gr_bad} of {gr_n} slots without a horizontal grain; piece objects {po_h} of {po_n} horizontal')
 
+# v4.7: THE NEST SPEC (nest_spec.py) - the whole unplaced job as JSON / DXF / SVG for a nesting engine, from a marker-only ZIP.
+import tempfile, json as _json
+import nest_spec as ns
+bad = []; n_specs = n_shapes = n_inst = 0
+NEST_ZIPS = (('markers/1825D-SS21-UNLAID/1825D-BD 180 SS21.zip', 2), ('markers/5683D-SS21-UNLAID/5683D-BD 168 SS21.zip', 1), ('markers/2591A-SS21-UNLAID/2591A-BD 157 AW SS21.zip', 1),
+             ('markers/418T-SHAPESHIFTER-UNLAID/418T-BD 160 SHAPESHIFTER.zip', 1), ('markers-live/CLAUDE-UNP-D3-BLIND/CLAUDE-D3-BF-MARKER-ONLY.zip', 1),
+             ('markers-live/CLAUDE-UNP-D4-CURVE/CLAUDE-D4-MARKER-ONLY.zip', 1), ('markers-live/CLAUDE-UNP-D2-TWIN/CLAUDE-D2-M0.zip', 1), ('markers/2303-BD137-UNLAID/2303-BD 137.zip', 1))
+with tempfile.TemporaryDirectory() as td:
+    for rel, nm in NEST_ZIPS:
+        zp = os.path.join(HERE, rel)
+        if not os.path.isfile(zp): continue
+        specs = ns.build_nest_spec(zp)
+        if len(specs) != nm: bad.append(f'{rel}: {len(specs)} markers, expected {nm}')
+        for sp in specs:
+            n_specs += 1; n_shapes += len(sp['shapes']); n_inst += sum(d['quantity'] for d in sp['demand'])
+            if not sp['complete']: bad.append(f"{sp['source']['marker']}: incomplete {[c['name'] for c in sp['checks'] if not c['ok']]}")
+            if _json.loads(_json.dumps(sp)) != sp: bad.append(f"{sp['source']['marker']}: not JSON round-trippable")
+            # the DXF says what the JSON says: one CUT polyline per shape (+ mirrored copies), same areas
+            dp = os.path.join(td, 'x.dxf'); ns.write_dxf(sp, dp); pl = ns.read_dxf_polylines(dp)
+            want = sorted(abs(ns._area([tuple(p) for p in (s['outline_mirrored'] if mir else s['outline'])])) for s in sp['shapes'] if s['complete'] for mir in ([False] + ([True] if s.get('outline_mirrored') else [])))
+            got = sorted(abs(ns._area(p)) for p in pl.get('CUT', []))
+            if len(want) != len(got) or any(abs(a_ - b_) > 2e-4 * max(1.0, a_) for a_, b_ in zip(want, got)): bad.append(f"{sp['source']['marker']}: DXF cut polylines {len(got)} vs {len(want)} (areas differ)")
+            if sum(len(v) for k_, v in pl.items() if k_ == 'SEAM') != sum(1 for s in sp['shapes'] if s.get('seam_outline')) * 1 + sum(1 for s in sp['shapes'] if s.get('seam_outline_mirrored')): bad.append(f"{sp['source']['marker']}: DXF seam polylines")
+            # every shape: notches and grain lie inside / on its own box, demand covers every slot exactly once
+            slots = [o for d in sp['demand'] for o in d['slots']]
+            if len(slots) != len(set(slots)) or len(slots) != sp['totals']['instances']: bad.append(f"{sp['source']['marker']}: demand slots not unique")
+            for s in sp['shapes']:
+                for nt in s['notches']:
+                    if not (-0.01 <= nt['x'] <= s['width'] + 0.01 and -0.01 <= nt['y'] <= s['height'] + 0.01): bad.append(f"{sp['source']['marker']} {s['id']}: notch outside the box"); break
+            svp = os.path.join(td, 'x.svg'); ns.write_svg(sp, svp)
+            if not open(svp, encoding='utf-8').read().startswith('<svg'): bad.append('svg')
+    # units: the same job in in / cm / mm
+    z = os.path.join(HERE, 'markers', '5683D-SS21-UNLAID', '5683D-BD 168 SS21.zip')
+    a_in, a_cm, a_mm = (ns.build_nest_spec(z, u)[0]['totals']['area'] for u in ('in', 'cm', 'mm'))
+    if abs(a_cm / a_in - 6.4516) > 1e-3 or abs(a_mm / a_in - 645.16) > 0.1: bad.append(f'unit conversion {a_in} {a_cm} {a_mm}')
+    # independence from the piece objects: the spec of the marker-only ZIP == the spec of the full ZIP (whose outlines come from the piece object)
+    for full, only in (('markers-live/CLAUDE-UNP-D4-CURVE/CLAUDE-D4.zip', 'markers-live/CLAUDE-UNP-D4-CURVE/CLAUDE-D4-MARKER-ONLY.zip'), ('markers-live/CLAUDE-UNP-D3-BLIND/CLAUDE-D3-BF.zip', 'markers-live/CLAUDE-UNP-D3-BLIND/CLAUDE-D3-BF-MARKER-ONLY.zip')):
+        if not (os.path.isfile(os.path.join(HERE, full)) and os.path.isfile(os.path.join(HERE, only))): continue
+        sf = ns.build_nest_spec(os.path.join(HERE, full))[0]; so = ns.build_nest_spec(os.path.join(HERE, only))[0]
+        if [d['quantity'] for d in sf['demand']] != [d['quantity'] for d in so['demand']]: bad.append(f'{full}: demand differs')
+        for a_, b_ in zip(sf['shapes'], so['shapes']):
+            if len(a_['outline']) != len(b_['outline']) or max(max(abs(p[0] - q[0]), abs(p[1] - q[1])) for p, q in zip(a_['outline'], b_['outline'])) > 6e-4: bad.append(f"{full}: {a_['piece']} {a_['size']} outline differs between the full and the marker-only ZIP")
+        if 'D4' in full and so['totals']['outline_source'] != 'stream': bad.append('D4 marker-only spec must come from the stream')
+    # mirrored geometry (CLAUDE-D4 has 3 mirrored pairs): same area / box, grain and notches reflected about the middle of the box
+    sd = ns.build_nest_spec(os.path.join(HERE, 'markers-live', 'CLAUDE-UNP-D4-CURVE', 'CLAUDE-D4-MARKER-ONLY.zip'))[0]
+    if sd['totals']['mirrored_instances'] != 3: bad.append('D4 mirrored instances')
+    for s in sd['shapes']:
+        mo = [tuple(p) for p in s['outline_mirrored']]; o = [tuple(p) for p in s['outline']]
+        if abs(abs(ns._area(mo)) - s['area']) > 1e-6 or abs(max(p[1] for p in mo) - s['height']) > 1e-9 or min(p[1] for p in mo) < -1e-9: bad.append(f"{s['id']}: mirrored outline")
+        if abs(s['grain_mirrored']['points'][0][1] - (s['height'] - s['grain']['points'][0][1])) > 1e-9 or abs(s['drills_mirrored'][0][1] - (s['height'] - s['drills'][0][1])) > 1e-9: bad.append(f"{s['id']}: mirrored grain / drill")
+        if ns._area(mo) <= 0: bad.append(f"{s['id']}: mirrored outline not counter-clockwise")
+    # a part-laid marker lists only what is left: instances + already placed == slots of the marker
+    zc = os.path.join(HERE, 'markers', '2303-CP150-JULY', '2303-CP 150 CPL.zip')
+    if os.path.isfile(zc):
+        rc_ = am.place_marker(zc)
+        for sp, mm in zip(ns.build_nest_spec(zc), rc_['markers']):
+            if sp['totals']['instances'] + sp['totals']['already_placed'] != len(mm['marker']['slots']) or sp['source']['laid_state'] != 'partial': bad.append(f"{sp['source']['marker']}: part-laid accounting")
+print(f"   {'ok ' if not bad else 'FAIL'} NEST SPEC (v4.7): {n_specs} markers, {n_shapes} shapes, {n_inst} pieces - complete, JSON / DXF round trips, spec of the marker-only ZIP == spec of the full ZIP, units, mirrored geometry, part-laid accounting  {'; '.join(bad[:3])}")
+if bad: fails.append('nest spec: ' + '; '.join(bad[:5]))
+
+# a machine that knows nothing about AccuMark can use the spec: an independent geometry library (shapely, when installed) accepts every outline as a valid polygon of exactly
+# the stated area, and every seam line lies inside its cut line
+try:
+    from shapely.geometry import Polygon as _Poly
+except Exception: _Poly = None
+if _Poly:
+    sh_bad = []; sh_n = 0
+    for rel, _ in NEST_ZIPS:
+        zp = os.path.join(HERE, rel)
+        if not os.path.isfile(zp): continue
+        for sp in ns.build_nest_spec(zp):
+            for s_ in sp['shapes']:
+                P_ = _Poly(s_['outline']); sh_n += 1
+                if not s_.get('self_intersecting') and not P_.is_valid: sh_bad.append(f"{sp['source']['marker']} {s_['id']}: invalid polygon")
+                if abs(P_.area / s_['area'] - 1) > 1e-9: sh_bad.append(f"{sp['source']['marker']} {s_['id']}: area")
+                if s_.get('seam_outline') and not P_.contains(_Poly(s_['seam_outline']).buffer(-1e-6)): sh_bad.append(f"{sp['source']['marker']} {s_['id']}: seam outside cut")
+    print(f"   {'ok ' if not sh_bad else 'FAIL'} nest spec read by shapely: {sh_n} outlines are valid polygons of the stated area, seam lines inside their cut lines  {'; '.join(sh_bad[:3])}")
+    if sh_bad: fails.append('nest spec / shapely: ' + '; '.join(sh_bad[:4]))
+
 print('-- marker byte map (v4.4, see accumark_marker.marker_coverage)')
 # Every byte owned by a section a parser reads must be classified (identified /
 # raw / zero_pad / opaque) - only the envelope, the header scalars, sections 2-5,

@@ -1778,6 +1778,8 @@ def inventory_report(inv, checks=()):
 
 if __name__ == '__main__':
     import json, sys
+    if '--nest-spec' in sys.argv:                 # v4.7: the whole job as JSON / DXF / SVG for a nesting engine - see nest_spec.py
+        import nest_spec; sys.exit(nest_spec.main([a for a in sys.argv[1:] if a != '--nest-spec']))
     args = [a for a in sys.argv[1:] if not a.startswith('--')]; flags = {a for a in sys.argv[1:] if a.startswith('--')}
     for path in args:
         res = place_marker(path)

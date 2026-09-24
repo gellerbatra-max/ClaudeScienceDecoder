@@ -1182,8 +1182,8 @@ if os.path.isfile(D2) and os.path.isfile(LAID):
     # @88 = record head count + one constant per piece (RUFFLE: 209 + 4), on both twins' record
     sm = g['sig88_model']
     if not (sm['applicable'] and sm['ok'] and sm['constant'] == {'ID1005 - RUFFLE': 4} and all(s['record']['prefix'][1] == 209 for s in g['slots'])): bad.append(f'@88 model: {sm}')
-    # and the row can fail: move one slot's @88 by 1 in the bytes
-    b = bytearray(next(o for o in am.list_zip(D2)['marker'])['data']); struct.pack_into('<H', b, g['slots'][4]['slot'] + 88, 214)
+    # and the row can fail: move one slot's @88 by 30 in the bytes (a spread of up to 2 is accepted since v4.23: a real production piece)
+    b = bytearray(next(o for o in am.list_zip(D2)['marker'])['data']); struct.pack_into('<H', b, g['slots'][4]['slot'] + 88, 239)
     gm = am.parse_marker(bytes(b)); row = 'slot @88 = record head count + one constant per piece (as generated)'
     if {n: ok for n, ok, _ in am.check_marker(gm)}.get(row, True) or not any('@88' in x for x in am.marker_warnings(gm)): bad.append('a broken @88 did not fail its row / raise a warning')
     # the marker-level 0x0040 bit is a copy of the piece row's flag u16 @+14: 0 here, so a patched row flag must break it
@@ -2638,6 +2638,32 @@ for dn_ in ('twoply', 'flipcount', 'spread', 'rotation', 'notchnum', 'blockarea'
         if w3_ != sum(s_['record']['prefix'][3] for s_ in mk_['slots']) or w4_ != sum(s_['record']['prefix'][4] for s_ in mk_['slots']): bad.append(f'{os.path.basename(fp_)}: @472 {w3_} / @476 {w4_}')
 print(f"   {'ok ' if not bad else 'FAIL'} 45 degrees = a tilt of exactly 45.0 on top of the code (14 slots + the collar, {nfit_} of 18 on the plot, worst {worst_['fixed']:.3f} in; tilt ignored / inverted misses); the thin tilted pieces' frame is flagged ambiguous, no earlier marker is; @472 / @476 = sums of record prefix words 3 / 4 on {n_pf} fixture markers  {'; '.join(bad[:3])}")
 if bad: fails.append('45 degrees: ' + '; '.join(bad[:5]))
+
+print('-- plaid / stripe markers and the real-marker scan (v4.23, MARKER_FORMAT_SPEC.md section 29): section 1 doubles, matching sections named, the relaxed @88 rule')
+# plaid/: the plaid / stripe repeats and offsets are twelve f64 in section 1 (@300..@395); the matching rules (sections 9, 23, 24) are named in a warning, bounded in the byte map, not decoded.
+PLD = os.path.join(HERE, 'plaid'); pgt = _json.load(open(os.path.join(PLD, 'GROUND_TRUTH.json'))); bad = []
+for nm_, matching_ in (('ZZP1-M', True), ('ZZPH-M', False)):
+    d_ = am.read_storage_marker(os.path.join(PLD, nm_ + '.GT_mark')); mk_ = am.parse_marker(d_)
+    if not mk_['has_plaid_stripe'] or any(abs(a_ - b_) > 1e-4 for k_ in pgt['section1_doubles_in'] for a_, b_ in zip(mk_['plaid_stripe'][k_], pgt['section1_doubles_in'][k_])): bad.append(f"{nm_}: plaid values {mk_['plaid_stripe']}")
+    w_ = am.marker_warnings(mk_); has_ = [k_ for k_ in am.MATCHING_SECTIONS if mk_['directory'][k_] not in (0, 0xffffffff)]
+    if bool(has_) != matching_ or any('MATCHING' in x_ for x_ in w_) != matching_ or any('directory word 41' in x_ or 'never seen' in x_ for x_ in w_): bad.append(f'{nm_}: matching sections {has_}, warnings {[x_[:50] for x_ in w_]}')
+    cv_ = am.marker_coverage(d_, mk_)
+    if any(k_ in am.PARSED_SECTIONS for a_, b_, k_ in cv_['unknown_runs']) or (matching_ and cv_['counts']['opaque'] < 600): bad.append(f"{nm_}: coverage {cv_['counts']}")
+spz_ = ns.build_nest_spec(os.path.join(PLD, 'ZZP1-M.GT_mark'))[0]; ps_ = spz_['fabric']['plaid_stripe']
+if ps_ is None or abs(ps_['plaid_repeat'][0] - 12.0) > 0.01 or abs(ps_['plaid_offset'][0] - 2.0) > 0.01 or abs(ps_['stripe_repeat'][0] - 10.0) > 0.01 or abs(ps_['stripe_offset'][0] - 1.0) > 0.01 or not any('MATCHING' in x_ for x_ in spz_['warnings']): bad.append(f'nest spec plaid {ps_}')
+# no marker of the fixture folders (or the corpus) is called plaid, and a non-zero directory word 41 without the plaid doubles is still reported
+n_np = 0
+for dn_ in ('twoply', 'flipcount', 'spread', 'rotation', 'notchnum', 'blockarea', 'deg45', 'tilt'):
+    for fp_ in sorted(glob.glob(os.path.join(HERE, dn_, '*.GT_mark'))):
+        n_np += 1
+        if am.parse_marker(am.read_storage_marker(fp_))['has_plaid_stripe']: bad.append(f'{fp_}: called plaid')
+b41_ = bytearray(am.read_storage_marker(os.path.join(HERE, 'flipcount', 'ZZR-S.GT_mark'))); struct.pack_into('<I', b41_, am.DIR_OFF + 41 * 4, 0x12345678); m41_ = am.parse_marker(bytes(b41_))
+if not any('directory word 41' in x_ for x_ in am.marker_warnings(m41_)) and m41_['has_plaid_stripe'] is False: bad.append('a stray directory word 41 was not reported')
+# the slot @88 rule: a spread of 2 in the per-piece constant is accepted (a real production piece), a wider one is not
+def _s88_(cs_): return am._sig88_model(dict(slots=[dict(sig88=60 + c_, piece='P', record=dict(prefix=[0, 60, 0, 0, 0]), record_index=i_) for i_, c_ in enumerate(cs_)]))
+if not _s88_([94, 96, 96])['ok'] or _s88_([94, 96, 96])['constant'] != {'P': 94} or _s88_([94, 99])['ok'] or not _s88_([96, 96])['ok']: bad.append('@88 rule')
+print(f"   {'ok ' if not bad else 'FAIL'} plaid / stripe repeats and offsets read from section 1 (12 / 2 cm and 10 / 1 cm), the matching sections named, bounded and not decoded, the nest spec carries the plaid values; none of {n_np} fixture markers is plaid; a stray directory word 41 is still reported; the @88 rule takes a spread of 2  {'; '.join(bad[:3])}")
+if bad: fails.append('plaid / real scan: ' + '; '.join(bad[:5]))
 
 print('-- marker byte map (v4.4, see accumark_marker.marker_coverage)')
 # Every byte owned by a section a parser reads must be classified (identified /

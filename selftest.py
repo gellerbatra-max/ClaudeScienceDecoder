@@ -2807,6 +2807,31 @@ if cv5_['counts']['zero'] < 500 or cv5_['counts']['unknown'] > 400 or any(k_ == 
 print(f"   {'ok ' if not bad else 'FAIL'} {n_ih} made markers repeat the engine's fabric weight / cost and length (a job with its own values, 11.43 / 5.8987, included); an unmade marker holds 0 / 0; the byte map leaves {cv5_['counts']['unknown']} unidentified non-zero bytes on ZZN-B5 ({cv5_['counts']['zero']} unidentified zero bytes are their own class)  {'; '.join(bad[:3])}")
 if bad: fails.append('fabric weight / cost: ' + '; '.join(bad[:5]))
 
+print("-- the Nest Markers overrides and the units of the fabric weight / cost (v4.30, MARKER_FORMAT_SPEC.md section 34)")
+# the job's own settings (`nestserv.log`, what the Nest Markers dialog said) decide the flags the engine gets together with the Piece Options: Rotation N, Flip: Enable, tilt limits, piece gap; four base jobs and four override jobs
+OVJ = (('twoply', 'ZZQ-W'), ('twoply', 'ZZQ-A'), ('flipcount', 'ZZR-S'), ('deg45', 'ZZR-45'), ('rotation', 'ZZROT-90'), ('rotation', 'ZZROT-45'), ('rotation', 'ZZROT-T'), ('rotation', 'ZZROT-B'))
+bad = []; n_sp = n_ok = n_no_ov = n_tilt = 0
+for dn_, nm_ in OVJ:
+    st_ = ae.parse_job_settings(open(os.path.join(HERE, 'engine', nm_ + '.job_settings.txt')).read()); ov_ = st_['Overrides']
+    ef_ = ae.read_engine_file(os.path.join(HERE, 'engine', nm_ + '.frommed.mra')); mk_ = am.parse_marker(am.read_storage_marker(os.path.join(HERE, dn_, nm_ + '.GT_mark')))
+    rows_ = mk_['snapshots']['lay_limits']['rows']; cat_ = {}
+    for p_ in mk_['pieces']: cat_.setdefault(p_['fabric'], rows_[p_['lay_row']])
+    lim_ = ae.engine_tilt_limits(ov_)
+    for sp1_ in ef_['style_pieces']:
+        if sp1_['PIECE_NAME'] not in cat_: continue                         # ZZROT-B's engine file lists a sixth, blank-named style piece the marker does not have [?]
+        r_ = cat_[sp1_['PIECE_NAME']]; want_ = ae.engine_flags(r_['options'], ov_); n_sp += 1
+        n_ok += all(sp1_[k_] == v_ for k_, v_ in want_.items()); n_no_ov += all(sp1_[k_] == v_ for k_, v_ in ae.engine_flags(r_['options']).items())
+        if lim_ is not None: n_tilt += (sp1_['CW_TILT_LIMIT'], sp1_['CCW_TILT_LIMIT']) == lim_
+if n_sp != 40 or n_ok != n_sp or n_no_ov > n_sp - 12 or n_tilt != 5: bad.append(f'{n_sp} style pieces: flags with the overrides {n_ok}, without {n_no_ov}, tilt override {n_tilt} of 5')
+# the fabric cost / weight the dialog gives per metre / per gsm are stored per yard / per ounce per square yard: x 0.9144 and x 0.029493 [V: the engine's output header of five jobs, 12.5 -> 11.43, 200.003 -> 5.8987, 1 -> 0.914402 / 0.029493]
+n_u = 0
+for nm_, e_ in IH['jobs'].items():
+    st_ = ae.parse_job_settings(open(os.path.join(HERE, 'engine', nm_ + '.job_settings.txt')).read())['Fabric Options']; cm_, gs_ = ae._override_number(st_['Fabric Cost']), ae._override_number(st_['Fabric Weight'])
+    n_u += abs(e_['FABRIC_COST'] - cm_ * 0.9144) < 2e-5 * max(1, cm_) and abs(e_['FABRIC_WEIGHT'] - gs_ * 0.029493) < 2e-5 * max(1, gs_)
+if n_u != 5: bad.append(f'fabric cost / weight units: {n_u} of 5')
+print(f"   {'ok ' if not bad else 'FAIL'} {n_sp} style pieces of 8 jobs: Piece Options + the job's overrides (Rotation 45 / 90, Flip: Enable, tilt 10 degrees) give the engine's flags on all {n_ok} (without the overrides only {n_no_ov}); the fabric cost / weight of 5 jobs are the dialog's per metre / gsm x 0.9144 / 0.029493  {'; '.join(bad[:3])}")
+if bad: fails.append('engine overrides: ' + '; '.join(bad[:5]))
+
 print('-- marker byte map (v4.4, see accumark_marker.marker_coverage)')
 # Every byte owned by a section a parser reads must be classified (identified /
 # raw / zero_pad / opaque) - only the envelope, the header scalars, sections 2-5,

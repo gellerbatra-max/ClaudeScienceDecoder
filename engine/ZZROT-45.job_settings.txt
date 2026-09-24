@@ -1,0 +1,45 @@
+    Job Settings
+*********************
+Units:Metric	Length:Centimeters (Inches)
+
+
+*** 1. Activity
+Nest Marker:Yes
+Compact Marker:No
+Limit Movement:No
+
+*** 2. Nesting Mode
+Draft
+
+*** 3. Nest Type
+RESTART Marker->Return All Pieces to Menu
+
+*** 5. Nesting Options
+Replace only if better:No
+Do not nest pieces in menu:No
+Match Symmetrically:No
+Block Fuse Nested Pieces:No
+Check Overlaps:Yes
+
+*** 6. Job Prerequisite
+Execute After:0
+
+*** 7. Placement Groups
+Sections:No
+Zones:No
+
+*** 8. Overrides
+Rotation:45
+Flip:Enable
+CW Tilt Limit:No
+CCW Tilt Limit:No
+Marker Border Angle:No
+Piece Gap:No
+
+*** 9.Fabric Options
+Fabric Cost:1.000000Per Meter
+Fabric Weight:1.000000GSM = Grams per Square Meter
+Apply Cost and Weight from marker:No
+
+*** 10. Splices
+Generate Splices:No

@@ -1,5 +1,14 @@
 # Changelog
 
+## v4.30 (2026-09-25) - the job's Nest Markers settings decide the engine's flags; the units of the fabric cost / weight
+
+`__version__` stays `'3.0'`. `accumark_engine` 1.1 (`parse_job_settings`, `engine_flags(options, overrides)`, `engine_tilt_limits`). New fixtures `engine/*.job_settings.txt` (the `Job Settings` block of nine jobs) and `engine/ZZROT-*.frommed.mra` (four override jobs). Plan item 12, offline.
+
+* **Result** (MARKER_FORMAT_SPEC.md section 34): `Rotation N` = every category a rotation step of N degrees and no one-way flag; `Flip: Enable` = no no-flip group; a tilt override n = -10 n / +10 n on every category; `Piece Gap` = `GLOBAL_GAP` in inches - together with the Piece Options they give the engine's flags on all 40 style pieces of 8 jobs (28 without the overrides). That explains 4 of the 7 `S`-row jobs with `FLIP_GROUP` 0 (the other 3:
+  probably a table edited after the marker). The dialog's fabric cost per metre / weight in gsm are stored x 0.9144 (per yard) / x 0.029493 (oz per sq yd): the units of the section 1 words of v4.27.
+* **Code.** `accumark_engine.parse_job_settings`, `engine_flags(options, overrides=None)`, `engine_tilt_limits`. **Checks.** `selftest` (new section): 40 style pieces of 8 jobs, the flags without the overrides fail on 12, the cost / weight units of 5 jobs.
+* **Open:** the tilt conversion of a table tilt (0.1574 in -> +-2, one data point); the 3 `MWS` jobs; a blank sixth style piece in `ZZROT-B`'s engine file.
+
 ## v4.28 (2026-09-25) - the engine's FOLD_LINE (documentation only)
 
 `FOLD_LINE` of the engine's input file = the first point of the piece's fold (mirror) line from the middle of the unbuffered box, in the engine's frame [V on the two pieces whose stream carries the mirror line]; the collar's fold is horizontal in the stream frame like the BACK's, so the +90 turn is not a fold-direction rule (MARKER_FORMAT_SPEC.md section 32). No code change.

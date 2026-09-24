@@ -50,8 +50,8 @@ Ranked by value to a nesting consumer and by cost. "Live" means an AccuMark roun
 | # | Item | Why it matters | How | Cost |
 |---|---|---|---|---|
 | 1 | `ALL GMT WAY` table (user) | Confirms the inferred Bundling of the real 2591A | The user supplies the `.GT_lay` or a ZIP with it; then compare against `bundling_candidates` | none for me, waiting |
-| 2 | Three or more flips of one kind in a two-ply merge (3 x X, 3 x Y) and any count above the tested ones | Completes the two-ply rule for pieces cut 3 or 4 times (pocket flaps, ties) | Live, cheap: only the Model Editor FLIPS cells change; reuse the v4.17 recipe | one short round |
-| 3 | The 0x2000 x Y composition on a ROTATING row | v4.17 proved it only on `W` rows | Live: AccuNest on a table whose rows rotate, read the placed directions | one round |
+| 2 | **DONE v4.18** (30 of 30 cases, counts up to 4): three or more flips of one kind in a two-ply merge | Completes the two-ply rule for pieces cut 3 or 4 times (pocket flaps, ties) | Live, cheap: only the Model Editor FLIPS cells change; reuse the v4.17 recipe | one short round |
+| 3 | **DONE v4.18** (re-scoped: a rotating row hides the retrieval direction, so tested on a no-rotation row in an alternating table, 16 of 16): the 0x2000 x Y composition | v4.17 proved it only on `W` rows | Live: AccuNest on a table whose rows rotate, read the placed directions | one round |
 | 4 | Why AccuNest and AutoMark swap mirrored and as-is instances on `MW` rows, and what the `S` option does | Decides whether `mirrored` in the nest spec is a demand or only a preset | Live: two tables identical except for `S`, same order | one round |
 | 5 | 45-degree placement | A nester that rotates by 45 needs the encoding | Live: Easy Marking `Rotate 45 CW` driven to a STORED marker (the last attempt was closed before storing); AccuNest's Rotation-45 override placed nothing off the 90-degree grid | GUI-heavy |
 | 6 | The marker's single tilt value: cw or ccw, and its unit for tables in degrees | Tilt limits in the spec | Live: a table with unequal cw / ccw limits | one round |
@@ -60,7 +60,7 @@ Ranked by value to a nesting consumer and by cost. "Live" means an AccuMark roun
 | 9 | The exact area a Block buffer adds (the 7.2% BACK-piece excess) | Area checks on blocked markers | Offline from the block-buffer fixtures | offline |
 | 10 | Why the collar needs +90 (+90 and +270 look identical), older-vintage multi-row lay limits | Robustness on older markers | Needs an asymmetric collar-like piece; older markers from the user | low priority |
 
-Recommended order: 2 and 3 together in one live round (v4.18), then 7 and 9 offline while nothing else is waiting, then 4 and 6, then 5.
+Recommended order: ~~2 and 3 together in one live round (v4.18)~~ done; next 7 and 9 offline while nothing else is waiting, then 4 and 6, then 5, then 8 and 10.
 
 ## 6. Where things stand
 

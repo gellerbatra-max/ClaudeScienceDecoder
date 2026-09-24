@@ -1,5 +1,18 @@
 # Changelog
 
+## v4.18 (2026-09-25) - flip counts up to 4 in every spread; the half turn of Y composes with the bundle direction
+
+`__version__` stays `'3.0'`. New fixtures `flipcount/` (4 markers + `GROUND_TRUTH.json`). Plan items 2 and 3 (PLAN_v4.13_onward.md), run as one live round after the user asked for the plan to be followed step by step.
+
+* **Item 2, done.** A model copy (`ZZR-BLOUSE`, FLIPS edited to BACK (0,3,0,0), COLLAR (2,3,0,0), CUFF (1,0,3,0), FRONT (2,2,2,2), SLEEVE (4,1,1,1)), two size-10 garments, three tables: single ply (the baseline: the slots are exactly the flips), face to face and book fold. The v4.17 merge
+  rule (each as-is instance absorbs one flipped one, Y first, then X,Y, then X) predicted **30 of 30 (bundle, piece) cases** on the first try, counts up to 4 and two absorptions at once included. MARKER_FORMAT_SPEC.md section 24 updated.
+* **Item 3, done and re-scoped.** "On a rotating row" cannot be tested: the nester may turn the piece there. The composition of a Y / X,Y half turn with the bundle's 0x2000 bit was tested on a no-rotation row inside an alternating table (ZZLL-1, FRONT `MW`), AccuNest Draft, no overrides: the front
+  piece's 16 instances (each of the 8 bundle x flip combinations twice) all lie at `turn = 180 x (0x2000 XOR flip in {Y, X,Y})`, including Y in the alternating bundle (-> 0). Per-instance chirality was kept on 10 of 16 (the rows with a rotation code, e.g. the sleeve, are not tied to the direction: 0 of 14).
+* **Code.** None: the v4.17 decode already implements the rule; this version adds the proof (and no new warning was needed: `marker_warnings` was empty on all three unmade markers).
+* **Checks.** `selftest` (new section): 30 flip multisets against the model / the merge rule on 3 spreads, the front piece's direction on 16 of 16 slots with all 8 combinations present twice; mutation-tested (merge order, Y without its half turn). See the STATUS line for the suites.
+* **Scratch state:** `ZZR-BLOUSE`, `ZZR-S/F/B` (orders and markers) removed; my Model / Order / Queue Submit processes closed; the original LADIES-BLOUSE model is byte-identical to its backup.
+* **Open.** The `S` option's role in the chirality swaps; the rest of PLAN_v4.13_onward.md section 5 (items 4-10; item 1 waits for the user's table).
+
 ## v4.17 (2026-09-25) - the flip bits (0x0100 = Y) and how a two-ply marker merges pieces
 
 `__version__` stays `'3.0'`. New fixtures `twoply/` (13 markers + `GROUND_TRUTH.json`). Request: "go to the next step" (open item from v4.16: how a two-ply marker treats a piece with cut quantity 1).

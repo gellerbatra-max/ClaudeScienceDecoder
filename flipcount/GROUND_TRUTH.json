@@ -1,0 +1,74 @@
+{
+ "what": "v4.18: ONE model (ZZR-BLOUSE, a copy of LADIES-BLOUSE, FLIPS columns edited to larger counts than v4.17) laid as two size-10 garments with a table of three spreads, and the single-ply marker nested by AccuNest.",
+ "flips_columns": "[--, X, Y, X,Y]",
+ "pieces": {
+  "BK": "LADIES-BLOUSE-BK",
+  "COL": "LADIES-BLOUSE-COL",
+  "CUFF": "LADIES-BLOUSE-CUFF",
+  "FR": "LADIES-BLOUSE-FR",
+  "SL": "LADIES-BLOUSE-SL"
+ },
+ "model_flips": {
+  "BK": [
+   0,
+   3,
+   0,
+   0
+  ],
+  "COL": [
+   2,
+   3,
+   0,
+   0
+  ],
+  "CUFF": [
+   1,
+   0,
+   3,
+   0
+  ],
+  "FR": [
+   2,
+   2,
+   2,
+   2
+  ],
+  "SL": [
+   4,
+   1,
+   1,
+   1
+  ]
+ },
+ "markers": {
+  "ZZR-S": {
+   "table": "ZZLL-1",
+   "spread": 0,
+   "alternates": true,
+   "slots": 54,
+   "state": "unmade"
+  },
+  "ZZR-F": {
+   "table": "ZZLL-3",
+   "spread": 1,
+   "alternates": true,
+   "slots": 38,
+   "state": "unmade"
+  },
+  "ZZR-B": {
+   "table": "ZZLL-BOOKFOLD",
+   "spread": 2,
+   "alternates": false,
+   "slots": 38,
+   "state": "unmade"
+  }
+ },
+ "made": {
+  "ZZR-S-MADE": {
+   "by": "AccuNest Draft (Queue Submit, no overrides) of ZZR-S",
+   "slots": 54
+  }
+ },
+ "two_ply_rule": "slots of a piece in a bundle = pieces - min(#--, #X + #Y + #X,Y); the absorbed instances are taken Y first, then X,Y, then X - 30 of 30 (bundle, piece) cases here, counts up to 4",
+ "placed_direction": "FRONT row is MW (no rotation): the rotation part of the placed orientation = retrieval direction = 180 x (0x2000 XOR flip in {Y, X,Y}) on 16 of 16 front slots = every (bundle, flip) combination twice"
+}

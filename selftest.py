@@ -2418,6 +2418,37 @@ if not any('orientation bits' in w_ for w_ in am.marker_warnings(m2_)): bad.appe
 print(f"   {'ok ' if not bad else 'FAIL'} {len(tgt['markers'])} unmade markers of one model in 3 flip configurations: {n_cfg} (bundle, piece) flip multisets equal the model's (single ply) or its two-ply merge; nest spec mirrored = X / Y; AutoMark keeps the sleeve's chirality on {n_ch} slots; AccuNest keeps the retrieval direction on {n_dir} no-rotation slots; a toggled / unknown bit is noticed  {'; '.join(bad[:3])}")
 if bad: fails.append('flips / two-ply: ' + '; '.join(bad[:5]))
 
+print('-- flip counts and the direction composition (v4.18, MARKER_FORMAT_SPEC.md section 24): counts up to 4, the two-ply merge across spreads, Y x bundle direction')
+# One model with larger FLIPS counts (flipcount/): three unmade markers (single ply, face to face, book fold) and the single-ply one nested by AccuNest. The front piece's row is `MW`, so
+# AccuNest keeps each instance's retrieval direction = 180 x (bundle 0x2000 bit XOR flip in {Y, X,Y}); all eight (bundle, flip) combinations occur twice.
+FCD = os.path.join(HERE, 'flipcount'); fgt = _json.load(open(os.path.join(FCD, 'GROUND_TRUTH.json'))); bad = []
+def fc_load(nm): return am.parse_marker(am.read_storage_marker(os.path.join(FCD, nm + '.GT_mark')))
+def fc_two_ply(c):
+    c = dict(c); m = min(c['--'], c['X'] + c['Y'] + c['X,Y'])
+    for f_ in ('Y', 'X,Y', 'X'):
+        k_ = min(m, c[f_]); c[f_] -= k_; m -= k_
+    return c
+FLN = ('--', 'X', 'Y', 'X,Y'); n_ms = 0
+for nm_, want_ in fgt['markers'].items():
+    mk_ = fc_load(nm_)
+    if mk_['spread'] != want_['spread'] or len(mk_['slots']) != want_['slots'] or mk_['laid_state'] != 'unlaid' or am.marker_warnings(mk_): bad.append(f"{nm_}: spread {mk_['spread']}, {len(mk_['slots'])} slots, {mk_['laid_state']}, {am.marker_warnings(mk_)[:1]}")
+    for bn_ in (0, 1):
+        for sfx_, cnt_ in fgt['model_flips'].items():
+            c0_ = dict(zip(FLN, cnt_)); ex_ = fc_two_ply(c0_) if want_['spread'] else c0_
+            got_ = Counter(s_['flip'] for s_ in mk_['slots'] if s_['bundle'] == bn_ and s_['piece'].endswith('-' + sfx_)); n_ms += 1
+            if any(got_.get(f_, 0) != ex_[f_] for f_ in FLN): bad.append(f'{nm_} bundle {bn_} {sfx_}: {dict(got_)} vs {ex_}')
+mk_ = fc_load('ZZR-S-MADE'); combos_ = Counter(); n_fr = 0
+if mk_['laid_state'] != 'laid' or len(mk_['slots']) != fgt['made']['ZZR-S-MADE']['slots']: bad.append(f"ZZR-S-MADE: {mk_['laid_state']}, {len(mk_['slots'])} slots")
+lay_ = (mk_['snapshots']['lay_limits'] or {}).get('rows') or []
+for s_ in mk_['slots']:
+    if not s_['piece'].endswith('-FR'): continue
+    if lay_[next(p_['lay_row'] for p_ in mk_['pieces'] if p_['name'] == s_['piece'])]['options'] != 'MW': bad.append('the front row is not MW')
+    n_fr += 1; combos_[(s_['bundle'], s_['flip'])] += 1
+    if s_['placed_rot'] != s_['preset_turn_deg']: bad.append(f"front slot {s_['index']} ({s_['flip']}, bundle {s_['bundle']}): rotation {s_['placed_rot']} vs direction {s_['preset_turn_deg']}")
+if n_fr != 16 or set(combos_.values()) != {2} or len(combos_) != 8: bad.append(f'front slots: {n_fr}, combinations {dict(combos_)}')
+print(f"   {'ok ' if not bad else 'FAIL'} counts up to 4: {n_ms} (bundle, piece) flip multisets equal the model's (single ply) or its two-ply merge on 3 spreads; AccuNest keeps the retrieval direction on {n_fr} of 16 front slots (all 8 bundle x flip combinations, Y in the alternating bundle included)  {'; '.join(bad[:3])}")
+if bad: fails.append('flip counts: ' + '; '.join(bad[:5]))
+
 print('-- marker byte map (v4.4, see accumark_marker.marker_coverage)')
 # Every byte owned by a section a parser reads must be classified (identified /
 # raw / zero_pad / opaque) - only the envelope, the header scalars, sections 2-5,

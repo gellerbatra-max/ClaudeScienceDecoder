@@ -30,16 +30,9 @@ import accumark_marker as am
 from accumark_errors import NotADxf
 
 # ---------------------------------------------------------- drawn DXF
-def dxf_marker(path):
-    """Polylines of a drawn-marker DXF (plot-style export: one polyline per
-    edge run, labels as TEXT) -> (loops, meta, marker name). Chunks are
-    chained by shared endpoints into closed loops; the loop spanning the
-    whole drawing is the marker boundary and is dropped.
-
-    v2: raises NotADxf when the file shows no DXF evidence at all, instead of
-    silently returning ([], {}, '') - the same empty-but-"successful" result
-    a real DXF with zero loops would produce, which made an empty file, plain
-    text or random bytes indistinguishable from a genuine empty drawing."""
+def _dxf_pairs(path):
+    """-> ([(group code, value), ...], scale from the file's unit to inches).
+    Raises NotADxf when the file shows no DXF evidence at all."""
     L = [l.rstrip('\r\n') for l in open(path, encoding='latin1')]
     pairs = [(L[i].strip(), L[i+1]) for i in range(0, len(L)-1, 2)]
     if not any(k == '0' and v.strip() == 'SECTION' for k, v in pairs) \
@@ -58,7 +51,36 @@ def dxf_marker(path):
             for k2, v2 in pairs[i+1:i+4]:
                 if k2 == '70': insunits = int(v2); break
             break
-    scale = {4: 1/25.4, 5: 1/2.54, 6: 1/0.0254}.get(insunits, 1.0)
+    return pairs, {4: 1/25.4, 5: 1/2.54, 6: 1/0.0254}.get(insunits, 1.0)
+
+def dxf_labels(path):
+    """Every TEXT entity of a drawn-marker DXF -> [(text, x, y)] in inches.
+    AccuMark labels each placed piece `<piece name> <size>` at its placed
+    centre, so this is an answer key for the slot -> (piece, size) binding that
+    does not depend on any area or geometry (v4.1)."""
+    pairs, scale = _dxf_pairs(path)
+    out = []; i = 0
+    while i < len(pairs):
+        if pairs[i][0] == '0' and pairs[i][1].strip() == 'TEXT':
+            ent = {}; j = i + 1
+            while j < len(pairs) and pairs[j][0] != '0': ent.setdefault(pairs[j][0], pairs[j][1]); j += 1
+            if '1' in ent and '10' in ent and '20' in ent:
+                out.append((ent['1'].strip(), float(ent['10'])*scale, float(ent['20'])*scale))
+            i = j
+        else: i += 1
+    return out
+
+def dxf_marker(path):
+    """Polylines of a drawn-marker DXF (plot-style export: one polyline per
+    edge run, labels as TEXT) -> (loops, meta, marker name). Chunks are
+    chained by shared endpoints into closed loops; the loop spanning the
+    whole drawing is the marker boundary and is dropped.
+
+    v2: raises NotADxf when the file shows no DXF evidence at all, instead of
+    silently returning ([], {}, '') - the same empty-but-"successful" result
+    a real DXF with zero loops would produce, which made an empty file, plain
+    text or random bytes indistinguishable from a genuine empty drawing."""
+    pairs, scale = _dxf_pairs(path)
     polys, cur, texts, x, inv = [], None, [], None, False
     for k, v in pairs:
         if k == '0':
@@ -146,6 +168,22 @@ def facts(path, dxf=None, buffer_in=None):
         f['area_ok'] = sum(1 for r in arows if r[4] and abs(r[4]-1) <= 0.01)
         f['area_pairs'] = len(arows)
         f['area_worst'] = round(max([abs(r[4]-1) for r in arows if r[4]] or [0]), 4)
+        # v4.2: the same checks over the slots nothing is laid for, and the
+        # facts an unplaced marker is about (the marker's own block buffer is
+        # subtracted per piece; see accumark_marker.bbox_check)
+        one = dict(markers=[mkr], pieces=res['pieces'])
+        f['laid_state'] = mk['laid_state']
+        f['slots_bound'] = sum(1 for s in mk['slots'] if (s.get('binding') or {}).get('method') == 'structural')
+        f['unplaced'] = len(mkr['unplaced'])
+        f['order_cuts'] = sum(s['quantity'] for m in mk['order_copy'] for s in m['sizes'])
+        f['geometry'] = mkr['inventory']['marker']['geometry_available']
+        f['hdr_area_mode'] = mk['header_sums']['area']; f['hdr_perim_mode'] = mk['header_sums']['perimeter']
+        urows = am.bbox_check(one, which='unplaced')
+        f['bbox_ok_unplaced'] = sum(1 for r in urows if abs(r[2]) <= 0.02 and abs(r[3]) <= 0.02)
+        f['bbox_n_unplaced'] = len(urows)
+        f['bbox_worst_unplaced'] = round(max([max(abs(r[2]), abs(r[3])) for r in urows] or [0]), 4)
+        uarows = am.area_check(one, which='unplaced')
+        f['area_ok_unplaced'] = sum(1 for r in uarows if r[4] and abs(r[4]-1) <= 0.01); f['area_pairs_unplaced'] = len(uarows)
         f['folds'] = ';'.join(sorted({n for n, p in res['pieces'].items() if p and p.get('fold')}))
         f['notes'] = ';'.join(sorted({n for *_, n in mkr['placed'] if n and 'unfold' not in n}))
         if dxf:
@@ -184,7 +222,24 @@ def dxf_facts(mkr, dxf):
             h = hausdorff(outline, loops[i]); worst_o = max(worst_o, h); n_o += 1
     f['dxf_shapes'] = len(loops); f['dxf_centres'] = ok; f['dxf_centre_worst'] = round(worst_c, 4)
     f['dxf_outline_max'] = round(worst_o, 4); f['dxf_outlines_checked'] = n_o
+    # slot -> (piece, size): the label at each placed centre must read exactly
+    # `<piece> <size>` as the decoder bound it (v4.1; independent of area/geometry)
+    labels = dxf_labels(p); f['dxf_labels'] = len(labels)
+    f['dxf_size_labels'] = sum(1 for s, pname, size, outline, note in mkr['placed']
+                               if _label_matches(labels, s, pname, size))
     return f
+
+def _label_matches(labels, s, piece, size):
+    """Does the drawn label at this slot's placed centre read `piece` + `size`?
+    The September vintage draws one TEXT `<piece> <size>`; the July vintage
+    stacks three - the piece name at the centre, then the size, then the fabric
+    type, each ~0.33 in lower (2303-CP 150, v4.1)."""
+    if not labels: return False
+    dist, text = min((math.hypot(t[1]-s['x'], t[2]-s['y']), t[0]) for t in labels)
+    if dist > 0.01: return False
+    if text == '%s %s' % (piece, size): return True
+    return text == piece and any(t[0] == size and abs(t[1]-s['x']) <= 0.01 and 0 < s['y']-t[2] <= 0.7
+                                 for t in labels)
 
 # ------------------------------------------------------ section diff
 def section_diff(a, b):

@@ -17,7 +17,7 @@ Unzip `pds_decoder_handoff.zip` into a working folder on the Windows laptop
 | `captures/TASK1…TASK6/` | the eight first-round captures — baselines + regression fixtures |
 | `accumark_marker.py` | (2026-09-09) reader for marker / order / model objects, slot→piece binding, placement transform, grading + fold unfolding |
 | `verify_marker.py` | (2026-09-09) the marker validator: report, `--expect`, `--dxf` against a drawn-marker DXF, `--baseline` section diff |
-| `markers/` | (2026-09-09) six production markers of style 2303 + four drawn DXFs — regression fixtures run by `selftest.py` |
+| `markers/` | (2026-09-09) six production markers of style 2303 + four drawn DXFs (2026-09-21: plus `1825D-SS21-UNLAID/`, two unlaid markers from another AccuMark install) — regression fixtures run by `selftest.py` |
 | `MARKER_DECODE_PLAN.md` | marker format facts, status table, and what to ask for next |
 | `pds_decoded.json`, `pds_decode_validation.csv` | reference decode of those eight |
 
@@ -91,6 +91,41 @@ python -c "import accumark_pds as a, json; print(json.dumps(a.summarize_zip('CAP
 ```
 
 `verify_capture.py --help` lists every `--expect` key.
+
+## A new unplaced (never-laid) marker arrives
+
+Whatever AccuMark exports - your own, or a marker from another install - read it
+before anything else:
+
+```
+python accumark_marker.py "some marker.zip" --inventory
+```
+
+It prints the cut order (width, order lines, pieces with cuts and mirrored
+pairs, area to lay, the fabric length a 100%-efficient lay needs) and ends with
+one of two lines:
+
+- `DECODED CLEANLY` - every check passes, no warning was raised, and every byte
+  in the sections the reader parses is explained. If the ZIP holds no piece
+  objects the report says `GEOMETRY: none` - that is a limit of the export (no
+  outlines, declared areas and boxes only), not a decode failure.
+- `NEEDS A LOOK:` plus the failing checks and the named warnings
+  (`marker_warnings`, `coverage_warnings`). The marker differs from everything
+  seen so far. Do not trust the numbers above the line for that marker; add the ZIP
+  under `markers/<NAME>/`, note it in a `MARKER_DECODE_PLAN.md` STATUS block, and
+  find which fact broke (`python accumark_marker.py <zip>` lists every check row).
+
+To MAKE a marker of your own to test a hypothesis (one setting changed at a time, an
+as-generated marker on demand, reproducible to 18 bytes), follow the harness in
+`MARKER_DATASET_DESIGN.md` - and never use Explorer's *Generate Marker* on a copy of an
+order, it targets the original's marker.
+
+To hand the job to a nesting engine: `python nest_spec.py "some marker.zip" --json job.json [--dxf pieces.dxf] [--svg pieces.svg]` (format in `NEST_SPEC.md`;
+ends `NEST SPEC COMPLETE` or names the failing check).
+
+`--inventory --json` gives the same thing as data. The byte-level spec is
+`MARKER_FORMAT_SPEC.md`; `python -c "import accumark_marker as m; ..."`
+`m.marker_coverage(data)` says where the unexplained bytes are.
 
 ## Two things to keep in mind
 

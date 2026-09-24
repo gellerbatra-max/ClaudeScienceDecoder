@@ -1,14 +1,14 @@
 # Robustness report (v2)
 decoder_version: accumark_pds=3.0 accumark_marker=3.0
 
-303 cases, 303 passed, 0 failed, 29.4s
+730 cases, 730 passed, 0 failed, 59.0s
 
 ## Supported
 
-- ZIP structural variants (Oracle A, 126/126): STORED/DEFLATED/BZIP2/LZMA and mixed compression, reversed/shuffled member order, folder prefixes, deep nesting, backslash paths, directory entries, extra junk members, non-ASCII/long names, `.TMP`/`.dat` renamed members, dropped `ver.5`/`comments.txt`, missing/replaced archive comment, zeroed timestamps - decode identically to the original on every seed.
+- ZIP structural variants (Oracle A, 336/336): STORED/DEFLATED/BZIP2/LZMA and mixed compression, reversed/shuffled member order, folder prefixes, deep nesting, backslash paths, directory entries, extra junk members, non-ASCII/long names, `.TMP`/`.dat` renamed members, dropped `ver.5`/`comments.txt`, missing/replaced archive comment, zeroed timestamps - decode identically to the original on every seed.
 - Malformed-input contract (Oracle B, 12/12): every case below raises a named `accumark_errors.AccuMarkError` subclass (or `zipfile.BadZipFile` for a non-ZIP container) - never `SystemExit`, never a bare `IndexError`/`struct.error`, never a silent wrong answer.
 
-## Oracle A (126/126 ok)
+## Oracle A (336/336 ok)
 
 | case | seed | verdict | detail |
 |---|---|---|---|
@@ -138,6 +138,216 @@ decoder_version: accumark_pds=3.0 accumark_marker=3.0
 | 2303-BD137-PLACED/place_marker/v_no_comment | 2303-BD137-PLACED | ok | ok |
 | 2303-BD137-PLACED/place_marker/v_replaced_comment | 2303-BD137-PLACED | ok | ok |
 | 2303-BD137-PLACED/place_marker/v_zeroed_timestamps | 2303-BD137-PLACED | ok | ok |
+| 2303-BD137-UNLAID/v_stored | 2303-BD137-UNLAID | ok | ok |
+| 2303-BD137-UNLAID/v_deflated | 2303-BD137-UNLAID | ok | ok |
+| 2303-BD137-UNLAID/v_bzip2 | 2303-BD137-UNLAID | ok | ok |
+| 2303-BD137-UNLAID/v_lzma | 2303-BD137-UNLAID | ok | ok |
+| 2303-BD137-UNLAID/v_mixed_compression | 2303-BD137-UNLAID | ok | ok |
+| 2303-BD137-UNLAID/v_reversed_order | 2303-BD137-UNLAID | ok | ok |
+| 2303-BD137-UNLAID/v_shuffled_order | 2303-BD137-UNLAID | ok | ok |
+| 2303-BD137-UNLAID/v_folder_prefix | 2303-BD137-UNLAID | ok | ok |
+| 2303-BD137-UNLAID/v_deep_nesting | 2303-BD137-UNLAID | ok | ok |
+| 2303-BD137-UNLAID/v_backslash_paths | 2303-BD137-UNLAID | ok | ok |
+| 2303-BD137-UNLAID/v_directory_entries | 2303-BD137-UNLAID | ok | ok |
+| 2303-BD137-UNLAID/v_extra_junk | 2303-BD137-UNLAID | ok | ok |
+| 2303-BD137-UNLAID/v_nonascii_name | 2303-BD137-UNLAID | ok | ok |
+| 2303-BD137-UNLAID/v_long_name | 2303-BD137-UNLAID | ok | ok |
+| 2303-BD137-UNLAID/v_upper_tmp | 2303-BD137-UNLAID | ok | ok |
+| 2303-BD137-UNLAID/v_renamed_ext | 2303-BD137-UNLAID | ok | ok |
+| 2303-BD137-UNLAID/v_drop_ver5 | 2303-BD137-UNLAID | ok | ok |
+| 2303-BD137-UNLAID/v_drop_comments | 2303-BD137-UNLAID | ok | ok |
+| 2303-BD137-UNLAID/v_no_comment | 2303-BD137-UNLAID | ok | ok |
+| 2303-BD137-UNLAID/v_replaced_comment | 2303-BD137-UNLAID | ok | ok |
+| 2303-BD137-UNLAID/v_zeroed_timestamps | 2303-BD137-UNLAID | ok | ok |
+| 2303-BD137-UNLAID/place_marker/v_stored | 2303-BD137-UNLAID | ok | ok |
+| 2303-BD137-UNLAID/place_marker/v_deflated | 2303-BD137-UNLAID | ok | ok |
+| 2303-BD137-UNLAID/place_marker/v_bzip2 | 2303-BD137-UNLAID | ok | ok |
+| 2303-BD137-UNLAID/place_marker/v_lzma | 2303-BD137-UNLAID | ok | ok |
+| 2303-BD137-UNLAID/place_marker/v_mixed_compression | 2303-BD137-UNLAID | ok | ok |
+| 2303-BD137-UNLAID/place_marker/v_reversed_order | 2303-BD137-UNLAID | ok | ok |
+| 2303-BD137-UNLAID/place_marker/v_shuffled_order | 2303-BD137-UNLAID | ok | ok |
+| 2303-BD137-UNLAID/place_marker/v_folder_prefix | 2303-BD137-UNLAID | ok | ok |
+| 2303-BD137-UNLAID/place_marker/v_deep_nesting | 2303-BD137-UNLAID | ok | ok |
+| 2303-BD137-UNLAID/place_marker/v_backslash_paths | 2303-BD137-UNLAID | ok | ok |
+| 2303-BD137-UNLAID/place_marker/v_directory_entries | 2303-BD137-UNLAID | ok | ok |
+| 2303-BD137-UNLAID/place_marker/v_extra_junk | 2303-BD137-UNLAID | ok | ok |
+| 2303-BD137-UNLAID/place_marker/v_nonascii_name | 2303-BD137-UNLAID | ok | ok |
+| 2303-BD137-UNLAID/place_marker/v_long_name | 2303-BD137-UNLAID | ok | ok |
+| 2303-BD137-UNLAID/place_marker/v_upper_tmp | 2303-BD137-UNLAID | ok | ok |
+| 2303-BD137-UNLAID/place_marker/v_renamed_ext | 2303-BD137-UNLAID | ok | ok |
+| 2303-BD137-UNLAID/place_marker/v_drop_ver5 | 2303-BD137-UNLAID | ok | ok |
+| 2303-BD137-UNLAID/place_marker/v_drop_comments | 2303-BD137-UNLAID | ok | ok |
+| 2303-BD137-UNLAID/place_marker/v_no_comment | 2303-BD137-UNLAID | ok | ok |
+| 2303-BD137-UNLAID/place_marker/v_replaced_comment | 2303-BD137-UNLAID | ok | ok |
+| 2303-BD137-UNLAID/place_marker/v_zeroed_timestamps | 2303-BD137-UNLAID | ok | ok |
+| 5683D-SS21-UNLAID/v_stored | 5683D-SS21-UNLAID | ok | ok |
+| 5683D-SS21-UNLAID/v_deflated | 5683D-SS21-UNLAID | ok | ok |
+| 5683D-SS21-UNLAID/v_bzip2 | 5683D-SS21-UNLAID | ok | ok |
+| 5683D-SS21-UNLAID/v_lzma | 5683D-SS21-UNLAID | ok | ok |
+| 5683D-SS21-UNLAID/v_mixed_compression | 5683D-SS21-UNLAID | ok | ok |
+| 5683D-SS21-UNLAID/v_reversed_order | 5683D-SS21-UNLAID | ok | ok |
+| 5683D-SS21-UNLAID/v_shuffled_order | 5683D-SS21-UNLAID | ok | ok |
+| 5683D-SS21-UNLAID/v_folder_prefix | 5683D-SS21-UNLAID | ok | ok |
+| 5683D-SS21-UNLAID/v_deep_nesting | 5683D-SS21-UNLAID | ok | ok |
+| 5683D-SS21-UNLAID/v_backslash_paths | 5683D-SS21-UNLAID | ok | ok |
+| 5683D-SS21-UNLAID/v_directory_entries | 5683D-SS21-UNLAID | ok | ok |
+| 5683D-SS21-UNLAID/v_extra_junk | 5683D-SS21-UNLAID | ok | ok |
+| 5683D-SS21-UNLAID/v_nonascii_name | 5683D-SS21-UNLAID | ok | ok |
+| 5683D-SS21-UNLAID/v_long_name | 5683D-SS21-UNLAID | ok | ok |
+| 5683D-SS21-UNLAID/v_upper_tmp | 5683D-SS21-UNLAID | ok | ok |
+| 5683D-SS21-UNLAID/v_renamed_ext | 5683D-SS21-UNLAID | ok | ok |
+| 5683D-SS21-UNLAID/v_drop_ver5 | 5683D-SS21-UNLAID | ok | ok |
+| 5683D-SS21-UNLAID/v_drop_comments | 5683D-SS21-UNLAID | ok | ok |
+| 5683D-SS21-UNLAID/v_no_comment | 5683D-SS21-UNLAID | ok | ok |
+| 5683D-SS21-UNLAID/v_replaced_comment | 5683D-SS21-UNLAID | ok | ok |
+| 5683D-SS21-UNLAID/v_zeroed_timestamps | 5683D-SS21-UNLAID | ok | ok |
+| 5683D-SS21-UNLAID/place_marker/v_stored | 5683D-SS21-UNLAID | ok | ok |
+| 5683D-SS21-UNLAID/place_marker/v_deflated | 5683D-SS21-UNLAID | ok | ok |
+| 5683D-SS21-UNLAID/place_marker/v_bzip2 | 5683D-SS21-UNLAID | ok | ok |
+| 5683D-SS21-UNLAID/place_marker/v_lzma | 5683D-SS21-UNLAID | ok | ok |
+| 5683D-SS21-UNLAID/place_marker/v_mixed_compression | 5683D-SS21-UNLAID | ok | ok |
+| 5683D-SS21-UNLAID/place_marker/v_reversed_order | 5683D-SS21-UNLAID | ok | ok |
+| 5683D-SS21-UNLAID/place_marker/v_shuffled_order | 5683D-SS21-UNLAID | ok | ok |
+| 5683D-SS21-UNLAID/place_marker/v_folder_prefix | 5683D-SS21-UNLAID | ok | ok |
+| 5683D-SS21-UNLAID/place_marker/v_deep_nesting | 5683D-SS21-UNLAID | ok | ok |
+| 5683D-SS21-UNLAID/place_marker/v_backslash_paths | 5683D-SS21-UNLAID | ok | ok |
+| 5683D-SS21-UNLAID/place_marker/v_directory_entries | 5683D-SS21-UNLAID | ok | ok |
+| 5683D-SS21-UNLAID/place_marker/v_extra_junk | 5683D-SS21-UNLAID | ok | ok |
+| 5683D-SS21-UNLAID/place_marker/v_nonascii_name | 5683D-SS21-UNLAID | ok | ok |
+| 5683D-SS21-UNLAID/place_marker/v_long_name | 5683D-SS21-UNLAID | ok | ok |
+| 5683D-SS21-UNLAID/place_marker/v_upper_tmp | 5683D-SS21-UNLAID | ok | ok |
+| 5683D-SS21-UNLAID/place_marker/v_renamed_ext | 5683D-SS21-UNLAID | ok | ok |
+| 5683D-SS21-UNLAID/place_marker/v_drop_ver5 | 5683D-SS21-UNLAID | ok | ok |
+| 5683D-SS21-UNLAID/place_marker/v_drop_comments | 5683D-SS21-UNLAID | ok | ok |
+| 5683D-SS21-UNLAID/place_marker/v_no_comment | 5683D-SS21-UNLAID | ok | ok |
+| 5683D-SS21-UNLAID/place_marker/v_replaced_comment | 5683D-SS21-UNLAID | ok | ok |
+| 5683D-SS21-UNLAID/place_marker/v_zeroed_timestamps | 5683D-SS21-UNLAID | ok | ok |
+| CLAUDE-D2-M0/v_stored | CLAUDE-D2-M0 | ok | ok |
+| CLAUDE-D2-M0/v_deflated | CLAUDE-D2-M0 | ok | ok |
+| CLAUDE-D2-M0/v_bzip2 | CLAUDE-D2-M0 | ok | ok |
+| CLAUDE-D2-M0/v_lzma | CLAUDE-D2-M0 | ok | ok |
+| CLAUDE-D2-M0/v_mixed_compression | CLAUDE-D2-M0 | ok | ok |
+| CLAUDE-D2-M0/v_reversed_order | CLAUDE-D2-M0 | ok | ok |
+| CLAUDE-D2-M0/v_shuffled_order | CLAUDE-D2-M0 | ok | ok |
+| CLAUDE-D2-M0/v_folder_prefix | CLAUDE-D2-M0 | ok | ok |
+| CLAUDE-D2-M0/v_deep_nesting | CLAUDE-D2-M0 | ok | ok |
+| CLAUDE-D2-M0/v_backslash_paths | CLAUDE-D2-M0 | ok | ok |
+| CLAUDE-D2-M0/v_directory_entries | CLAUDE-D2-M0 | ok | ok |
+| CLAUDE-D2-M0/v_extra_junk | CLAUDE-D2-M0 | ok | ok |
+| CLAUDE-D2-M0/v_nonascii_name | CLAUDE-D2-M0 | ok | ok |
+| CLAUDE-D2-M0/v_long_name | CLAUDE-D2-M0 | ok | ok |
+| CLAUDE-D2-M0/v_upper_tmp | CLAUDE-D2-M0 | ok | ok |
+| CLAUDE-D2-M0/v_renamed_ext | CLAUDE-D2-M0 | ok | ok |
+| CLAUDE-D2-M0/v_drop_ver5 | CLAUDE-D2-M0 | ok | ok |
+| CLAUDE-D2-M0/v_drop_comments | CLAUDE-D2-M0 | ok | ok |
+| CLAUDE-D2-M0/v_no_comment | CLAUDE-D2-M0 | ok | ok |
+| CLAUDE-D2-M0/v_replaced_comment | CLAUDE-D2-M0 | ok | ok |
+| CLAUDE-D2-M0/v_zeroed_timestamps | CLAUDE-D2-M0 | ok | ok |
+| CLAUDE-D2-M0/place_marker/v_stored | CLAUDE-D2-M0 | ok | ok |
+| CLAUDE-D2-M0/place_marker/v_deflated | CLAUDE-D2-M0 | ok | ok |
+| CLAUDE-D2-M0/place_marker/v_bzip2 | CLAUDE-D2-M0 | ok | ok |
+| CLAUDE-D2-M0/place_marker/v_lzma | CLAUDE-D2-M0 | ok | ok |
+| CLAUDE-D2-M0/place_marker/v_mixed_compression | CLAUDE-D2-M0 | ok | ok |
+| CLAUDE-D2-M0/place_marker/v_reversed_order | CLAUDE-D2-M0 | ok | ok |
+| CLAUDE-D2-M0/place_marker/v_shuffled_order | CLAUDE-D2-M0 | ok | ok |
+| CLAUDE-D2-M0/place_marker/v_folder_prefix | CLAUDE-D2-M0 | ok | ok |
+| CLAUDE-D2-M0/place_marker/v_deep_nesting | CLAUDE-D2-M0 | ok | ok |
+| CLAUDE-D2-M0/place_marker/v_backslash_paths | CLAUDE-D2-M0 | ok | ok |
+| CLAUDE-D2-M0/place_marker/v_directory_entries | CLAUDE-D2-M0 | ok | ok |
+| CLAUDE-D2-M0/place_marker/v_extra_junk | CLAUDE-D2-M0 | ok | ok |
+| CLAUDE-D2-M0/place_marker/v_nonascii_name | CLAUDE-D2-M0 | ok | ok |
+| CLAUDE-D2-M0/place_marker/v_long_name | CLAUDE-D2-M0 | ok | ok |
+| CLAUDE-D2-M0/place_marker/v_upper_tmp | CLAUDE-D2-M0 | ok | ok |
+| CLAUDE-D2-M0/place_marker/v_renamed_ext | CLAUDE-D2-M0 | ok | ok |
+| CLAUDE-D2-M0/place_marker/v_drop_ver5 | CLAUDE-D2-M0 | ok | ok |
+| CLAUDE-D2-M0/place_marker/v_drop_comments | CLAUDE-D2-M0 | ok | ok |
+| CLAUDE-D2-M0/place_marker/v_no_comment | CLAUDE-D2-M0 | ok | ok |
+| CLAUDE-D2-M0/place_marker/v_replaced_comment | CLAUDE-D2-M0 | ok | ok |
+| CLAUDE-D2-M0/place_marker/v_zeroed_timestamps | CLAUDE-D2-M0 | ok | ok |
+| CLAUDE-D3-BF/v_stored | CLAUDE-D3-BF | ok | ok |
+| CLAUDE-D3-BF/v_deflated | CLAUDE-D3-BF | ok | ok |
+| CLAUDE-D3-BF/v_bzip2 | CLAUDE-D3-BF | ok | ok |
+| CLAUDE-D3-BF/v_lzma | CLAUDE-D3-BF | ok | ok |
+| CLAUDE-D3-BF/v_mixed_compression | CLAUDE-D3-BF | ok | ok |
+| CLAUDE-D3-BF/v_reversed_order | CLAUDE-D3-BF | ok | ok |
+| CLAUDE-D3-BF/v_shuffled_order | CLAUDE-D3-BF | ok | ok |
+| CLAUDE-D3-BF/v_folder_prefix | CLAUDE-D3-BF | ok | ok |
+| CLAUDE-D3-BF/v_deep_nesting | CLAUDE-D3-BF | ok | ok |
+| CLAUDE-D3-BF/v_backslash_paths | CLAUDE-D3-BF | ok | ok |
+| CLAUDE-D3-BF/v_directory_entries | CLAUDE-D3-BF | ok | ok |
+| CLAUDE-D3-BF/v_extra_junk | CLAUDE-D3-BF | ok | ok |
+| CLAUDE-D3-BF/v_nonascii_name | CLAUDE-D3-BF | ok | ok |
+| CLAUDE-D3-BF/v_long_name | CLAUDE-D3-BF | ok | ok |
+| CLAUDE-D3-BF/v_upper_tmp | CLAUDE-D3-BF | ok | ok |
+| CLAUDE-D3-BF/v_renamed_ext | CLAUDE-D3-BF | ok | ok |
+| CLAUDE-D3-BF/v_drop_ver5 | CLAUDE-D3-BF | ok | ok |
+| CLAUDE-D3-BF/v_drop_comments | CLAUDE-D3-BF | ok | ok |
+| CLAUDE-D3-BF/v_no_comment | CLAUDE-D3-BF | ok | ok |
+| CLAUDE-D3-BF/v_replaced_comment | CLAUDE-D3-BF | ok | ok |
+| CLAUDE-D3-BF/v_zeroed_timestamps | CLAUDE-D3-BF | ok | ok |
+| CLAUDE-D3-BF/place_marker/v_stored | CLAUDE-D3-BF | ok | ok |
+| CLAUDE-D3-BF/place_marker/v_deflated | CLAUDE-D3-BF | ok | ok |
+| CLAUDE-D3-BF/place_marker/v_bzip2 | CLAUDE-D3-BF | ok | ok |
+| CLAUDE-D3-BF/place_marker/v_lzma | CLAUDE-D3-BF | ok | ok |
+| CLAUDE-D3-BF/place_marker/v_mixed_compression | CLAUDE-D3-BF | ok | ok |
+| CLAUDE-D3-BF/place_marker/v_reversed_order | CLAUDE-D3-BF | ok | ok |
+| CLAUDE-D3-BF/place_marker/v_shuffled_order | CLAUDE-D3-BF | ok | ok |
+| CLAUDE-D3-BF/place_marker/v_folder_prefix | CLAUDE-D3-BF | ok | ok |
+| CLAUDE-D3-BF/place_marker/v_deep_nesting | CLAUDE-D3-BF | ok | ok |
+| CLAUDE-D3-BF/place_marker/v_backslash_paths | CLAUDE-D3-BF | ok | ok |
+| CLAUDE-D3-BF/place_marker/v_directory_entries | CLAUDE-D3-BF | ok | ok |
+| CLAUDE-D3-BF/place_marker/v_extra_junk | CLAUDE-D3-BF | ok | ok |
+| CLAUDE-D3-BF/place_marker/v_nonascii_name | CLAUDE-D3-BF | ok | ok |
+| CLAUDE-D3-BF/place_marker/v_long_name | CLAUDE-D3-BF | ok | ok |
+| CLAUDE-D3-BF/place_marker/v_upper_tmp | CLAUDE-D3-BF | ok | ok |
+| CLAUDE-D3-BF/place_marker/v_renamed_ext | CLAUDE-D3-BF | ok | ok |
+| CLAUDE-D3-BF/place_marker/v_drop_ver5 | CLAUDE-D3-BF | ok | ok |
+| CLAUDE-D3-BF/place_marker/v_drop_comments | CLAUDE-D3-BF | ok | ok |
+| CLAUDE-D3-BF/place_marker/v_no_comment | CLAUDE-D3-BF | ok | ok |
+| CLAUDE-D3-BF/place_marker/v_replaced_comment | CLAUDE-D3-BF | ok | ok |
+| CLAUDE-D3-BF/place_marker/v_zeroed_timestamps | CLAUDE-D3-BF | ok | ok |
+| CLAUDE-D4/v_stored | CLAUDE-D4 | ok | ok |
+| CLAUDE-D4/v_deflated | CLAUDE-D4 | ok | ok |
+| CLAUDE-D4/v_bzip2 | CLAUDE-D4 | ok | ok |
+| CLAUDE-D4/v_lzma | CLAUDE-D4 | ok | ok |
+| CLAUDE-D4/v_mixed_compression | CLAUDE-D4 | ok | ok |
+| CLAUDE-D4/v_reversed_order | CLAUDE-D4 | ok | ok |
+| CLAUDE-D4/v_shuffled_order | CLAUDE-D4 | ok | ok |
+| CLAUDE-D4/v_folder_prefix | CLAUDE-D4 | ok | ok |
+| CLAUDE-D4/v_deep_nesting | CLAUDE-D4 | ok | ok |
+| CLAUDE-D4/v_backslash_paths | CLAUDE-D4 | ok | ok |
+| CLAUDE-D4/v_directory_entries | CLAUDE-D4 | ok | ok |
+| CLAUDE-D4/v_extra_junk | CLAUDE-D4 | ok | ok |
+| CLAUDE-D4/v_nonascii_name | CLAUDE-D4 | ok | ok |
+| CLAUDE-D4/v_long_name | CLAUDE-D4 | ok | ok |
+| CLAUDE-D4/v_upper_tmp | CLAUDE-D4 | ok | ok |
+| CLAUDE-D4/v_renamed_ext | CLAUDE-D4 | ok | ok |
+| CLAUDE-D4/v_drop_ver5 | CLAUDE-D4 | ok | ok |
+| CLAUDE-D4/v_drop_comments | CLAUDE-D4 | ok | ok |
+| CLAUDE-D4/v_no_comment | CLAUDE-D4 | ok | ok |
+| CLAUDE-D4/v_replaced_comment | CLAUDE-D4 | ok | ok |
+| CLAUDE-D4/v_zeroed_timestamps | CLAUDE-D4 | ok | ok |
+| CLAUDE-D4/place_marker/v_stored | CLAUDE-D4 | ok | ok |
+| CLAUDE-D4/place_marker/v_deflated | CLAUDE-D4 | ok | ok |
+| CLAUDE-D4/place_marker/v_bzip2 | CLAUDE-D4 | ok | ok |
+| CLAUDE-D4/place_marker/v_lzma | CLAUDE-D4 | ok | ok |
+| CLAUDE-D4/place_marker/v_mixed_compression | CLAUDE-D4 | ok | ok |
+| CLAUDE-D4/place_marker/v_reversed_order | CLAUDE-D4 | ok | ok |
+| CLAUDE-D4/place_marker/v_shuffled_order | CLAUDE-D4 | ok | ok |
+| CLAUDE-D4/place_marker/v_folder_prefix | CLAUDE-D4 | ok | ok |
+| CLAUDE-D4/place_marker/v_deep_nesting | CLAUDE-D4 | ok | ok |
+| CLAUDE-D4/place_marker/v_backslash_paths | CLAUDE-D4 | ok | ok |
+| CLAUDE-D4/place_marker/v_directory_entries | CLAUDE-D4 | ok | ok |
+| CLAUDE-D4/place_marker/v_extra_junk | CLAUDE-D4 | ok | ok |
+| CLAUDE-D4/place_marker/v_nonascii_name | CLAUDE-D4 | ok | ok |
+| CLAUDE-D4/place_marker/v_long_name | CLAUDE-D4 | ok | ok |
+| CLAUDE-D4/place_marker/v_upper_tmp | CLAUDE-D4 | ok | ok |
+| CLAUDE-D4/place_marker/v_renamed_ext | CLAUDE-D4 | ok | ok |
+| CLAUDE-D4/place_marker/v_drop_ver5 | CLAUDE-D4 | ok | ok |
+| CLAUDE-D4/place_marker/v_drop_comments | CLAUDE-D4 | ok | ok |
+| CLAUDE-D4/place_marker/v_no_comment | CLAUDE-D4 | ok | ok |
+| CLAUDE-D4/place_marker/v_replaced_comment | CLAUDE-D4 | ok | ok |
+| CLAUDE-D4/place_marker/v_zeroed_timestamps | CLAUDE-D4 | ok | ok |
 
 ## Oracle B (12/12 ok)
 
@@ -156,7 +366,7 @@ decoder_version: accumark_pds=3.0 accumark_marker=3.0
 | truncated_object_123B_list_zip | CAP-C00-BASE | ok | ok (no exception, as required) |
 | truncated_object_200B_list_zip | 2303-BD137-PLACED | ok | ok (no exception, as required) |
 
-## Oracle C (165/165 ok)
+## Oracle C (382/382 ok)
 
 | case | seed | verdict | detail |
 |---|---|---|---|
@@ -325,6 +535,223 @@ decoder_version: accumark_pds=3.0 accumark_marker=3.0
 | 2303-BD137-PLACED/off=0x19141/flip_bit | 2303-BD137-PLACED | ok | ok (decode changed, as required) |
 | 2303-BD137-PLACED/off=0x19141/zero | 2303-BD137-PLACED | ok | ok (decode changed, as required) |
 | 2303-BD137-PLACED/off=0x19141/ff | 2303-BD137-PLACED | ok | ok (decode changed, as required) |
+| 2303-BD137-UNLAID/off=0x46d6/flip_bit | 2303-BD137-UNLAID | ok | ok (decode changed, as required) |
+| 2303-BD137-UNLAID/off=0x46d6/zero | 2303-BD137-UNLAID | ok | ok (decode changed, as required) |
+| 2303-BD137-UNLAID/off=0x46d6/ff | 2303-BD137-UNLAID | ok | ok (decode changed, as required) |
+| 2303-BD137-UNLAID/off=0x190a7/flip_bit | 2303-BD137-UNLAID | ok | ok (decode changed, as required) |
+| 2303-BD137-UNLAID/off=0x190a7/zero | 2303-BD137-UNLAID | ok | ok (decode changed, as required) |
+| 2303-BD137-UNLAID/off=0x190a7/ff | 2303-BD137-UNLAID | ok | ok (decode changed, as required) |
+| 2303-BD137-UNLAID/off=0x348a/flip_bit | 2303-BD137-UNLAID | ok | ok (decode changed, as required) |
+| 2303-BD137-UNLAID/off=0x348a/zero | 2303-BD137-UNLAID | ok | ok (decode changed, as required) |
+| 2303-BD137-UNLAID/off=0x348a/ff | 2303-BD137-UNLAID | ok | ok (decode changed, as required) |
+| 2303-BD137-UNLAID/off=0x46ce/flip_bit | 2303-BD137-UNLAID | ok | ok (decode changed, as required) |
+| 2303-BD137-UNLAID/off=0x46ce/zero | 2303-BD137-UNLAID | ok | ok (decode changed, as required) |
+| 2303-BD137-UNLAID/off=0x46ce/ff | 2303-BD137-UNLAID | ok | ok (decode changed, as required) |
+| 2303-BD137-UNLAID/off=0x192a0/flip_bit | 2303-BD137-UNLAID | ok | ok (decode changed, as required) |
+| 2303-BD137-UNLAID/off=0x192a0/zero | 2303-BD137-UNLAID | ok | ok (decode changed, as required) |
+| 2303-BD137-UNLAID/off=0x192a0/ff | 2303-BD137-UNLAID | ok | ok (decode changed, as required) |
+| 2303-BD137-UNLAID/off=0x191c7/flip_bit | 2303-BD137-UNLAID | ok | ok (decode changed, as required) |
+| 2303-BD137-UNLAID/off=0x191c7/zero | 2303-BD137-UNLAID | ok | ok (decode changed, as required) |
+| 2303-BD137-UNLAID/off=0x191c7/ff | 2303-BD137-UNLAID | ok | ok (decode changed, as required) |
+| 2303-BD137-UNLAID/off=0x19045/flip_bit | 2303-BD137-UNLAID | ok | ok (decode changed, as required) |
+| 2303-BD137-UNLAID/off=0x19045/zero | 2303-BD137-UNLAID | ok | ok (decode changed, as required) |
+| 2303-BD137-UNLAID/off=0x19045/ff | 2303-BD137-UNLAID | ok | ok (decode changed, as required) |
+| 2303-BD137-UNLAID/off=0x3da8/flip_bit | 2303-BD137-UNLAID | ok | ok (decode changed, as required) |
+| 2303-BD137-UNLAID/off=0x3da8/zero | 2303-BD137-UNLAID | ok | ok (decode changed, as required) |
+| 2303-BD137-UNLAID/off=0x3da8/ff | 2303-BD137-UNLAID | ok | ok (decode changed, as required) |
+| 2303-BD137-UNLAID/off=0x1854/flip_bit | 2303-BD137-UNLAID | ok | ok (decode changed, as required) |
+| 2303-BD137-UNLAID/off=0x1854/zero | 2303-BD137-UNLAID | ok | ok (decode changed, as required) |
+| 2303-BD137-UNLAID/off=0x1854/ff | 2303-BD137-UNLAID | ok | ok (decode changed, as required) |
+| 2303-BD137-UNLAID/off=0x19043/flip_bit | 2303-BD137-UNLAID | ok | ok (decode changed, as required) |
+| 2303-BD137-UNLAID/off=0x19043/zero | 2303-BD137-UNLAID | ok | ok (decode changed, as required) |
+| 2303-BD137-UNLAID/off=0x19043/ff | 2303-BD137-UNLAID | ok | ok (decode changed, as required) |
+| 2303-BD137-UNLAID/off=0x19068/flip_bit | 2303-BD137-UNLAID | ok | ok (decode changed, as required) |
+| 2303-BD137-UNLAID/off=0x19068/zero | 2303-BD137-UNLAID | ok | ok (decode changed, as required) |
+| 2303-BD137-UNLAID/off=0x19068/ff | 2303-BD137-UNLAID | ok | ok (decode changed, as required) |
+| 2303-BD137-UNLAID/off=0x19103/flip_bit | 2303-BD137-UNLAID | ok | ok (decode changed, as required) |
+| 2303-BD137-UNLAID/off=0x19103/zero | 2303-BD137-UNLAID | ok | ok (decode changed, as required) |
+| 2303-BD137-UNLAID/off=0x19103/ff | 2303-BD137-UNLAID | ok | ok (decode changed, as required) |
+| 2303-BD137-UNLAID/off=0x190c8/flip_bit | 2303-BD137-UNLAID | ok | ok (decode changed, as required) |
+| 2303-BD137-UNLAID/off=0x190c8/zero | 2303-BD137-UNLAID | ok | ok (decode changed, as required) |
+| 2303-BD137-UNLAID/off=0x190c8/ff | 2303-BD137-UNLAID | ok | ok (decode changed, as required) |
+| 2303-BD137-UNLAID/off=0x19165/flip_bit | 2303-BD137-UNLAID | ok | ok (decode changed, as required) |
+| 2303-BD137-UNLAID/off=0x19165/zero | 2303-BD137-UNLAID | ok | ok (decode changed, as required) |
+| 2303-BD137-UNLAID/off=0x19165/ff | 2303-BD137-UNLAID | ok | ok (decode changed, as required) |
+| 2303-BD137-UNLAID/off=0x190c9/flip_bit | 2303-BD137-UNLAID | ok | ok (decode changed, as required) |
+| 2303-BD137-UNLAID/off=0x190c9/zero | 2303-BD137-UNLAID | ok | ok (decode changed, as required) |
+| 2303-BD137-UNLAID/off=0x190c9/ff | 2303-BD137-UNLAID | ok | ok (decode changed, as required) |
+| 5683D-SS21-UNLAID/off=0x5229/flip_bit | 5683D-SS21-UNLAID | ok | ok (decode changed, as required) |
+| 5683D-SS21-UNLAID/off=0x5229/ff | 5683D-SS21-UNLAID | ok | ok (decode changed, as required) |
+| 5683D-SS21-UNLAID/off=0x5169/flip_bit | 5683D-SS21-UNLAID | ok | ok (decode changed, as required) |
+| 5683D-SS21-UNLAID/off=0x5169/ff | 5683D-SS21-UNLAID | ok | ok (decode changed, as required) |
+| 5683D-SS21-UNLAID/off=0x5085/flip_bit | 5683D-SS21-UNLAID | ok | ok (decode changed, as required) |
+| 5683D-SS21-UNLAID/off=0x5085/zero | 5683D-SS21-UNLAID | ok | ok (decode changed, as required) |
+| 5683D-SS21-UNLAID/off=0x5085/ff | 5683D-SS21-UNLAID | ok | ok (decode changed, as required) |
+| 5683D-SS21-UNLAID/off=0x5203/flip_bit | 5683D-SS21-UNLAID | ok | ok (decode changed, as required) |
+| 5683D-SS21-UNLAID/off=0x5203/zero | 5683D-SS21-UNLAID | ok | ok (decode changed, as required) |
+| 5683D-SS21-UNLAID/off=0x5203/ff | 5683D-SS21-UNLAID | ok | ok (decode changed, as required) |
+| 5683D-SS21-UNLAID/off=0x51c9/flip_bit | 5683D-SS21-UNLAID | ok | ok (decode changed, as required) |
+| 5683D-SS21-UNLAID/off=0x51c9/ff | 5683D-SS21-UNLAID | ok | ok (decode changed, as required) |
+| 5683D-SS21-UNLAID/off=0x50e7/flip_bit | 5683D-SS21-UNLAID | ok | ok (decode changed, as required) |
+| 5683D-SS21-UNLAID/off=0x50e7/zero | 5683D-SS21-UNLAID | ok | ok (decode changed, as required) |
+| 5683D-SS21-UNLAID/off=0x50e7/ff | 5683D-SS21-UNLAID | ok | ok (decode changed, as required) |
+| 5683D-SS21-UNLAID/off=0x4f65/flip_bit | 5683D-SS21-UNLAID | ok | ok (decode changed, as required) |
+| 5683D-SS21-UNLAID/off=0x4f65/zero | 5683D-SS21-UNLAID | ok | ok (decode changed, as required) |
+| 5683D-SS21-UNLAID/off=0x4f65/ff | 5683D-SS21-UNLAID | ok | ok (decode changed, as required) |
+| 5683D-SS21-UNLAID/off=0xa8c/flip_bit | 5683D-SS21-UNLAID | ok | ok (decode changed, as required) |
+| 5683D-SS21-UNLAID/off=0xa8c/zero | 5683D-SS21-UNLAID | ok | ok (decode changed, as required) |
+| 5683D-SS21-UNLAID/off=0xa8c/ff | 5683D-SS21-UNLAID | ok | ok (decode changed, as required) |
+| 5683D-SS21-UNLAID/off=0x5205/flip_bit | 5683D-SS21-UNLAID | ok | ok (decode changed, as required) |
+| 5683D-SS21-UNLAID/off=0x5205/zero | 5683D-SS21-UNLAID | ok | ok (decode changed, as required) |
+| 5683D-SS21-UNLAID/off=0x5205/ff | 5683D-SS21-UNLAID | ok | ok (decode changed, as required) |
+| 5683D-SS21-UNLAID/off=0x163c/flip_bit | 5683D-SS21-UNLAID | ok | ok (decode changed, as required) |
+| 5683D-SS21-UNLAID/off=0x163c/zero | 5683D-SS21-UNLAID | ok | ok (decode changed, as required) |
+| 5683D-SS21-UNLAID/off=0x163c/ff | 5683D-SS21-UNLAID | ok | ok (decode changed, as required) |
+| 5683D-SS21-UNLAID/off=0x50e3/flip_bit | 5683D-SS21-UNLAID | ok | ok (decode changed, as required) |
+| 5683D-SS21-UNLAID/off=0x50e3/zero | 5683D-SS21-UNLAID | ok | ok (decode changed, as required) |
+| 5683D-SS21-UNLAID/off=0x50e3/ff | 5683D-SS21-UNLAID | ok | ok (decode changed, as required) |
+| 5683D-SS21-UNLAID/off=0x51e9/flip_bit | 5683D-SS21-UNLAID | ok | ok (decode changed, as required) |
+| 5683D-SS21-UNLAID/off=0x51e9/zero | 5683D-SS21-UNLAID | ok | ok (decode changed, as required) |
+| 5683D-SS21-UNLAID/off=0x51e9/ff | 5683D-SS21-UNLAID | ok | ok (decode changed, as required) |
+| 5683D-SS21-UNLAID/off=0x1388/flip_bit | 5683D-SS21-UNLAID | ok | ok (decode changed, as required) |
+| 5683D-SS21-UNLAID/off=0x1388/zero | 5683D-SS21-UNLAID | ok | ok (decode changed, as required) |
+| 5683D-SS21-UNLAID/off=0x1388/ff | 5683D-SS21-UNLAID | ok | ok (decode changed, as required) |
+| 5683D-SS21-UNLAID/off=0x5220/flip_bit | 5683D-SS21-UNLAID | ok | ok (decode changed, as required) |
+| 5683D-SS21-UNLAID/off=0x5220/zero | 5683D-SS21-UNLAID | ok | ok (decode changed, as required) |
+| 5683D-SS21-UNLAID/off=0x5220/ff | 5683D-SS21-UNLAID | ok | ok (decode changed, as required) |
+| 5683D-SS21-UNLAID/off=0x52a9/flip_bit | 5683D-SS21-UNLAID | ok | ok (decode changed, as required) |
+| 5683D-SS21-UNLAID/off=0x52a9/zero | 5683D-SS21-UNLAID | ok | ok (decode changed, as required) |
+| 5683D-SS21-UNLAID/off=0x52a9/ff | 5683D-SS21-UNLAID | ok | ok (decode changed, as required) |
+| CLAUDE-D2-M0/off=0x2328/flip_bit | CLAUDE-D2-M0 | ok | ok (decode changed, as required) |
+| CLAUDE-D2-M0/off=0x2328/zero | CLAUDE-D2-M0 | ok | ok (decode changed, as required) |
+| CLAUDE-D2-M0/off=0x2328/ff | CLAUDE-D2-M0 | ok | ok (decode changed, as required) |
+| CLAUDE-D2-M0/off=0x24c1/flip_bit | CLAUDE-D2-M0 | ok | ok (decode changed, as required) |
+| CLAUDE-D2-M0/off=0x24c1/zero | CLAUDE-D2-M0 | ok | ok (decode changed, as required) |
+| CLAUDE-D2-M0/off=0x24c1/ff | CLAUDE-D2-M0 | ok | ok (decode changed, as required) |
+| CLAUDE-D2-M0/off=0xb62/flip_bit | CLAUDE-D2-M0 | ok | ok (decode changed, as required) |
+| CLAUDE-D2-M0/off=0xb62/zero | CLAUDE-D2-M0 | ok | ok (decode changed, as required) |
+| CLAUDE-D2-M0/off=0xb62/ff | CLAUDE-D2-M0 | ok | ok (decode changed, as required) |
+| CLAUDE-D2-M0/off=0x2409/flip_bit | CLAUDE-D2-M0 | ok | ok (decode changed, as required) |
+| CLAUDE-D2-M0/off=0x2409/zero | CLAUDE-D2-M0 | ok | ok (decode changed, as required) |
+| CLAUDE-D2-M0/off=0x2409/ff | CLAUDE-D2-M0 | ok | ok (decode changed, as required) |
+| CLAUDE-D2-M0/off=0x2384/flip_bit | CLAUDE-D2-M0 | ok | ok (decode changed, as required) |
+| CLAUDE-D2-M0/off=0x2384/zero | CLAUDE-D2-M0 | ok | ok (decode changed, as required) |
+| CLAUDE-D2-M0/off=0x2384/ff | CLAUDE-D2-M0 | ok | ok (decode changed, as required) |
+| CLAUDE-D2-M0/off=0x23e6/flip_bit | CLAUDE-D2-M0 | ok | ok (decode changed, as required) |
+| CLAUDE-D2-M0/off=0x23e6/zero | CLAUDE-D2-M0 | ok | ok (decode changed, as required) |
+| CLAUDE-D2-M0/off=0x23e6/ff | CLAUDE-D2-M0 | ok | ok (decode changed, as required) |
+| CLAUDE-D2-M0/off=0x22c6/flip_bit | CLAUDE-D2-M0 | ok | ok (decode changed, as required) |
+| CLAUDE-D2-M0/off=0x22c6/zero | CLAUDE-D2-M0 | ok | ok (decode changed, as required) |
+| CLAUDE-D2-M0/off=0x22c6/ff | CLAUDE-D2-M0 | ok | ok (decode changed, as required) |
+| CLAUDE-D2-M0/off=0x2504/flip_bit | CLAUDE-D2-M0 | ok | ok (decode changed, as required) |
+| CLAUDE-D2-M0/off=0x2504/zero | CLAUDE-D2-M0 | ok | ok (decode changed, as required) |
+| CLAUDE-D2-M0/off=0x2504/ff | CLAUDE-D2-M0 | ok | ok (decode changed, as required) |
+| CLAUDE-D2-M0/off=0x2266/flip_bit | CLAUDE-D2-M0 | ok | ok (decode changed, as required) |
+| CLAUDE-D2-M0/off=0x2266/zero | CLAUDE-D2-M0 | ok | ok (decode changed, as required) |
+| CLAUDE-D2-M0/off=0x2266/ff | CLAUDE-D2-M0 | ok | ok (decode changed, as required) |
+| CLAUDE-D2-M0/off=0x5fd/flip_bit | CLAUDE-D2-M0 | ok | ok (decode changed, as required) |
+| CLAUDE-D2-M0/off=0x5fd/zero | CLAUDE-D2-M0 | ok | ok (decode changed, as required) |
+| CLAUDE-D2-M0/off=0x5fd/ff | CLAUDE-D2-M0 | ok | ok (decode changed, as required) |
+| CLAUDE-D2-M0/off=0x235b/flip_bit | CLAUDE-D2-M0 | ok | ok (decode changed, as required) |
+| CLAUDE-D2-M0/off=0x235b/zero | CLAUDE-D2-M0 | ok | ok (decode changed, as required) |
+| CLAUDE-D2-M0/off=0x235b/ff | CLAUDE-D2-M0 | ok | ok (decode changed, as required) |
+| CLAUDE-D2-M0/off=0x1622/flip_bit | CLAUDE-D2-M0 | ok | ok (decode changed, as required) |
+| CLAUDE-D2-M0/off=0x1622/zero | CLAUDE-D2-M0 | ok | ok (decode changed, as required) |
+| CLAUDE-D2-M0/off=0x1622/ff | CLAUDE-D2-M0 | ok | ok (decode changed, as required) |
+| CLAUDE-D2-M0/off=0x223b/flip_bit | CLAUDE-D2-M0 | ok | ok (decode changed, as required) |
+| CLAUDE-D2-M0/off=0x223b/zero | CLAUDE-D2-M0 | ok | ok (decode changed, as required) |
+| CLAUDE-D2-M0/off=0x223b/ff | CLAUDE-D2-M0 | ok | ok (decode changed, as required) |
+| CLAUDE-D2-M0/off=0x2324/flip_bit | CLAUDE-D2-M0 | ok | ok (decode changed, as required) |
+| CLAUDE-D2-M0/off=0x2324/zero | CLAUDE-D2-M0 | ok | ok (decode changed, as required) |
+| CLAUDE-D2-M0/off=0x2324/ff | CLAUDE-D2-M0 | ok | ok (decode changed, as required) |
+| CLAUDE-D2-M0/off=0x22c4/flip_bit | CLAUDE-D2-M0 | ok | ok (decode changed, as required) |
+| CLAUDE-D2-M0/off=0x22c4/zero | CLAUDE-D2-M0 | ok | ok (decode changed, as required) |
+| CLAUDE-D2-M0/off=0x22c4/ff | CLAUDE-D2-M0 | ok | ok (decode changed, as required) |
+| CLAUDE-D3-BF/off=0x3a53/flip_bit | CLAUDE-D3-BF | ok | ok (decode changed, as required) |
+| CLAUDE-D3-BF/off=0x3a53/zero | CLAUDE-D3-BF | ok | ok (decode changed, as required) |
+| CLAUDE-D3-BF/off=0x3a53/ff | CLAUDE-D3-BF | ok | ok (decode changed, as required) |
+| CLAUDE-D3-BF/off=0x3af3/flip_bit | CLAUDE-D3-BF | ok | ok (decode changed, as required) |
+| CLAUDE-D3-BF/off=0x3af3/ff | CLAUDE-D3-BF | ok | ok (decode changed, as required) |
+| CLAUDE-D3-BF/off=0x3a44/flip_bit | CLAUDE-D3-BF | ok | ok (decode changed, as required) |
+| CLAUDE-D3-BF/off=0x3a44/zero | CLAUDE-D3-BF | ok | ok (decode changed, as required) |
+| CLAUDE-D3-BF/off=0x3a44/ff | CLAUDE-D3-BF | ok | ok (decode changed, as required) |
+| CLAUDE-D3-BF/off=0x3891/flip_bit | CLAUDE-D3-BF | ok | ok (decode changed, as required) |
+| CLAUDE-D3-BF/off=0x3891/zero | CLAUDE-D3-BF | ok | ok (decode changed, as required) |
+| CLAUDE-D3-BF/off=0x3891/ff | CLAUDE-D3-BF | ok | ok (decode changed, as required) |
+| CLAUDE-D3-BF/off=0x3b73/flip_bit | CLAUDE-D3-BF | ok | ok (decode changed, as required) |
+| CLAUDE-D3-BF/off=0x3b73/zero | CLAUDE-D3-BF | ok | ok (decode changed, as required) |
+| CLAUDE-D3-BF/off=0x3b73/ff | CLAUDE-D3-BF | ok | ok (decode changed, as required) |
+| CLAUDE-D3-BF/off=0x1d93/flip_bit | CLAUDE-D3-BF | ok | ok (decode changed, as required) |
+| CLAUDE-D3-BF/off=0x1d93/zero | CLAUDE-D3-BF | ok | ok (decode changed, as required) |
+| CLAUDE-D3-BF/off=0x1d93/ff | CLAUDE-D3-BF | ok | ok (decode changed, as required) |
+| CLAUDE-D3-BF/off=0x3993/flip_bit | CLAUDE-D3-BF | ok | ok (decode changed, as required) |
+| CLAUDE-D3-BF/off=0x3993/zero | CLAUDE-D3-BF | ok | ok (decode changed, as required) |
+| CLAUDE-D3-BF/off=0x3993/ff | CLAUDE-D3-BF | ok | ok (decode changed, as required) |
+| CLAUDE-D3-BF/off=0x3933/flip_bit | CLAUDE-D3-BF | ok | ok (decode changed, as required) |
+| CLAUDE-D3-BF/off=0x3933/zero | CLAUDE-D3-BF | ok | ok (decode changed, as required) |
+| CLAUDE-D3-BF/off=0x3933/ff | CLAUDE-D3-BF | ok | ok (decode changed, as required) |
+| CLAUDE-D3-BF/off=0x37f2/flip_bit | CLAUDE-D3-BF | ok | ok (decode changed, as required) |
+| CLAUDE-D3-BF/off=0x37f2/zero | CLAUDE-D3-BF | ok | ok (decode changed, as required) |
+| CLAUDE-D3-BF/off=0x37f2/ff | CLAUDE-D3-BF | ok | ok (decode changed, as required) |
+| CLAUDE-D3-BF/off=0x38f1/flip_bit | CLAUDE-D3-BF | ok | ok (decode changed, as required) |
+| CLAUDE-D3-BF/off=0x38f1/zero | CLAUDE-D3-BF | ok | ok (decode changed, as required) |
+| CLAUDE-D3-BF/off=0x38f1/ff | CLAUDE-D3-BF | ok | ok (decode changed, as required) |
+| CLAUDE-D3-BF/off=0x3b2f/flip_bit | CLAUDE-D3-BF | ok | ok (decode changed, as required) |
+| CLAUDE-D3-BF/off=0x3b2f/zero | CLAUDE-D3-BF | ok | ok (decode changed, as required) |
+| CLAUDE-D3-BF/off=0x3b2f/ff | CLAUDE-D3-BF | ok | ok (decode changed, as required) |
+| CLAUDE-D3-BF/off=0x38ef/flip_bit | CLAUDE-D3-BF | ok | ok (decode changed, as required) |
+| CLAUDE-D3-BF/off=0x38ef/zero | CLAUDE-D3-BF | ok | ok (decode changed, as required) |
+| CLAUDE-D3-BF/off=0x38ef/ff | CLAUDE-D3-BF | ok | ok (decode changed, as required) |
+| CLAUDE-D3-BF/off=0xa31/flip_bit | CLAUDE-D3-BF | ok | ok (decode changed, as required) |
+| CLAUDE-D3-BF/off=0xa31/zero | CLAUDE-D3-BF | ok | ok (decode changed, as required) |
+| CLAUDE-D3-BF/off=0xa31/ff | CLAUDE-D3-BF | ok | ok (decode changed, as required) |
+| CLAUDE-D3-BF/off=0x38aa/flip_bit | CLAUDE-D3-BF | ok | ok (decode changed, as required) |
+| CLAUDE-D3-BF/off=0x38aa/zero | CLAUDE-D3-BF | ok | ok (decode changed, as required) |
+| CLAUDE-D3-BF/off=0x38aa/ff | CLAUDE-D3-BF | ok | ok (decode changed, as required) |
+| CLAUDE-D3-BF/off=0x394d/flip_bit | CLAUDE-D3-BF | ok | ok (decode changed, as required) |
+| CLAUDE-D3-BF/off=0x394d/zero | CLAUDE-D3-BF | ok | ok (decode changed, as required) |
+| CLAUDE-D3-BF/off=0x394d/ff | CLAUDE-D3-BF | ok | ok (decode changed, as required) |
+| CLAUDE-D4/off=0x643/flip_bit | CLAUDE-D4 | ok | ok (decode changed, as required) |
+| CLAUDE-D4/off=0x643/zero | CLAUDE-D4 | ok | ok (decode changed, as required) |
+| CLAUDE-D4/off=0x643/ff | CLAUDE-D4 | ok | ok (decode changed, as required) |
+| CLAUDE-D4/off=0x8c3/flip_bit | CLAUDE-D4 | ok | ok (decode changed, as required) |
+| CLAUDE-D4/off=0x8c3/ff | CLAUDE-D4 | ok | ok (decode changed, as required) |
+| CLAUDE-D4/off=0x8ba/flip_bit | CLAUDE-D4 | ok | ok (decode changed, as required) |
+| CLAUDE-D4/off=0x8ba/zero | CLAUDE-D4 | ok | ok (decode changed, as required) |
+| CLAUDE-D4/off=0x8ba/ff | CLAUDE-D4 | ok | ok (decode changed, as required) |
+| CLAUDE-D4/off=0x8e3/flip_bit | CLAUDE-D4 | ok | ok (decode changed, as required) |
+| CLAUDE-D4/off=0x8e3/ff | CLAUDE-D4 | ok | ok (decode changed, as required) |
+| CLAUDE-D4/off=0x89f/flip_bit | CLAUDE-D4 | ok | ok (decode changed, as required) |
+| CLAUDE-D4/off=0x89f/zero | CLAUDE-D4 | ok | ok (decode changed, as required) |
+| CLAUDE-D4/off=0x89f/ff | CLAUDE-D4 | ok | ok (decode changed, as required) |
+| CLAUDE-D4/off=0x983/flip_bit | CLAUDE-D4 | ok | ok (decode changed, as required) |
+| CLAUDE-D4/off=0x983/ff | CLAUDE-D4 | ok | ok (decode changed, as required) |
+| CLAUDE-D4/off=0x95d/flip_bit | CLAUDE-D4 | ok | ok (decode changed, as required) |
+| CLAUDE-D4/off=0x95d/zero | CLAUDE-D4 | ok | ok (decode changed, as required) |
+| CLAUDE-D4/off=0x95d/ff | CLAUDE-D4 | ok | ok (decode changed, as required) |
+| CLAUDE-D4/off=0x9da/flip_bit | CLAUDE-D4 | ok | ok (decode changed, as required) |
+| CLAUDE-D4/off=0x9da/zero | CLAUDE-D4 | ok | ok (decode changed, as required) |
+| CLAUDE-D4/off=0x9da/ff | CLAUDE-D4 | ok | ok (decode changed, as required) |
+| CLAUDE-D4/off=0x91a/flip_bit | CLAUDE-D4 | ok | ok (decode changed, as required) |
+| CLAUDE-D4/off=0x91a/zero | CLAUDE-D4 | ok | ok (decode changed, as required) |
+| CLAUDE-D4/off=0x91a/ff | CLAUDE-D4 | ok | ok (decode changed, as required) |
+| CLAUDE-D4/off=0xab4/flip_bit | CLAUDE-D4 | ok | ok (decode changed, as required) |
+| CLAUDE-D4/off=0xab4/zero | CLAUDE-D4 | ok | ok (decode changed, as required) |
+| CLAUDE-D4/off=0xab4/ff | CLAUDE-D4 | ok | ok (decode changed, as required) |
+| CLAUDE-D4/off=0x9e3/flip_bit | CLAUDE-D4 | ok | ok (decode changed, as required) |
+| CLAUDE-D4/off=0x9e3/zero | CLAUDE-D4 | ok | ok (decode changed, as required) |
+| CLAUDE-D4/off=0x9e3/ff | CLAUDE-D4 | ok | ok (decode changed, as required) |
+| CLAUDE-D4/off=0x982/flip_bit | CLAUDE-D4 | ok | ok (decode changed, as required) |
+| CLAUDE-D4/off=0x982/zero | CLAUDE-D4 | ok | ok (decode changed, as required) |
+| CLAUDE-D4/off=0x982/ff | CLAUDE-D4 | ok | ok (decode changed, as required) |
+| CLAUDE-D4/off=0xa43/flip_bit | CLAUDE-D4 | ok | ok (decode changed, as required) |
+| CLAUDE-D4/off=0xa43/ff | CLAUDE-D4 | ok | ok (decode changed, as required) |
+| CLAUDE-D4/off=0x994/flip_bit | CLAUDE-D4 | ok | ok (decode changed, as required) |
+| CLAUDE-D4/off=0x994/zero | CLAUDE-D4 | ok | ok (decode changed, as required) |
+| CLAUDE-D4/off=0x994/ff | CLAUDE-D4 | ok | ok (decode changed, as required) |
+| CLAUDE-D4/off=0x9e2/flip_bit | CLAUDE-D4 | ok | ok (decode changed, as required) |
+| CLAUDE-D4/off=0x9e2/zero | CLAUDE-D4 | ok | ok (decode changed, as required) |
+| CLAUDE-D4/off=0x9e2/ff | CLAUDE-D4 | ok | ok (decode changed, as required) |
 
 ## Unsupported (0)
 

@@ -3,7 +3,7 @@
 touching AccuMark.  Decodes every capture under captures/, checks each against
 its DXF, and re-runs the known structural-diff cases (including the two that
 must report NO change).  Exits non-zero on any failure."""
-import copy, glob, os, sys, subprocess
+import copy, glob, math, os, sys, subprocess
 HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, HERE)
 import accumark_pds as ap
@@ -733,12 +733,24 @@ print('-- markers (markers/, skipped when absent) - see MARKER_DECODE_PLAN.md')
 # that header field.
 import verify_marker as vm
 MK = [  # folder, zip, {fact: want}, dxf folder or None
- ('2303-BD137-UNLAID', '2303-BD 137.zip', dict(laid='no', placements=0, slots=97, records=66, pieces_listed=12, bound=0), None),
+ # the unlaid twin with its 18 pieces bundled: the only never-laid marker whose slots can be checked against
+ # real geometry (v4.2) - every slot's home box vs the piece's own outline at the tiled size, no layout needed
+ ('2303-BD137-UNLAID', '2303-BD 137.zip', dict(laid='no', placements=0, slots=97, records=66, pieces_listed=12, bound=0,
+                                              laid_state='unlaid', slots_bound=97, unplaced=97, order_cuts=61, geometry='all',
+                                              hdr_area_mode='last_model', hdr_perim_mode='last_model',
+                                              bbox_ok_unplaced=97, bbox_n_unplaced=97, area_ok_unplaced=66, area_pairs_unplaced=66), None),
  ('2303-BD137-PLACED', '2303-BD 137 PLACED.zip', dict(laid='yes', placements=97, bundles=61, bound=97, identity='yes',
-                                                    width_cm=137.0, length_cm=377.68, util_pct=71.51, bbox_ok=97, area_ok=12, area_pairs=12,
-                                                    dxf_centres=97, dxf_outlines_checked=97,
+                                                    width_cm=137.0, length_cm=377.68, util_pct=71.51, bbox_ok=97, area_ok=66, area_pairs=66,
+                                                    dxf_centres=97, dxf_outlines_checked=97, dxf_size_labels=97,
+                                                    laid_state='laid', unplaced=0, geometry='n/a', hdr_area_mode='all', hdr_perim_mode='last_model',
                                                     folds='2303-B1-A1- OUCF-SP24;2303-B1-A2- OUCF-SP24;2303-B1-DD2- OUCF-SP24;2303-B1-E3- OUCF-SP24'), 'dxf'),
- ('2303-CP150-JULY',   '2303-CP 150 CPL.zip', dict(laid='yes', placements=1, bound=1, identity='yes', dxf_centres=1, area_ok=1, bbox_ok=4), 'dxf'),
+ # 1 placed of 72: 71 unplaced slots WITH pieces. x matches to 0.0001 in once the marker's own block buffer (section 6,
+ # 2 x 0.0591 in) is subtracted; the y axis carries a one-sided excess of up to 0.0786 in on 48 of 71 slots that
+ # nothing explains yet [?] (the DXF-verified placed slot is exact) - so the unplaced box is held to the 0.08 in
+ # curve band below, not 0.02, and bbox_ok_unplaced is deliberately not pinned.
+ ('2303-CP150-JULY',   '2303-CP 150 CPL.zip', dict(laid='yes', placements=1, bound=1, identity='yes', dxf_centres=1, dxf_size_labels=1, area_ok=1, bbox_ok=4,
+                                                   laid_state='partial', unplaced=71, geometry='all', bbox_n_unplaced=71,
+                                                   hdr_area_mode='all', hdr_perim_mode='last_model', area_ok_unplaced=36, area_pairs_unplaced=36), 'dxf'),
  # Controlled M3 test: a fresh rectangle assigned CAP-RULES-A (real,
  # non-placeholder per-size-break deltas), rule 1 applied to only 2 of 4
  # corners so the other 2 rely on graded_outline()'s chain-interpolation
@@ -749,8 +761,14 @@ MK = [  # folder, zip, {fact: want}, dxf folder or None
  # centre_worst 0.0007in confirm both sizes' graded shape - including the
  # interpolated corners - against AccuMark's own drawn marker DXF.
  ('CLAUDE-GRADE-MARKER', 'CLAUDE-GRADE-MARKER.zip', dict(laid='yes', placements=2, bound=2, identity='yes',
-                                                    bbox_ok=2, dxf_centres=2, dxf_outlines_checked=2), 'dxf'),
+                                                    bbox_ok=2, dxf_centres=2, dxf_outlines_checked=2, dxf_size_labels=2), 'dxf'),
 ]
+# dxf_size_labels (v4.1): the label AccuMark draws at every placed centre reads
+# `<piece> <size>` (September vintage: one TEXT; July: three stacked). It is an
+# answer key for the slot -> (piece, size) binding that needs no area and no
+# geometry, and it is the only one that can tell sister sizes apart on style
+# 2303 (all-placeholder grading: same shape, same area) - 97/97 with the
+# structural binding, 20/97 with the old area rule.
 for folder, zname, want, dxf in MK:
     path = os.path.join(HERE, 'markers', folder, zname)
     if not os.path.isfile(path):
@@ -763,6 +781,7 @@ for folder, zname, want, dxf in MK:
     for f, _ in results:
         bad = [f'{k}={f.get(k)}!={v}' for k, v in want.items() if str(f.get(k)) != str(v)]
         if dxf and f.get('dxf_outline_max', 9) > 0.08: bad.append(f"dxf_outline_max={f.get('dxf_outline_max')}")
+        if f.get('bbox_worst_unplaced', 0) > 0.08: bad.append(f"bbox_worst_unplaced={f.get('bbox_worst_unplaced')}")
         # 0.0015 in, not the July markers' 0.001: a cm-vintage drawn DXF
         # (2303-BD137-PLACED) round-trips through a /2.54 conversion the
         # inch-native July DXFs don't, costing a little precision - not a
@@ -770,6 +789,830 @@ for folder, zname, want, dxf in MK:
         if dxf and f.get('dxf_centre_worst', 9) > 0.0015: bad.append(f"dxf_centre_worst={f.get('dxf_centre_worst')}")
         print(f"   {'ok ' if not bad else 'FAIL'} {f['name']:30} {'; '.join(bad) if bad else 'as expected'}")
         if bad: fails.append(f"{f['name']}: " + '; '.join(bad))
+
+print('-- marker model list / size table / trailer stamps (v4, see CHANGELOG.md)')
+# markers/1825D-SS21-UNLAID is a foreign-origin sample: AccuMark "version 9
+# data" exported 2020-10-16 by another user (kids' sizes 2-3 .. 11-12, two
+# UNLAID markers, no piece/model/order objects). Its hyphenated sizes and the
+# 0-flag size rows exposed that the old regex reader found no sizes, the old
+# length-after reader found no model, and read_object's created/modified were
+# unaligned-scan junk. The corpus rows pin the same three fixes on markers
+# the old readers half-handled (2303: 3 of 11 models dropped; AD1234 and
+# LADIES-BLOUSE: no sizes at all; every single-model marker: no model).
+import datetime, struct
+def _utc(*a): return int(datetime.datetime(*a, tzinfo=datetime.timezone.utc).timestamp())
+SZ_1825D = ['2-3', '3-4', '4-5', '5-6', '6-7', '7-8', '8-9', '9-10', '11-12']
+CUT_1825D = {'1825D IGUS 061020': 'CUT X 01', '1825D FROT 061020': 'CUT X 01',
+             '1825D OGUS 061020': 'CUT X 01', '1825D BACK 061020': 'CUT X01'}
+def _mk(parts, name):
+    path = os.path.join(HERE, 'markers', *parts)
+    if not os.path.isfile(path): return None
+    o = next(o for o in am.list_zip(path)['marker'] if o['name'] == name)
+    return o, am.parse_marker(o['data'])
+V4_MARKERS = [  # zip path under markers/, marker name, {fact: want}
+ (('1825D-SS21-UNLAID', '1825D-BD 180 SS21.zip'), '1825D-GT 168 SS21',
+  dict(models=['CON2-1825D'], sizes=SZ_1825D, slots=9, records=9, pieces=1, width_cm=168.0,
+       created=_utc(2020, 10, 16, 6, 16, 15), modified=_utc(2020, 10, 16, 6, 16, 15))),
+ (('1825D-SS21-UNLAID', '1825D-BD 180 SS21.zip'), '1825D-BD 180 SS21',
+  dict(models=['CON2-1825D'], sizes=SZ_1825D, slots=27, records=27, pieces=3, width_cm=180.0,
+       created=_utc(2020, 10, 16, 6, 11, 35), modified=_utc(2020, 10, 16, 6, 11, 35))),
+ # three more never-laid, marker-only markers from the same foreign origin
+ # (Empty marker files Zip, 2020-21): 4, 3 and 1 pieces; 6, 7 and 11 size rows
+ (('5683D-SS21-UNLAID', '5683D-BD 168 SS21.zip'), '5683D-BD 168 SS21',
+  dict(models=['CON-5683D'], sizes=['18-24', '2-3', '3-4', '4-5', '5-6', '6-7'], slots=24, records=24, pieces=4, width_cm=168.0,
+       created=_utc(2020, 10, 16, 4, 56, 33), modified=_utc(2020, 10, 16, 4, 56, 33))),
+ (('2591A-SS21-UNLAID', '2591A-BD 157 AW SS21.zip'), '2591A-BD 157 AW SS21',
+  dict(models=['CON-2591A'], sizes=['6/7', '7/8', '8/9', '9/10', '11/12', '13/14', '15/16'], slots=35, records=21, pieces=3, width_cm=157.0,
+       created=_utc(2020, 10, 16, 5, 0, 17), modified=_utc(2020, 10, 16, 5, 0, 17))),
+ (('418T-SHAPESHIFTER-UNLAID', '418T-BD 160 SHAPESHIFTER.zip'), '418T-BD 160 SHAPESHIFTER',
+  dict(models=['418T'], sizes=['2-3', '3-4', '4-5', '5-6', '6-7', '7-8', '8-9', '9-10', '11-12', '13-14', '15-16'],
+       slots=22, records=11, pieces=1, width_cm=160.0,
+       created=_utc(2021, 5, 13, 6, 36, 21), modified=_utc(2021, 5, 13, 6, 36, 21))),
+ (('2303-BD137-UNLAID', '2303-BD 137.zip'), '2303-BD 137',      # 8 of 11 models before; the missing 3 were B1 7, OUCF DD, OUCF E
+  dict(n_models=11, last_model='2303 OUCF E', n_sizes=61, slots=97,
+       created=_utc(2026, 9, 8, 16, 29, 51), modified=_utc(2026, 9, 8, 16, 29, 51))),
+ (('2303-CP150-JULY', '2303-CP 150 CPL.zip'), '2303-CP 150 CPL LEFTBTM 26-47',   # 9 of 11 before
+  dict(n_models=11, last_model='2303 MOCUP B1 11', n_sizes=36, slots=72,
+       created=_utc(2026, 7, 29, 14, 4, 33), modified=_utc(2026, 7, 29, 14, 4, 33))),
+ (('misc-test-markers', 'AD1234 TEST 134.zip'), 'AD1234 TEST 134',                 # no sizes before
+  dict(models=['ID1005 - TOP'], sizes=['XS', 'XS', 'S', 'S', 'S', 'S', 'M', 'M', 'M', 'M', 'L', 'L', 'XL'], slots=13)),
+ (('misc-test-markers', 'LADIES-BLOUSE TEST-2.zip'), 'LADIES-BLOUSE TEST-2',       # no sizes before
+  dict(models=['LADIES-BLOUSE'], sizes=['10', '12', '12', '14', '14', '16'], slots=54)),
+ (('CLAUDE-GRADE-MARKER', 'CLAUDE-GRADE-MARKER.zip'), 'CLAUDE-GRADE-MARKER',       # single-model markers: no model before
+  dict(models=['CLAUDE-GRADE-MODEL'], sizes=['2', '18'], slots=2)),
+ (('CAP-C21-SEC14', 'CAP-C21-SEC14.zip'), 'CAP-C21-SEC14',
+  dict(models=['CAP-C21-MODEL'], sizes=['2', '18'], slots=2,
+       created=_utc(2026, 9, 10, 19, 32, 53), modified=_utc(2026, 9, 10, 19, 48, 3))),
+]
+for parts, name, want in V4_MARKERS:
+    got = _mk(parts, name)
+    if got is None:
+        print(f'   --  {name:30} (absent)'); continue
+    o, mk = got
+    have = dict(models=mk['models'], n_models=len(mk['models']), last_model=(mk['models'] or [None])[-1],
+                sizes=[r['size'] for r in mk['sizes']] if 'sizes' in want else None, n_sizes=len(mk['sizes']),
+                slots=len(mk['slots']), records=len(mk['records']), pieces=len(mk['pieces']),
+                width_cm=round(mk['width']*2.54, 2), created=o['created'], modified=o['modified'])
+    bad = [f'{k}={have[k]!r}!={v!r}' for k, v in want.items() if have[k] != v]
+    # the identities check_marker now enforces: tables tile sections 11-12, size rows tile the slot table
+    bad += [f'check failed: {n}' for n, ok, _ in am.check_marker(mk) if not ok and (n.startswith('model list') or n.startswith('size table'))]
+    if name.startswith('1825D'):
+        recs = mk['records']
+        if any(r['size'] not in SZ_1825D for r in recs): bad.append('a record size is not a real size name')
+        if any(r['cut'] != CUT_1825D[r['piece']] for r in recs): bad.append('a record cut description is wrong')
+        if any(s['size'] not in SZ_1825D for s in mk['slots']): bad.append('a slot is bound to a wrong size')
+        if abs(mk['total_area'] - sum(r['area'] for r in recs)) > 1e-9: bad.append('@422 != sum(record areas)')
+        if abs(mk['unknown_454'] - sum(r['perimeter'] for r in recs)) > 1e-9: bad.append('@454 != sum(record perimeters)')
+        if mk['laid'] or mk['placements']: bad.append('an unlaid marker was read as laid')
+    print(f"   {'ok ' if not bad else 'FAIL'} {name:30} {'; '.join(bad) if bad else 'as expected'}")
+    if bad: fails.append(f'{name}: ' + '; '.join(bad))
+print('-- slot binding: structure, not area (v4.1, see CHANGELOG.md)')
+# Every slot is bound to (piece, size, model, record) from its own 6-byte head,
+# the size table's tiling of the slot table and section 10's piece list; the
+# declared area / bundle / record text are checked against that, never used to
+# choose it. The old area rule tied on sister sizes and picked an arbitrary one
+# (77 of 97 slots on 2303-BD 137) - invisible to every geometric check because
+# style 2303's grading is all-placeholder; the drawn DXF's labels (MK rows
+# above: dxf_size_labels) are what prove the structural size.
+BIND_ROWS = ['every slot bound structurally', 'slot bundle == head bundle == size-row index',
+             'slot declared area == bound record area', 'record text ends with the tiled size + G',
+             'records == section-13 entries', 'piece list tiles section 10']
+n_mk = 0; bad_all = []
+for zp in sorted(glob.glob(os.path.join(HERE, 'markers', '**', '*.zip'), recursive=True)):
+    try: mos = am.list_zip(zp).get('marker', [])
+    except Exception: continue
+    for o in mos:
+        n_mk += 1; mk = am.parse_marker(o['data'])
+        rows = {n: ok for n, ok, _ in am.check_marker(mk)}
+        miss = [n for n in BIND_ROWS if not rows.get(n, False)]
+        # directory word 40 is a state code, not an offset: 0 / 1 / 2 = none /
+        # some / all slots placed, and there is no section 40 or 41
+        want_word = 0 if not mk['placements'] else (2 if len(mk['placements']) == len(mk['slots']) else 1)
+        if mk['placed_word'] != want_word: miss.append(f"placed word {mk['placed_word']} != {want_word}")
+        if mk['sections'][40] is not None or mk['sections'][41] is not None: miss.append('a bogus section 40/41')
+        if miss: bad_all.append(f"{o['name']}: {'; '.join(miss)}")
+print(f"   {'ok ' if n_mk and not bad_all else 'FAIL'} {n_mk} fixture markers pass all {len(BIND_ROWS)} binding rows  {'; '.join(bad_all)}")
+if not n_mk or bad_all: fails.append('binding rows: ' + '; '.join(bad_all))
+
+# never-laid markers: WHAT is to be laid and nothing about where. Per fixture:
+# slots per (piece, size) [the cut quantity: a `CUT X02` piece is a mirrored
+# pair, so 2], and whether the header's @422 / @454 equal the sums over ALL
+# slots (every never-laid marker except 2303-BD 137, whose header holds other
+# sums - see CHANGELOG v4.1).
+UNLAID = [  # parts, marker, {piece: slots per size}, header sums == all-slot sums?, cuts (the order's total quantity), block-buffer entries
+ (('1825D-SS21-UNLAID', '1825D-BD 180 SS21.zip'), '1825D-GT 168 SS21', {'1825D IGUS 061020': 1}, True, 9, 2),
+ (('1825D-SS21-UNLAID', '1825D-BD 180 SS21.zip'), '1825D-BD 180 SS21',
+  {'1825D FROT 061020': 1, '1825D OGUS 061020': 1, '1825D BACK 061020': 1}, True, 9, 4),
+ (('5683D-SS21-UNLAID', '5683D-BD 168 SS21.zip'), '5683D-BD 168 SS21',
+  {'5683D OGUS 210920': 1, '5683D IGUSE 210920': 1, '5683D BACK 210920': 1, '5683D FROT 210920': 1}, True, 6, 0),
+ (('2591A-SS21-UNLAID', '2591A-BD 157 AW SS21.zip'), '2591A-BD 157 AW SS21',
+  {'2591A POUTH 170920': 2, '2591A BPNL170920': 1, '2591A LEG 170920': 2}, True, 7, 0),
+ (('418T-SHAPESHIFTER-UNLAID', '418T-BD 160 SHAPESHIFTER.zip'), '418T-BD 160 SHAPESHIFTER', {'0418T TRS 190421': 2}, True, 11, 2),
+ (('2303-BD137-UNLAID', '2303-BD 137.zip'), '2303-BD 137', None, False, 61, 0),
+]
+from collections import Counter
+for parts, name, mult, sums, cuts, n_buf in UNLAID:
+    got = _mk(parts, name)
+    if got is None:
+        print(f'   --  {name:30} (absent)'); continue
+    o, mk = got; bad = []
+    if mk['laid'] or mk['placements'] or not all(s['empty'] for s in mk['slots']): bad.append('read as laid / has placements')
+    if mk['placed_word'] != 0: bad.append(f"placed word {mk['placed_word']} != 0")
+    if any((s.get('binding') or {}).get('method') != 'structural' for s in mk['slots']): bad.append('a slot is not structurally bound')
+    if any(s['size'] not in {r['size'] for r in mk['sizes']} for s in mk['slots']): bad.append('a slot has a size outside the size table')
+    if sums:
+        if abs(mk['total_area'] - sum(s['area'] for s in mk['slots'])) > 1e-9: bad.append('@422 != sum(all slot areas)')
+        if abs(mk['unknown_454'] - sum(s['record']['perimeter'] for s in mk['slots'])) > 1e-9: bad.append('@454 != sum(all slot record perimeters)')
+    if sum(s['quantity'] for m in mk['order_copy'] for s in m['sizes']) != cuts: bad.append('order copy total quantity != %d' % cuts)
+    if len(mk['block_buffers']) != n_buf: bad.append('%d block-buffer entries != %d' % (len(mk['block_buffers']), n_buf))
+    if sums and mk['header_sums'] != dict(area='all', perimeter='all'): bad.append('header sums %s not all/all' % mk['header_sums'])
+    if not sums and mk['header_sums'] != dict(area='last_model', perimeter='last_model'): bad.append('header sums %s not last_model' % mk['header_sums'])
+    if mult is not None:
+        per = Counter((s['piece'], s['size']) for s in mk['slots'])
+        got_mult = {}
+        for (pc, sz), n in per.items(): got_mult.setdefault(pc, set()).add(n)
+        if {k: sorted(v) for k, v in got_mult.items()} != {k: [v] for k, v in mult.items()}: bad.append(f'slots per (piece, size) {dict(got_mult)} != {mult}')
+    print(f"   {'ok ' if not bad else 'FAIL'} unplaced {name:30} {'; '.join(bad) if bad else 'bound N/N, all slots empty, sums as expected'}")
+    if bad: fails.append(f'unplaced {name}: ' + '; '.join(bad))
+
+# mutation tests: each new row must actually FAIL when the fact it checks is
+# broken in the bytes (a check that cannot fail proves nothing). In-memory byte
+# patches of the 2591A marker; the unpatched marker must have every row ok.
+src = _mk(('2591A-SS21-UNLAID', '2591A-BD 157 AW SS21.zip'), '2591A-BD 157 AW SS21')
+if src:
+    d0, mk0 = src[0]['data'], src[1]
+    sec = mk0['sections']; s5 = mk0['slots'][5]; h5 = s5['slot'] - am.SLOT_HEAD
+    def _rows(d, **kw): return {n: ok for n, ok, _ in am.check_marker(am.parse_marker(d, **kw))}
+    def _patched(off, fmt, val):
+        b = bytearray(d0); struct.pack_into(fmt, b, off, val); return bytes(b)
+    MUT = [  # description, patched bytes / kwargs, the row that must flip
+     ('slot head: record index of slot 5 moved to the next record',
+      dict(d=_patched(h5, '<H', mk0['slots'][5]['record_index'] + 1)), 'slot declared area == bound record area'),
+     ('slot head: bundle of slot 5 changed',
+      dict(d=_patched(h5 + 4, '<H', s5['bundle'] + 1)), 'slot bundle == head bundle == size-row index'),
+     ('section 13: first record offset changed',
+      dict(d=_patched(sec[am.SEC_INDEX][0] - 6, '<I', mk0['record_index'][0] + 1)), 'records == section-13 entries'),
+     ('section 10: first piece\'s fabric-type count 1 -> 0',
+      dict(d=_patched(sec[am.SEC_PIECES][0] + am.PIECE_LIST_HEAD + 22, '<H', 0)), 'piece list tiles section 10'),
+     ('section 12: first size row owns one piece fewer',
+      dict(d=_patched(sec[am.SEC_SIZES][0] - 6 + 4, '<H', mk0['sizes'][0]['n'] - 1)), 'every slot bound structurally'),
+     ('binding="area" (the pre-v4.1 rule)', dict(d=d0, binding='area'), 'every slot bound structurally'),
+    ]
+    clean = _rows(d0); bad = [f'clean marker: {n}' for n in BIND_ROWS if not clean.get(n)]
+    for desc, kw, row in MUT:
+        r = _rows(**kw)
+        if r.get(row, False): bad.append(f'"{desc}" did not fail "{row}"')
+    # v4.2 rows: order copy, laid state, @430, block-buffer indices. Each byte
+    # offset is computed from the marker's own parse, not hard-coded.
+    n0 = sec[am.SEC_ORDER_COPY][0] - 6                       # the first model block
+    p = n0 + am.MODEL_HEAD + struct.unpack_from('<H', d0, n0)[0]
+    for _ in range(struct.unpack_from('<H', d0, n0 + 14)[0]): p += 2 + struct.unpack_from('<H', d0, p)[0]   # skip the fabric types
+    MUT2 = [
+     ('section 15: first size row quantity 1 -> 2', _patched(p + 2, '<H', 2), 'order copy tiles section 15; quantity == size-row count'),
+     ('directory word 40: placed word 0 -> 2', _patched(0x12a, '<H', 2), 'laid state: placed word, slot coordinates and header agree'),
+     ('header @430: placed area 0 -> 1', _patched(430, '<d', 1.0), 'header @430 == sum of placed slot areas'),
+    ]
+    for desc, patched, row in MUT2:
+        if _rows(patched).get(row, True): bad.append(f'"{desc}" did not fail "{row}"')
+    MUT += MUT2
+    # the block-buffer index needs a marker that HAS a section 6
+    src418 = _mk(('418T-SHAPESHIFTER-UNLAID', '418T-BD 160 SHAPESHIFTER.zip'), '418T-BD 160 SHAPESHIFTER')
+    if src418:
+        b = bytearray(src418[0]['data']); struct.pack_into('<H', b, src418[1]['sections'][am.SEC_PIECES][0] + am.PIECE_LIST_HEAD + 8, 2)
+        row = 'piece buffer indices resolve into the block-buffer table'
+        if not {n: ok for n, ok, _ in am.check_marker(src418[1])}.get(row): bad.append('418T clean marker fails ' + row)
+        if {n: ok for n, ok, _ in am.check_marker(am.parse_marker(bytes(b)))}.get(row, True): bad.append('section 10: buffer index 1 -> 2 did not fail ' + row)
+        MUT.append(('section 10: buffer index 1 -> 2 (past the 2-entry table)', None, row))
+    print(f"   {'ok ' if not bad else 'FAIL'} mutation tests (v4.1 + v4.2): {len(MUT)} byte patches each break exactly the row that checks them  {'; '.join(bad)}")
+    if bad: fails.append('binding mutation tests: ' + '; '.join(bad))
+    # the unplaced inventory of a marker-only ZIP: the cut order, read from structure alone
+    inv_res = am.place_marker(os.path.join(HERE, 'markers', '2591A-SS21-UNLAID', '2591A-BD 157 AW SS21.zip'))
+    inv = inv_res['markers'][0]['inventory']; bad = []
+    # no piece object in the ZIP (result-level 'none'), yet 14 of 35 slots (the LEG pieces) have an outline read from the marker's own
+    # stream, and its bounding box equals the slot's stored home box EXACTLY - a check the decode never used
+    if inv_res['geometry_available'] != 'none' or inv['marker']['geometry_available'] != 'all' or inv['marker']['outline_source'] != 'stream': bad.append('marker-only ZIP: expected no piece objects but a stream outline for every slot')
+    so = [x for x in inv['slots'] if x.get('outline')]
+    if len(so) != 35 or any(abs(x['checks']['bbox_dx']) > 1e-3 or abs(x['checks']['bbox_dy']) > 1e-3 or abs(x['checks']['area_ratio'] - 1) > 1e-3 for x in so): bad.append('stream outlines vs home box / area: %d slots' % len(so))
+    # the same for every marker-only fixture: the stream outline's bounding box IS the stored home box (never used by the decode)
+    for zn_, mn_, ns_ in (('1825D-SS21-UNLAID', '1825D-BD 180 SS21.zip', 36), ('5683D-SS21-UNLAID', '5683D-BD 168 SS21.zip', 24), ('418T-SHAPESHIFTER-UNLAID', '418T-BD 160 SHAPESHIFTER.zip', 22)):
+        gs = []; geo_ = []
+        for mk_ in am.place_marker(os.path.join(HERE, 'markers', zn_, mn_))['markers']:
+            gs += [x for x in mk_['inventory']['slots'] if x.get('outline')]; geo_.append(mk_['inventory']['marker']['geometry_available'])
+        res_ = [(x['home_box_in'][0] - (max(q[0] for q in x['outline']) - min(q[0] for q in x['outline'])), x['home_box_in'][1] - (max(q[1] for q in x['outline']) - min(q[1] for q in x['outline']))) for x in gs]
+        if len(gs) != ns_ or set(geo_) != {'all'} or any(abs(a_) > 1e-3 or abs(b_) > 1e-3 for a_, b_ in res_): bad.append(f'{zn_}: {len(gs)} of {ns_} slots, {geo_}, home box vs stream bbox {max((abs(a_) for a_, _ in res_), default=None)}')
+    if inv['marker']['laid_state'] != 'unlaid' or inv['totals']['slots'] != 35 or inv['totals']['placed'] != 0: bad.append('totals: %s' % inv['totals'])
+    if [(o['size'], o['quantity']) for o in inv['order_lines']] != [(s, 1) for s in ['6/7', '7/8', '8/9', '9/10', '11/12', '13/14', '15/16']]: bad.append('order lines')
+    pairs = {}
+    for s in inv['slots']:
+        if s['pair']: pairs.setdefault(s['pair']['group'], []).append((s['pair']['part'], s['preset']['mirror'], s['piece']))
+    if len(pairs) != 14 or any(sorted(p[0] for p in v) != ['A', 'B'] or [p[1] for p in sorted(v)] != [False, True] or len({p[2] for p in v}) != 1 for v in pairs.values()):
+        bad.append('the 14 `CUT X02` pairs should each be one piece, part A plain + part B mirrored: %d groups' % len(pairs))
+    a422 = inv_res['markers'][0]['marker']['total_area']      # == the sum over all slots on a never-laid marker
+    if abs(inv['totals']['area_to_lay'] - a422) > 1e-9 or abs(inv['totals']['min_length_in'] - a422 / inv['marker']['width_in']) > 1e-9: bad.append('area / minimum length')
+    if not inv_res['markers'][0]['inventory']['warnings'] or not any(w.startswith('no piece objects') for w in inv['warnings']): bad.append('no "no piece objects" warning')
+    if not am.inventory_report(inv, inv_res['markers'][0]['checks']).endswith('DECODED CLEANLY'): bad.append('report does not end DECODED CLEANLY')
+    print(f"   {'ok ' if not bad else 'FAIL'} unplaced_inventory on a marker-only ZIP (2591A: 35 slots, 14 mirrored pairs, 35 outlines from the stream; 1825D / 5683D / 418T bounding boxes == home boxes)  {'; '.join(bad)}")
+    if bad: fails.append('unplaced_inventory: ' + '; '.join(bad))
+# and the answer key can fail: the old area rule against the drawn DXF labels
+zp = os.path.join(HERE, 'markers', '2303-BD137-PLACED', '2303-BD 137 PLACED.zip')
+dxf = os.path.join(HERE, 'markers', '2303-BD137-PLACED', '2303-BD 137 PLACED.DXF')
+if os.path.isfile(zp) and os.path.isfile(dxf):
+    labs = vm.dxf_labels(dxf)
+    mk_area = am.parse_marker(am.list_zip(zp)['marker'][0]['data'], binding='area')
+    n_area = sum(1 for s in mk_area['placements'] if vm._label_matches(labs, s, s['piece'], s['size']))
+    n_struct = sum(1 for s in am.parse_marker(am.list_zip(zp)['marker'][0]['data'])['placements']
+                   if vm._label_matches(labs, s, s['piece'], s['size']))
+    ok = n_struct == 97 and n_area < 97
+    print(f"   {'ok ' if ok else 'FAIL'} DXF labels: structural {n_struct}/97, area rule {n_area}/97 (the oracle can tell them apart)")
+    if not ok: fails.append(f'dxf label oracle: structural {n_struct}, area {n_area}')
+
+# library tables copied between storage areas: created can be LATER than modified
+# (M-MARKER: 2023 vs 2013), and the notch table's 2004 creation date is outside
+# the old 2014-2039 window - both must be reported exactly as stored
+cp_zip = os.path.join(HERE, 'markers', '2303-CP150-JULY', '2303-CP 150 CPL.zip')
+if os.path.isfile(cp_zip):
+    ob = am.list_zip(cp_zip)
+    lib = {o['name']: (o['created'], o['modified']) for k in ('annotation', 'notch_table') for o in ob.get(k, [])}
+    want_lib = {'M-MARKER': (1674111116, 1383724864), 'V-NOTCH-ALL CUSTOMERS': (1073574632, 1746183410)}
+    bad = [f'{k}={lib.get(k)}!={v}' for k, v in want_lib.items() if lib.get(k) != v]
+    print(f"   {'ok ' if not bad else 'FAIL'} library-table stamps (2004 / 2013 / 2023) reported as stored  {'; '.join(bad) if bad else ''}")
+    if bad: fails.append('library-table stamps: ' + '; '.join(bad))
+# every object in every fixture ZIP carries both stamps (153 objects; the old
+# scan returned junk on ~89% of them, so a regression here is loud)
+n_obj = n_missing = 0
+for zp in glob.glob(os.path.join(HERE, 'markers', '**', '*.zip'), recursive=True):
+    for kind, lst in am.list_zip(zp).items():
+        if isinstance(lst, list) and lst and isinstance(lst[0], dict) and 'kind' in lst[0]:
+            for ob_ in lst:
+                n_obj += 1; n_missing += (ob_['created'] is None or ob_['modified'] is None)
+print(f"   {'ok ' if n_obj and not n_missing else 'FAIL'} {n_obj} fixture objects, {n_missing} missing a created/modified stamp")
+if not n_obj or n_missing: fails.append('fixture objects with a missing stamp: %d/%d' % (n_missing, n_obj))
+# read_object: stamps outside the plausibility window (zero / sentinel) -> None
+src = _mk(('1825D-SS21-UNLAID', '1825D-BD 180 SS21.zip'), '1825D-GT 168 SS21')
+if src:
+    d = bytearray(src[0]['data']); t0 = len(d) - am.TRAILER
+    struct.pack_into('<I', d, t0 + am.TRAILER_CREATED, 0); struct.pack_into('<I', d, t0 + am.TRAILER_MODIFIED, 0xffffffff)
+    r = am.read_object(bytes(d))
+    ok = r['created'] is None and r['modified'] is None
+    print(f"   {'ok ' if ok else 'FAIL'} zero / sentinel stamps read back as None")
+    if not ok: fails.append('read_object: implausible stamps not rejected')
+    # the table walkers must stay in bounds on truncated / junk input
+    junk = bytes(range(256)) * 4; raised = []
+    for fn in (am.parse_model_list, am.parse_sizes_section):
+        for lo, hi in ((0, 10), (3, 10**6), (len(junk)+50, len(junk)+80), (600, 200)):
+            try: fn(junk, lo, hi)
+            except Exception as e: raised.append(f'{fn.__name__}({lo},{hi}): {type(e).__name__}')
+    print(f"   {'ok ' if not raised else 'FAIL'} table walkers stay in bounds on junk / truncated input")
+    if raised: fails.append('table walkers raised: ' + '; '.join(raised))
+
+print('-- live corpus: 41 markers exported from the scratch area (v4.5)')
+# `markers-live/` is deliberately NOT under `markers/`: the strict all-fixtures
+# invariants above hold on every marker there, and five real markers here carry
+# documented anomalies (below). Exported read-only from C:\ZZ-CLAUDE-SCRATCH on
+# 2026-09-21 - markers AutoMark / AccuNest laid, hand-laid, part-laid, never laid,
+# with unequal block buffers, and a 1,080-piece one. Pinned exactly, so a
+# decoder change that moves any of it is noticed.
+LIVE = os.path.join(HERE, 'markers-live', 'ZZ-SCRATCH-ALL-20260921', 'ZZ-SCRATCH-ALL-20260921.zip')
+LIVE_ANOMALIES = {   # marker -> (laid state, slots, failing check rows, warnings)
+ 'LADIES-BLOUSE TEST-2': ('partial', 54, ('header @430 == sum of placed slot areas', 'sum(slot areas) == W*L*U'), 0),   # 52 of 54 placed; header stale
+ 'ZZC-BIGM': ('laid', 1080, ('header @430 == sum of placed slot areas', 'sum(slot areas) == W*L*U'), 0),   # @430 = true area - 2**32/1e4: AccuMark's own 32-bit fixed-point wrap
+ 'ZZC-M3': ('partial', 10, ('slot declared area == bound record area',), 1),    # 2 placed slots 7.2% larger than their record [?]
+ 'ZZN-B7': ('laid', 54, ('header @430 == sum of placed slot areas',), 0),       # @430 drifted 1191 sq in above the placed sum; util is right
+ 'ZZN-F1': ('laid', 10, ('slot declared area == bound record area',), 1),
+}
+if os.path.isfile(LIVE):
+    lobjs = am.list_zip(LIVE); found = {}; bad = []; states = Counter(); leaks = 0
+    for o in lobjs['marker']:
+        try: mk = am.parse_marker(o['data'])
+        except Exception as e: bad.append(f"{o['name']}: {type(e).__name__}"); continue
+        states[mk['laid_state']] += 1
+        fl = tuple(sorted(n for n, ok, _ in am.check_marker(mk) if not ok)); warns = am.marker_warnings(mk) + am.coverage_warnings(mk)
+        if fl or warns: found[o['name']] = (mk['laid_state'], len(mk['slots']), fl, len(warns))
+        # the never-laid signature: slot @88 non-zero <=> nothing has ever been placed
+        if (mk['lay_history'] == 'as_generated') != (mk['laid_state'] == 'unlaid'): bad.append(f"{o['name']}: lay_history {mk['lay_history']} vs {mk['laid_state']}")
+        leaks += sum(1 for a, b, k in am.marker_coverage(o['data'], mk)['unknown_runs'] if k in am.PARSED_SECTIONS)
+    if len(lobjs['marker']) != 41 or dict(states) != {'unlaid': 17, 'laid': 22, 'partial': 2}: bad.append(f'{len(lobjs["marker"])} markers, states {dict(states)}')
+    if found != LIVE_ANOMALIES: bad.append(f'anomalies changed: {found}')
+    if leaks: bad.append(f'{leaks} unknown-byte runs inside parsed sections')
+    print(f"   {'ok ' if not bad else 'FAIL'} 41 real markers decode with no exception; 36 clean, exactly 5 documented anomalies; byte map has no leak  {'; '.join(bad)}")
+    if bad: fails.append('live corpus: ' + '; '.join(bad))
+    # block buffers: a TABLE of definitions, pieces point into it (0-based) or at none
+    zc = next(am.parse_marker(o['data']) for o in lobjs['marker'] if o['name'] == 'ZZC-M1')
+    idx = {p['name'][-4:]: p['buffer_index'] for p in zc['pieces']}
+    got = {n[-4:]: am._buffer_sides(zc, n) for n in [p['name'] for p in zc['pieces']]}
+    ok = (len(zc['block_buffers']) == 4 and idx == {'E-BK': 0, '-COL': 1, 'CUFF': None, 'E-FR': 2, 'E-SL': 3}
+          and got['CUFF'] == (0.0, 0.0, 0.0, 0.0) and abs(got['E-SL'][0] - 0.7874) < 1e-3 and abs(got['E-SL'][1] - 0.1968) < 1e-3 and got['E-SL'][2:] == (0.0, 0.0))
+    print(f"   {'ok ' if ok else 'FAIL'} ZZC-M1: 4 buffer definitions for 5 pieces; a piece with no index gets no buffer, the rest point into the table (0-based)")
+    if not ok: fails.append(f'block buffer table semantics: {idx}')
+    # utilisation identity is relative: AutoMark stores util to 0.01% (ZZ-AM-1: 13417.98 vs 13420.42)
+    za = next(am.parse_marker(o['data']) for o in lobjs['marker'] if o['name'] == 'ZZ-AM-1')
+    rows = {n: ok for n, ok, _ in am.check_marker(za)}
+    za2 = dict(za); za2['util'] = za['util'] * 1.01
+    ok = rows['sum(slot areas) == W*L*U'] and not {n: ok for n, ok, _ in am.check_marker(za2)}['sum(slot areas) == W*L*U']
+    print(f"   {'ok ' if ok else 'FAIL'} utilisation identity tolerates AutoMark's 0.01% rounding (2e-4) yet still fails on a 1% error")
+    if not ok: fails.append('utilisation tolerance')
+    # slot @88 / directory word 40 / orientation 0x8000: what Easy Marking's STORE does (below)
+    zn = _mk(('5683D-SS21-UNLAID', '5683D-BD 168 SS21.zip'), '5683D-BD 168 SS21')
+    if zn:
+        row = 'slot @88 signature <=> directory word 40 is 0 (as generated)'
+        b = bytearray(zn[0]['data'])
+        for s in zn[1]['slots']: struct.pack_into('<H', b, s['slot'] + 88, 0)          # zero @88 but leave word 40 = 0
+        lo = next(o for o in lobjs['marker'] if o['name'] == 'ZZN-1'); bl = bytearray(lo['data']); ml = am.parse_marker(lo['data'])
+        struct.pack_into('<H', bl, ml['slots'][3]['slot'] + 88, 9)                    # a non-zero @88 on a stored, laid marker
+        ok = (zn[1]['lay_history'] == 'as_generated' and {n: ok for n, ok, _ in am.check_marker(zn[1])}[row] and {n: ok for n, ok, _ in am.check_marker(ml)}[row]
+              and not {n: ok for n, ok, _ in am.check_marker(am.parse_marker(bytes(b)))}[row]
+              and not {n: ok for n, ok, _ in am.check_marker(am.parse_marker(bytes(bl)))}[row])
+        print(f"   {'ok ' if ok else 'FAIL'} slot @88 <=> word 40 = 0: holds on 5683D and ZZN-1, and fails when either side is broken in the bytes")
+        if not ok: fails.append('slot @88 / word 40 identity')
+
+# The live experiment (2026-09-21): what does Easy Marking's STORE do to an unplaced marker?
+# CLAUDE-QTY-TEST (as generated) was opened in Easy Marking and Saved As E1A with NOTHING
+# placed; then one piece was dragged onto the marker, returned with Piece > Return >
+# Unplaced, and stored as E1B. Prediction going in: E1B ("laid once, cleared") reads @88 = 0
+# and E1A does not. Result: BOTH read 0 - a plain store clears the as-generated signature -
+# and laying + returning a piece leaves no trace (12 differing bytes: name, timestamps,
+# session residue, and the last byte of ONE slot's area double).
+E1 = os.path.join(HERE, 'markers-live', 'CLAUDE-UNP-E1-TWINS', 'CLAUDE-UNP-E1-TWINS.zip')
+if os.path.isfile(E1) and lobjs:
+    eo = {o['name']: o for o in am.list_zip(E1)['marker']}
+    A, B = eo['CLAUDE-UNP-E1A'], eo['CLAUDE-UNP-E1B']; mA, mB = am.parse_marker(A['data']), am.parse_marker(B['data'])
+    O = am.parse_marker(next(o for o in lobjs['marker'] if o['name'] == 'CLAUDE-QTY-TEST')['data'])
+    bad = []
+    for m, nm in ((mA, 'E1A'), (mB, 'E1B')):
+        if not (m['laid_state'] == 'unlaid' and m['lay_history'] == 'stored_empty' and m['placed_word'] == 1 and len(m['placements']) == 0): bad.append(f'{nm}: {m["laid_state"]}/{m["lay_history"]}/word {m["placed_word"]}')
+        if any(s['sig88'] for s in m['slots']): bad.append(f'{nm}: @88 not zero')
+        if {(s['x'], s['y']) for s in m['slots']} != {(-1000.0, -1000.0)}: bad.append(f'{nm}: centres not -1000')
+        if {s['orient_code'] for s in m['slots']} != {0x8000, 0xa004}: bad.append(f'{nm}: orientation words {sorted(hex(s["orient_code"]) for s in m["slots"])[:3]}')
+        if [n for n, ok, _ in am.check_marker(m) if not ok] or am.marker_warnings(m): bad.append(f'{nm}: a check or warning fires')
+    # the original, as generated: word 0, @88 non-zero, centres 0, orientation without 0x8000; home box and areas unchanged by the store
+    if not (O['placed_word'] == 0 and O['lay_history'] == 'as_generated' and all(s['sig88'] == 9 for s in O['slots']) and {(s['x'], s['y']) for s in O['slots']} == {(0.0, 0.0)}): bad.append('original not as generated')
+    # a store re-derives the home box, rounded to the format's 1e-4 in unit: 5e-5 in x here, 0 in y (areas are unchanged)
+    if any(abs(a['home_x'] - o['home_x']) > 1e-4 or abs(a['home_y'] - o['home_y']) > 1e-4 or abs(a['area'] - o['area']) > 1e-6 for a, o in zip(mA['slots'], O['slots'])): bad.append('a store moved a home box or changed an area')
+    if [(s['orient_code'] & ~0x8004) for s in mA['slots']] != [s['orient_code'] for s in O['slots']]: bad.append('a store changed more than 0x8000 / 0x0004 on the orientation word')
+    diff = [i for i in range(len(A['data'])) if A['data'][i] != B['data'][i]]
+    s21 = mA['sections'][am.SEC_SLOTS]; in21 = [i for i in diff if s21[0] <= i < s21[1]]
+    if len(A['data']) != len(B['data']) or len(diff) != 12 or len(in21) != 1 or (in21[0] - s21[0]) % 96 != 42: bad.append(f'twins differ in {len(diff)} bytes, {len(in21)} in the slots')
+    print(f"   {'ok ' if not bad else 'FAIL'} live twins: a plain store clears @88, sets word 40 = 1, orientation 0x8000, centres -1000; laying + returning a piece changes 12 bytes (1 area ulp)  {'; '.join(bad)}")
+    if bad: fails.append('E1 twins: ' + '; '.join(bad))
+
+# The second live experiment (2026-09-21, v4.7): the SAME order as a laid and as an
+# as-generated marker. `AD1234 TEST 134` (laid, 13 pieces, kept from September) and
+# `CLAUDE-D2-M0` (Easy Order > Save As a copy of that order, change ONLY the marker
+# name, Process): identical pieces, sizes, quantities and width, so every byte that
+# differs is what laying does. Result: the 13 records are identical; the slot bodies
+# differ only in centre (0..20), orientation (32-33), two area ulps (41-42) and @88
+# (213 on every RUFFLE slot as generated, 0 laid); section 1 loses its length /
+# utilisation / area doubles, word 40 goes 0 -> 2, and the type-10 scratch object grows
+# by 960 B (a ~1 KB block of small offsets at its offset 310) once laid.
+D2 = os.path.join(HERE, 'markers-live', 'CLAUDE-UNP-D2-TWIN', 'CLAUDE-D2-M0.zip')
+LAID = os.path.join(HERE, 'markers', 'misc-test-markers', 'AD1234 TEST 134.zip')
+if os.path.isfile(D2) and os.path.isfile(LAID):
+    G = am.place_marker(D2)['markers'][0]; L = am.place_marker(LAID)['markers'][0]
+    g, l = G['marker'], L['marker']; bad = []
+    if not (g['lay_history'] == 'as_generated' and g['placed_word'] == 0 and len(g['slots']) == 13 and {s['sig88'] for s in g['slots']} == {213}): bad.append('twin as generated: state / @88')
+    if not (l['lay_history'] == 'laid' and l['placed_word'] == 2 and len(l['slots']) == 13 and not any(s['sig88'] for s in l['slots'])): bad.append('laid twin: state / @88')
+    if [n for n, ok, _ in am.check_marker(g) if not ok] or am.marker_warnings(g) or [n for n, ok, _ in am.check_marker(l) if not ok]: bad.append('a check or warning fires')
+    strip = lambda r: {k: v for k, v in r.items() if k != 'offset'}
+    if [strip(r) for r in g['records']] != [strip(r) for r in l['records']]: bad.append('the records differ between the twins')
+    same = ('record_index', 'piece_index', 'bundle', 'bundle_head', 'piece', 'size', 'model')
+    if any(any(a[k] != b[k] for k in same) or abs(a['home_x'] - b['home_x']) > 1e-4 or abs(a['home_y'] - b['home_y']) > 1e-4 or abs(a['area'] - b['area']) > 1e-6
+           for a, b in zip(g['slots'], l['slots'])): bad.append('a slot field other than centre / orientation / @88 differs')
+    if {(s['x'], s['y']) for s in g['slots']} != {(0.0, 0.0)} or len({(s['x'], s['y']) for s in l['slots']}) < 10: bad.append('centres: as generated must be (0,0), laid must be placed')
+    allowed = set(range(21)) | {32, 33, 41, 42, 88, 89}
+    off = {j for a, b in zip(g['slots'], l['slots']) for j in range(96) if bytes.fromhex(a['raw'])[j] != bytes.fromhex(b['raw'])[j]}
+    if not off <= allowed: bad.append(f'slot bytes outside centre/orientation/area/@88 differ: {sorted(off - allowed)}')
+    # @88 = record head count + one constant per piece (RUFFLE: 209 + 4), on both twins' record
+    sm = g['sig88_model']
+    if not (sm['applicable'] and sm['ok'] and sm['constant'] == {'ID1005 - RUFFLE': 4} and all(s['record']['prefix'][1] == 209 for s in g['slots'])): bad.append(f'@88 model: {sm}')
+    # and the row can fail: move one slot's @88 by 1 in the bytes
+    b = bytearray(next(o for o in am.list_zip(D2)['marker'])['data']); struct.pack_into('<H', b, g['slots'][4]['slot'] + 88, 214)
+    gm = am.parse_marker(bytes(b)); row = 'slot @88 = record head count + one constant per piece (as generated)'
+    if {n: ok for n, ok, _ in am.check_marker(gm)}.get(row, True) or not any('@88' in x for x in am.marker_warnings(gm)): bad.append('a broken @88 did not fail its row / raise a warning')
+    # the marker-level 0x0040 bit is a copy of the piece row's flag u16 @+14: 0 here, so a patched row flag must break it
+    prow = 'slot orientation bit 0x0040 == its piece row flag @+14 (section 10)'
+    ri = next(i for i, p in enumerate(g['pieces']) if p['name'] == 'ID1005 - RUFFLE')
+    b = bytearray(next(o for o in am.list_zip(D2)['marker'])['data']); struct.pack_into('<H', b, g['pieces'][ri]['offset'] - 10, 1)
+    if not {n: ok for n, ok, _ in am.check_marker(g)}.get(prow) or {n: ok for n, ok, _ in am.check_marker(am.parse_marker(bytes(b)))}.get(prow, True): bad.append('the 0x0040 == piece flag row did not fail when the flag was patched')
+    # reproducibility of the harness: the same order processed again 32 minutes later under another marker name
+    # (CLAUDE-D2-M5, via Process w/ AutoMark's scaffold) differs in 18 bytes - four name digits and stamp bytes - so any
+    # byte that differs between two runs of the dataset is a setting that was changed
+    M5 = os.path.join(HERE, 'markers-live', 'CLAUDE-UNP-D2-TWIN', 'CLAUDE-D2-M5.zip')
+    if os.path.isfile(M5):
+        a5 = next(o for o in am.list_zip(D2)['marker'])['data']; b5 = next(o for o in am.list_zip(M5)['marker'])['data']
+        dif = [i for i in range(len(a5)) if a5[i] != b5[i]] if len(a5) == len(b5) else None
+        if dif is None or len(dif) != 18 or sum(1 for i in dif if a5[i] == 0x30 and b5[i] == 0x35) != 4: bad.append(f'the harness is not reproducible: {None if dif is None else len(dif)} differing bytes')
+        m5 = am.parse_marker(b5)
+        if not (m5['lay_history'] == 'as_generated' and {s['sig88'] for s in m5['slots']} == {213} and m5['name'] == 'CLAUDE-D2-M5'): bad.append('D2-M5 is not the same as-generated marker')
+    # E7 (two runs of the same harness): a model whose pieces carry none of the order's fabric types is DROPPED - from the
+    # order AND the marker (CLAUDE-D2-E7O: ID1005 - TOP + CLAUDE-GRADE-MODEL with quantities typed for it saves and processes as
+    # ID1005 - TOP alone, decoding exactly like CLAUDE-D2-M0); and a FRESH two-model marker (CLAUDE-D2-E7B: LADIES-BLOUSE +
+    # ZZ-PLM-BLOUSE, both fabric type M) has header @422 / @454 = the LAST model's sums, so that mode is AccuMark's own behaviour
+    # and not a stale artefact of a laid marker.
+    E7O = os.path.join(HERE, 'markers-live', 'CLAUDE-UNP-D2-TWIN', 'CLAUDE-D2-E7O.zip'); E7B = os.path.join(HERE, 'markers-live', 'CLAUDE-UNP-D2-TWIN', 'CLAUDE-D2-E7B.zip')
+    if os.path.isfile(E7O) and os.path.isfile(E7B):
+        o7 = am.place_marker(E7O)['markers'][0]['marker']; b7r = am.place_marker(E7B)['markers'][0]; b7 = b7r['marker']
+        if not (o7['models'] == ['ID1005 - TOP'] and [(x['name'], [(z['size'], z['quantity']) for z in x['sizes']]) for x in o7['order_copy']] == [('ID1005 - TOP', [('XS', 2), ('S', 4), ('M', 4), ('L', 2), ('XL', 1)])]
+                and [strip(r) for r in o7['records']] == [strip(r) for r in g['records']] and len(o7['slots']) == 13): bad.append('E7O: the zero-piece model was not dropped')
+        sl7 = [s for s in b7['slots'] if s.get('record')]; last7 = [s for s in sl7 if s['model'] == b7['models'][-1]]
+        if not (b7['models'] == ['LADIES-BLOUSE', 'ZZ-PLM-BLOUSE'] and b7['lay_history'] == 'as_generated' and len(b7['slots']) == 29 and len(b7['pieces']) == 10): bad.append('E7B: shape')
+        if b7['header_sums'] != dict(area='last_model', perimeter='last_model') or abs(b7['total_area'] - sum(s['area'] for s in last7)) > 1e-6 or abs(b7['unknown_454'] - sum(s['record']['perimeter'] for s in last7)) > 1e-6 or abs(b7['total_area'] - sum(s['area'] for s in sl7)) < 1: bad.append('E7B: header @422 / @454 are not the last-model sums')
+        if [n for n, ok, _ in b7r['checks'] if not ok] or am.marker_warnings(b7): bad.append('E7B: a check or warning fires')
+        if not (b7['sig88_model']['ok'] and {p['flag14'] for p in b7['pieces']} == {0}): bad.append('E7B: @88 model / flag14')
+    print(f"   {'ok ' if not bad else 'FAIL'} live twins of one order (laid vs as generated): records identical, slots differ only in centre / orientation / area ulp / @88 (= record head count + C per piece)  {'; '.join(bad)}")
+    if bad: fails.append('D2 twins: ' + '; '.join(bad))
+
+# v4.7 [V, partial]: the section-14 stream is the graded outline. Two independent grounds of truth:
+# (1) the piece objects bundled in the same ZIPs - the rectangle (4 of 4 points, sizes 2 / 8 / 18) and RUFFLE (all 142
+# points at all five sizes, plus its grain line); (2) the record head's OWN area and perimeter, which every decoded
+# outline must reproduce (shoelace, within 1%) - the only check available for a marker-only ZIP.
+sd_bad = []; sd_n = 0
+for zp, piece, want in (('markers/CLAUDE-GRADE-MARKER/CLAUDE-GRADE-MARKER.zip', 'CLAUDE-GRADE-TEST', 4), ('markers/CLAUDE-QTY-TEST.zip', 'CLAUDE-GRADE-TEST', 4),
+                        ('markers-live/CLAUDE-UNP-D2-TWIN/CLAUDE-D2-M0.zip', 'ID1005 - RUFFLE', 142)):
+    if not os.path.isfile(os.path.join(HERE, zp)): continue
+    rr = am.place_marker(os.path.join(HERE, zp)); mm = rr['markers'][0]['marker']; dd = mm['object']['data']
+    for rc in mm['records']:
+        if rc.get('piece') != piece: continue
+        o = rc['offset']; t = len(rc['text']); st = dd[o+t:o+t+rc['stream_len']]; dec = am.decode_record_stream(st)
+        ref = [(round(x * 1e4), round(y * 1e4)) for x, y in am.graded_outline(rr['pieces'][piece]['block'], rc['size'])]
+        got = [(a, b) for a, b, _ in dec['contours'][0]]; sd_n += 1
+        if got != ref or dec['stop'] != 'trailer' or not am.record_outline(dd, rc)['verified']: sd_bad.append(f"{zp.split('/')[-1]} size {rc['size']}: {len(got)} of {len(ref)} points, stop {dec['stop']}")
+        if want == 142 and rc['size'] == 'M':
+            gl = [(a, b) for a, b, _ in dec['contours'][1]] if len(dec['contours']) > 1 else None
+            if gl != [(543131, 45098), (584289, 45098)]: sd_bad.append(f'RUFFLE grain line {gl}')
+mut = bytearray(st); mut[23] ^= 0x40                                                     # the high byte of the first d1 step of the last (RUFFLE) stream
+if am.verify_stream_outline(am.decode_record_stream(bytes(mut))['contours'][0], rc['area'], rc['perimeter'])[0]: sd_bad.append('a flipped coordinate bit still verified')
+# corpus: distinct streams verified against their own record head, marker-only ZIPs included
+sd_seen = set(); sd_tot = sd_ok = sd_unf = 0; sd_named = {}; sd_cross = []
+for zp in sorted(glob.glob(os.path.join(HERE, 'markers', '**', '*.zip'), recursive=True) + glob.glob(os.path.join(HERE, 'markers-live', '**', '*.zip'), recursive=True)):
+    try: mos = am.list_zip(zp).get('marker', [])
+    except Exception: continue
+    for o_ in mos:
+        try: m_ = am.parse_marker(o_['data'])
+        except Exception: continue
+        for rc in m_['records']:
+            oo = rc['offset']; tt = len(rc['text']); key = (rc['text'], o_['data'][oo+tt:oo+tt+24], rc['stream_len'])
+            if key in sd_seen: continue
+            sd_seen.add(key); ro = am.record_outline(o_['data'], rc); sd_tot += 1; sd_ok += bool(ro and ro['verified'])
+            if ro and ro['unfolded']:                                   # an unfolded half must give a SIMPLE polygon (no crossing edges)
+                sd_unf += 1; pp = ro['points']; nn = len(pp)
+                def _c(a, b, c): return (c[1]-a[1])*(b[0]-a[0]) - (b[1]-a[1])*(c[0]-a[0])
+                if any(_c(pp[i], pp[(i+1) % nn], pp[j]) * _c(pp[i], pp[(i+1) % nn], pp[(j+1) % nn]) < 0 and _c(pp[j], pp[(j+1) % nn], pp[i]) * _c(pp[j], pp[(j+1) % nn], pp[(i+1) % nn]) < 0 for i in range(nn) for j in range(i + 2, nn) if not (i == 0 and j == nn - 1)): sd_cross.append(rc['text'][:24])
+            for nm in ('0418T TRS', '2591A', '1825D', '5683D'):
+                if rc['text'].startswith(nm): sd_named.setdefault(nm, [0, 0]); sd_named[nm][0] += 1; sd_named[nm][1] += bool(ro and ro['verified'])
+if sd_cross: sd_bad.append('unfolded outlines that cross themselves: %s' % sd_cross[:3])
+if sd_ok != sd_tot or sd_tot < 268: sd_bad.append(f'{sd_ok} of {sd_tot} distinct corpus streams verify (all 268 did)')
+for nm, (nn, kk) in sd_named.items():
+    if nn == 0 or kk != nn: sd_bad.append(f'marker-only {nm}: {kk} of {nn} records verify')
+print(f"   {'ok ' if sd_n and not sd_bad else 'FAIL'} record stream (v4.7): {sd_n} records equal the piece's graded outline exactly (rectangle 4/4, RUFFLE 142/142 + grain line); {sd_ok} of {sd_tot} distinct corpus streams reproduce their own record area and perimeter within 1% - ALL of them, incl. every record of the marker-only ZIPs 1825D, 5683D, 2591A, 0418T (131 are fold halves, unfolded about their fold line)  {'; '.join(sd_bad[:3])}")
+if not sd_n or sd_bad: fails.append('record stream decode: ' + '; '.join(sd_bad[:3]))
+
+# v4.7: what a stream point IS - tag low nibble 1 = plain (a NOTCH when an extra byte follows: type = its low nibble), any
+# other low nibble = a TURN; against the kinds of the piece object's own perimeter points, wherever a piece is bundled and the
+# stream is a full (unfolded-free) 1:1 copy of its perimeter. The trailer's last bytes and the extra byte's high nibble stay open.
+pk_ok = pk_bad = pk_notch = 0
+for zp in ('markers/2303-CP150-JULY/2303-CP 150 CPL.zip', 'markers/2303-BD137-PLACED/2303-BD 137 PLACED.zip', 'markers-live/ZZ-SCRATCH-ALL-20260921/ZZ-SCRATCH-ALL-20260921.zip', 'markers/LADIES-BLOUSE TEST-2.zip'):
+    if not os.path.isfile(os.path.join(HERE, zp)): continue
+    rr = am.place_marker(os.path.join(HERE, zp)); seen_ = set()
+    for mm in rr['markers']:
+        m_ = mm['marker']; dd = m_['object']['data']
+        for rc in m_['records']:
+            pc = rr['pieces'].get(rc.get('piece'))
+            if not pc or (rc['text'], rc['stream_len']) in seen_: continue
+            seen_.add((rc['text'], rc['stream_len'])); ro = am.record_outline(dd, rc); per = pc['block']['perimeter']
+            if not ro or not ro['verified'] or ro['unfolded'] or len(ro['kinds']) != len(per): continue
+            for k_, pp in zip(ro['kinds'], per):
+                pk_ok += k_ == (pp['kind'], pp.get('notch_type') if pp['kind'] == 'notch' or pp.get('is_corner_notch') else None)
+                pk_bad += k_ != (pp['kind'], pp.get('notch_type') if pp['kind'] == 'notch' or pp.get('is_corner_notch') else None)
+            pk_notch += len(ro['notches'])
+print(f"   {'ok ' if pk_ok >= 5000 and pk_bad <= 1 and pk_notch >= 100 else 'FAIL'} stream point kinds (v4.7): {pk_ok} of {pk_ok + pk_bad} points agree with the piece's own turn / plain / notch kinds and notch types ({pk_notch} notches read from streams)")
+if not (pk_ok >= 5000 and pk_bad <= 1 and pk_notch >= 100): fails.append(f'stream point kinds: {pk_ok} ok, {pk_bad} bad, {pk_notch} notches')
+
+# v4.7 THE BLIND TEST (2026-09-21): a marker I had AccuMark make from pieces never seen in a marker before - ID1005 - BACK and FRONT
+# (real Gerber demo pieces: fold halves, curves, seam allowances 1.0 / 0.375 / 0.25 in). Fixture: markers-live/CLAUDE-UNP-D3-BLIND/
+# (the full export, and the same marker with every piece object stripped = what a marker-only ZIP looks like). Decoded BEFORE any fitting:
+# order lines and pieces right, but no outline - my pen-move rule split a legitimate 7-part step; fixed by trying thresholds and
+# keeping the first that reproduces the record's area and perimeter. What the run showed: the marker lays the CUT line (stitch line +
+# seam allowance), not the piece object's stitch line (area ratio 0.89, bbox 1.4 x 0.9 in smaller).
+bd = os.path.join(HERE, 'markers-live', 'CLAUDE-UNP-D3-BLIND'); bfull = os.path.join(bd, 'CLAUDE-D3-BF.zip'); bmo = os.path.join(bd, 'CLAUDE-D3-BF-MARKER-ONLY.zip')
+if os.path.isfile(bfull) and os.path.isfile(bmo):
+    bad = []; ro_ = am.place_marker(bmo)['markers'][0]; rf_ = am.place_marker(bfull); rfm = rf_['markers'][0]
+    iv = ro_['inventory']; ivf = rfm['inventory']
+    if set(am.list_zip(bmo)) != {'marker'}: bad.append('marker-only ZIP still holds other objects')
+    if not (iv['marker']['outline_source'] == 'stream' and iv['marker']['geometry_available'] == 'all' and len(iv['slots']) == 10 and iv['marker']['lay_history'] == 'as_generated'): bad.append('marker-only inventory shape')
+    if [(o['size'], o['quantity']) for o in iv['order_lines']] != [(z, 1) for z in ('XS', 'S', 'M', 'L', 'XL')] or iv['marker']['fabric_types'] != ['S']: bad.append('order lines / fabric type')
+    for e in iv['slots']:
+        if abs(e['checks']['bbox_dx']) > 2e-4 or abs(e['checks']['bbox_dy']) > 2e-4 or abs(e['checks']['area_ratio'] - 1) > 0.01: bad.append(f"{e['piece']} {e['size']}: home box residual {e['checks']['bbox_dx']:.4f} / {e['checks']['bbox_dy']:.4f}, area ratio {e['checks']['area_ratio']:.4f}")
+    mko = ro_['marker']; dd_ = mko['object']['data']
+    if any(am.record_outline(dd_, rc)['pen_move'] != 20 or not am.record_outline(dd_, rc)['unfolded'] for rc in mko['records']): bad.append('expected every BACK / FRONT stream at pen_move 20, unfolded')
+    if [n for n, ok, _ in ro_['checks'] if not ok] or am.marker_warnings(mko): bad.append('a check or warning fires on the blind marker')
+    # the answer key: the piece objects. Their stitch line is smaller by the seam allowance; the stitch points sit 0.25 / 0.375 in inside the cut line
+    def _dseg(pt, a, b):
+        dx_, dy_ = b[0]-a[0], b[1]-a[1]; l2_ = dx_*dx_ + dy_*dy_; t_ = max(0, min(1, ((pt[0]-a[0])*dx_ + (pt[1]-a[1])*dy_) / l2_)) if l2_ else 0
+        return ((pt[0]-a[0]-t_*dx_)**2 + (pt[1]-a[1]-t_*dy_)**2) ** 0.5
+    for e in iv['slots']:
+        if e['size'] != 'M': continue
+        stitch, _ = am.piece_outline(rf_['pieces'][e['piece']], 'M'); cut = e['outline']
+        if abs(am._shoelace(stitch) / am._shoelace(cut) - 0.885) > 0.03: bad.append(f"{e['piece']}: stitch / cut area {am._shoelace(stitch) / am._shoelace(cut):.3f}")
+        ds = [min(_dseg(pt, cut[i], cut[(i+1) % len(cut)]) for i in range(len(cut))) for pt in stitch]
+        near = sum(1 for x_ in ds if min(abs(x_ - 0.375), abs(x_ - 0.25)) < 0.02)
+        if near < 0.8 * len(ds): bad.append(f"{e['piece']}: only {near} of {len(ds)} stitch points are 0.25 / 0.375 in inside the cut line")
+    segs = {sg['seam_begin'] for sg in rf_['pieces']['ID1005 - BACK']['block']['segments']}
+    if segs != {10000, 3750, 2500}: bad.append(f'BACK seam allowances {segs}')
+    # with the piece objects present the geometry falls back to the stream outline (the piece-object outline fails the area test)
+    if ivf['marker']['outline_source'] != 'stream' or any(abs(e['checks']['area_ratio'] - 1) > 0.01 for e in ivf['slots']): bad.append('with pieces present the stream outline was not preferred')
+    print(f"   {'ok ' if not bad else 'FAIL'} BLIND TEST CLAUDE-D3-BF (BACK + FRONT never seen before): marker-only ZIP -> 10 outlines, bounding box == stored home box (<= 0.0001 in), area within 1%; the piece objects' stitch lines sit 0.25 / 0.375 in inside the decoded cut line (seam allowances 1.0 / 0.375 / 0.25)  {'; '.join(bad[:3])}")
+    if bad: fails.append('D3 blind test: ' + '; '.join(bad[:5]))
+
+# v4.7 SECOND BLIND TEST (2026-09-23): a piece I designed and imported myself, then a marker made from it - CLAUDE-CURVE (a 20 x 15 cm
+# panel with a rounded corner, 2 notches, a drill hole, a grain line, an internal line and two DIFFERENT grade rules on one chain of
+# points; made with the accumark-pattern-marker skill: make_aama_dxf.py -> DCU import -> Easy Order -> CLAUDE-D4). Fixture
+# markers-live/CLAUDE-UNP-D4-CURVE/ (full export = answer key; -MARKER-ONLY.zip = the same marker with the piece object stripped).
+# What it showed: (1) order data, pieces, notches, grain, internal line, drill and the outline all right from the marker alone once the
+# contour split used the header counts; (2) the FIRST bundled piece with two different rule numbers on one chain - and the piece-side
+# grading (blend of the two moves by chain length, unverified before) was 0.295 in off, while the marker's own stream matched a
+# SIMILARITY of the chord between the ruled points to 1e-4 in. graded_outline now uses that.
+d4d = os.path.join(HERE, 'markers-live', 'CLAUDE-UNP-D4-CURVE'); d4f = os.path.join(d4d, 'CLAUDE-D4.zip'); d4m = os.path.join(d4d, 'CLAUDE-D4-MARKER-ONLY.zip')
+if os.path.isfile(d4f) and os.path.isfile(d4m):
+    bad = []; rmo = am.place_marker(d4m)['markers'][0]; rfu = am.place_marker(d4f); ivm = rmo['inventory']
+    if set(am.list_zip(d4m)) != {'marker'}: bad.append('marker-only ZIP holds other objects')
+    if not (ivm['marker']['outline_source'] == 'stream' and ivm['marker']['geometry_available'] == 'all' and len(ivm['slots']) == 6 and ivm['marker']['lay_history'] == 'as_generated'): bad.append('inventory shape')
+    if [(o['size'], o['quantity']) for o in ivm['order_lines']] != [(z, 1) for z in ('S', 'M', 'L')]: bad.append('order lines')
+    if [n for n, ok, _ in rmo['checks'] if not ok] or am.marker_warnings(rmo['marker']): bad.append('a check or warning fires')
+    pcb = rfu['pieces']['CLAUDE-CURVE']['block']; dd4 = rmo['marker']['object']['data']; mkf = rfu['markers'][0]['marker']; ddf = mkf['object']['data']
+    def _linear_blend(block, size):                     # the pre-v4.7 rule: blend the two ruled moves by chain length
+        names = [z['name'] for z in block['meta']['sizes']]; t_, b_ = names.index(size), block['meta']['base_index']; rl = {o['id']: o['deltas'] for o in block['objects']}
+        def mv(pp):
+            if pp['rule_ref'] not in rl: return None
+            rows = rl[pp['rule_ref']]; sel = rows[b_:t_] if t_ > b_ else [(-a_, -c_) for a_, c_ in rows[t_:b_]]
+            return (sum(r_[0] for r_ in sel), sum(r_[1] for r_ in sel))
+        pts_ = block['perimeter']; mvs = [mv(pp) for pp in pts_]; n_ = len(pts_); rd = [i for i in range(n_) if mvs[i] is not None]; xy_ = [(pp['x'], pp['y']) for pp in pts_]; o_ = [None] * n_
+        for i in rd: o_[i] = (xy_[i][0] + mvs[i][0], xy_[i][1] + mvs[i][1])
+        for k_, i in enumerate(rd):
+            j = rd[(k_ + 1) % len(rd)]; seq = []; q_ = (i + 1) % n_
+            while q_ != j: seq.append(q_); q_ = (q_ + 1) % n_
+            ch = [xy_[i]] + [xy_[q_] for q_ in seq] + [xy_[j]]; acc = am._chain_lengths(ch); tot = acc[-1] or 1.0
+            for ix, q_ in enumerate(seq):
+                f_ = acc[ix + 1] / tot; o_[q_] = (xy_[q_][0] + mvs[i][0] * (1 - f_) + mvs[j][0] * f_, xy_[q_][1] + mvs[i][1] * (1 - f_) + mvs[j][1] * f_)
+        return o_
+    lin_err = {}
+    for rc in rmo['marker']['records']:
+        ro4 = am.record_outline(dd4, rc); got = [(x * 1e4, y * 1e4) for x, y in ro4['points']]; ref = [(x * 1e4, y * 1e4) for x, y in am.graded_outline(pcb, rc['size'])]
+        if not ro4['verified'] or len(got) != 12 or max(max(abs(a_[0] - b_[0]), abs(a_[1] - b_[1])) for a_, b_ in zip(got, ref)) > 1.5: bad.append(f"size {rc['size']}: stream outline != graded piece outline (1e-4 in)")
+        lin = _linear_blend(pcb, rc['size']); lin_err[rc['size']] = max(max(abs(a_[0] - b_[0]), abs(a_[1] - b_[1])) for a_, b_ in zip(got, lin))
+        # notches, grain, internal line, drill: exactly the piece object's, at every size (they are not graded)
+        want = {k_: [(q['x'], q['y']) for q in l] for k_, l in zip(pcb['internal_kinds'], pcb['internal_lines'])}
+        lines = {l['kind']: [(round(x * 1e4), round(y * 1e4)) for x, y in l['points']] for l in ro4['lines']}
+        if lines != want: bad.append(f"size {rc['size']}: grain / internal / drill {lines} != {want}")
+        nn = sorted((round(x * 1e4), round(y * 1e4), t) for _, t, x, y in ro4['notches']); wn = sorted((q['x'], q['y'], q['notch_type']) for q in pcb['perimeter'] if q['kind'] == 'notch')
+        if [(a_, b_, t) for a_, b_, t in nn] != [(a_, b_, t) for a_, b_, t in wn] and rc['size'] == 'M': bad.append(f'M notches {nn} != {wn}')
+        if len(nn) != 2 or any(t != 5 for *_, t in nn): bad.append(f"size {rc['size']}: notches {nn}")
+    if lin_err.get('S', 0) < 2000 or lin_err.get('L', 0) < 2000: bad.append(f'the old chain-length blend should be off by > 0.2 in on S and L (it was {lin_err})')
+    for e in ivm['slots']:
+        if abs(e['checks']['bbox_dx']) > 2e-4 or abs(e['checks']['bbox_dy']) > 2e-4 or abs(e['checks']['area_ratio'] - 1) > 1e-3 or len(e['notches']) != 2 or len(e['drills']) != 1 or not e['grain']: bad.append(f"slot {e['size']}: box residual {e['checks']['bbox_dx']:.4f}, {e['checks']['bbox_dy']:.4f} / area {e['checks']['area_ratio']:.4f} / notches {len(e['notches'])}")
+    print(f"   {'ok ' if not bad else 'FAIL'} SECOND BLIND TEST CLAUDE-D4 (a piece I built: rounded corner, 2 notches, drill, grain, internal line, two grade rules): marker-only ZIP -> outline == graded piece to 1e-4 in at S / M / L, notches, grain, internal line and drill exactly the piece's; the old chain-length grading blend was {max(lin_err.values(), default=0) / 1e4:.3f} in off  {'; '.join(bad[:3])}")
+    if bad: fails.append('D4 blind test: ' + '; '.join(bad[:5]))
+
+# the contour split by header counts, over every fixture whose piece object is bundled: grain, internal lines, cutouts and drills equal the piece's exactly
+il_n = il_bad = 0
+for zp in ('markers/2303-BD137-UNLAID/2303-BD 137.zip', 'markers-live/CLAUDE-UNP-D2-TWIN/CLAUDE-D2-M0.zip', 'markers-live/CLAUDE-UNP-D4-CURVE/CLAUDE-D4.zip', 'markers/CLAUDE-GRADE-MARKER/CLAUDE-GRADE-MARKER.zip', 'markers/2303-CP150-JULY/2303-CP 150 CPL.zip'):
+    if not os.path.isfile(os.path.join(HERE, zp)): continue
+    rr = am.place_marker(os.path.join(HERE, zp)); seen_ = set()
+    for mm in rr['markers']:
+        m_ = mm['marker']; dd = m_['object']['data']
+        for rc in m_['records']:
+            pc = rr['pieces'].get(rc.get('piece'))
+            if not pc or (rc['text'], rc['stream_len']) in seen_: continue
+            seen_.add((rc['text'], rc['stream_len'])); ro = am.record_outline(dd, rc)
+            if not ro or not ro['verified'] or not ro['lines'] or any(l['kind'] == 'mirror' for l in ro['lines']): continue      # fold pieces: their own block below
+            nm = {'internal_cutout': 'cutout'}; want = [(nm.get(k, k), [(q['x'], q['y']) for q in l]) for k, l in zip(pc['block']['internal_kinds'], pc['block']['internal_lines'])]
+            got = [(l['kind'], [(round(x * 1e4), round(y * 1e4)) for x, y in l['points']]) for l in ro['lines']]
+            il_n += 1; il_bad += want != got
+print(f"   {'ok ' if il_n >= 60 and not il_bad else 'FAIL'} stream internal lines (v4.7): grain, internal lines, cutouts and drills split by the header counts equal the piece objects' exactly on {il_n - il_bad} of {il_n} records (2303 pieces carry up to 10 lines each)")
+if il_n < 60 or il_bad: fails.append(f'stream internal lines: {il_bad} of {il_n} differ')
+
+# v4.7: FOLD PIECES. A fold half's stream is: the CUT half (the outline), the grain line (2 points), the internal lines (header I / H / D counts), the SEW
+# half (the stitch line, as many points as are left over) and the mirror line (2 points). Verified against the piece objects of ID1005 - BACK / FRONT (blind
+# test D3: at the base size M the grain, internal line and sew half equal the piece object's exactly, at XS / L / XL the sew half equals the piece's GRADED stitch
+# line to 1e-4 in - seven ruled points and six different rule numbers per piece, so this also confirms the chord-similarity grading), and the 2303 OUCF pieces.
+# The layout is only accepted when it closes geometrically (cut and sew half ends on the mirror line): the older vintage (1825D / 5683D / 2591A / 418T markers) lays
+# these lines out differently and is left unlabelled.
+bad = []; fb = os.path.join(HERE, 'markers-live', 'CLAUDE-UNP-D3-BLIND', 'CLAUDE-D3-BF.zip')
+if os.path.isfile(fb):
+    rfb = am.place_marker(fb); mfb = rfb['markers'][0]['marker']; dfb = mfb['object']['data']
+    for pn in ('ID1005 - BACK', 'ID1005 - FRONT'):
+        blk = rfb['pieces'][pn]['block']; want = {k_: [(q['x'], q['y']) for q in l] for k_, l in zip(blk['internal_kinds'], blk['internal_lines'])}
+        for sz in ('XS', 'S', 'M', 'L', 'XL'):
+            rc = next(r_ for r_ in mfb['records'] if r_['piece'] == pn and r_['size'] == sz); ro = am.record_outline(dfb, rc)
+            o_ = rc['offset']; t_ = len(rc['text']); dec = am.decode_record_stream(dfb[o_+t_:o_+t_+rc['stream_len']], ro['pen_move'])
+            if 'sew' not in dec['labels'] or dec['labels'][-1] != 'mirror': bad.append(f'{pn} {sz}: fold layout not recognised {dec["labels"]}'); continue
+            sew = [(x, y) for x, y, _ in dec['contours'][dec['labels'].index('sew')]]; stitch = [(x * 1e4, y * 1e4) for x, y in am.graded_outline(blk, sz)]
+            if max(max(abs(a_[0] - b_[0]), abs(a_[1] - b_[1])) for a_, b_ in zip(sew, stitch)) > 1.5: bad.append(f'{pn} {sz}: sew half != graded stitch line')
+            lines = {l['kind']: [(round(x * 1e4), round(y * 1e4)) for x, y in l['points']] for l in ro['lines']}
+            if any(lines.get(k_) != want[k_] for k_ in ('grain', 'internal') if k_ in want): bad.append(f'{pn} {sz}: grain / internal line differ')
+            if sz == 'M' and lines.get('mirror') != want.get('mirror'): bad.append(f'{pn} M: mirror {lines.get("mirror")} != {want.get("mirror")}')
+            mir = lines['mirror']; fold = (sew[0], sew[-1])
+            if max(abs((p_[0] - mir[0][0]) * (mir[1][1] - mir[0][1]) - (p_[1] - mir[0][1]) * (mir[1][0] - mir[0][0])) / max(1, math.hypot(mir[1][0] - mir[0][0], mir[1][1] - mir[0][1])) for p_ in fold) > 3: bad.append(f'{pn} {sz}: sew ends off the mirror line')
+            if not (ro['sew'] and len(ro['sew']) == 2 * len(sew) - 2): bad.append(f'{pn} {sz}: unfolded sew line has {len(ro["sew"] or [])} points')
+# 2303 OUCF fold pieces (their piece objects are bundled with the placed marker; the piece perimeter IS the cut line there): the grain line equals the piece's
+# grain line up to the rigid shift between the marker's frame and the piece's (0 on three pieces, 12 x 1e-4 in in y on A2), and the stream's mirror line is the chord of
+# the SEW half (the piece's own mirror line is the chord of the cut half)
+ou_n = ou_bad = 0
+z23 = os.path.join(HERE, 'markers', '2303-BD137-PLACED', '2303-BD 137 PLACED.zip')
+if os.path.isfile(z23):
+    r23 = am.place_marker(z23); seen_ = set()
+    for mm in r23['markers']:
+        m_ = mm['marker']; dd = m_['object']['data']
+        for rc in m_['records']:
+            pc = r23['pieces'].get(rc.get('piece'))
+            if not pc or 'OUCF' not in rc['piece'] or (rc['text'], rc['stream_len']) in seen_: continue
+            seen_.add((rc['text'], rc['stream_len'])); ro = am.record_outline(dd, rc)
+            if not ro or not ro['verified']: continue
+            blk = pc['block']; want = {k_: [(q['x'], q['y']) for q in l] for k_, l in zip(blk['internal_kinds'], blk['internal_lines'])}
+            o_ = rc['offset']; t_ = len(rc['text']); dec = am.decode_record_stream(dd[o_+t_:o_+t_+rc['stream_len']], ro['pen_move'])
+            if 'sew' not in dec['labels']: ou_bad += 1; ou_n += 1; continue
+            cut0 = dec['contours'][0][0]; sew = dec['contours'][dec['labels'].index('sew')]
+            lines = {l['kind']: [(round(x * 1e4), round(y * 1e4)) for x, y in l['points']] for l in ro['lines']}; ou_n += 1
+            sh = (cut0[0] - blk['perimeter'][0]['x'], cut0[1] - blk['perimeter'][0]['y'])
+            if [(x - sh[0], y - sh[1]) for x, y in lines['grain']] != want['grain'] or lines['mirror'] != [(sew[0][0], sew[0][1]), (sew[-1][0], sew[-1][1])]: ou_bad += 1
+if ou_n < 20 or ou_bad: bad.append(f'2303 OUCF: {ou_bad} of {ou_n} records differ from the piece objects (grain up to the frame shift / mirror = sew chord)')
+# the older vintage is left alone (no wrong lines): 1825D marker-only records have no `mirror` label
+for zn_, mn_ in (('1825D-SS21-UNLAID', '1825D-BD 180 SS21.zip'), ('5683D-SS21-UNLAID', '5683D-BD 168 SS21.zip')):
+    for mk_ in am.place_marker(os.path.join(HERE, 'markers', zn_, mn_))['markers']:
+        for rc in mk_['marker']['records']:
+            ro = am.record_outline(mk_['marker']['object']['data'], rc)
+            if ro and any(l['kind'] == 'mirror' for l in ro['lines']): bad.append(f'{zn_}: a mirror line was labelled on the older vintage')
+print(f"   {'ok ' if not bad else 'FAIL'} fold pieces (v4.7): cut half + grain + internal lines + sew half + mirror line split from the stream - BACK / FRONT at 5 sizes and {ou_n} 2303 OUCF records equal the piece objects; the older vintage stays unlabelled  {'; '.join(bad[:3])}")
+if bad: fails.append('fold pieces: ' + '; '.join(bad[:5]))
+
+# v4.7: the grain line of the marker-only ZIPs (older vintage: 1825D / 5683D / 2591A / 418T, their other lines are not decoded). Read as `inferred`: the second
+# contour's first two points are a horizontal segment, and every one of the corpus's bundled piece objects has a horizontal grain line (counted here too, 81 in the fixtures; 135 over every capture folder).
+gr_n = gr_bad = 0; gr_basis = set()
+for zn_, mn_ in (('1825D-SS21-UNLAID', '1825D-BD 180 SS21.zip'), ('5683D-SS21-UNLAID', '5683D-BD 168 SS21.zip'), ('2591A-SS21-UNLAID', '2591A-BD 157 AW SS21.zip'), ('418T-SHAPESHIFTER-UNLAID', '418T-BD 160 SHAPESHIFTER.zip')):
+    for mk_ in am.place_marker(os.path.join(HERE, 'markers', zn_, mn_))['markers']:
+        for e in mk_['inventory']['slots']:
+            gr_n += 1; g_ = e.get('grain'); gr_basis.add(e.get('grain_basis'))
+            if not g_ or len(g_) != 2 or abs(g_[0][1] - g_[1][1]) > 1e-9 or g_[0][0] == g_[1][0]: gr_bad += 1
+po_n = po_h = 0
+for zp_ in glob.glob(os.path.join(HERE, 'markers', '**', '*.zip'), recursive=True) + glob.glob(os.path.join(HERE, 'markers-live', '**', '*.zip'), recursive=True):
+    try: pcs, _ = am.load_pieces(am.list_zip(zp_))
+    except Exception: continue
+    for pc_ in pcs.values():
+        if not pc_: continue
+        for k_, l_ in zip(pc_['block']['internal_kinds'], pc_['block']['internal_lines']):
+            if k_ == 'grain' and len(l_) == 2: po_n += 1; po_h += l_[0]['y'] == l_[1]['y']
+print(f"   {'ok ' if gr_n >= 110 and not gr_bad and gr_basis <= {'inferred', 'stream'} and po_n and po_h == po_n else 'FAIL'} grain of the marker-only ZIPs (v4.7): {gr_n - gr_bad} of {gr_n} slots have a horizontal grain line, basis {sorted(b for b in gr_basis if b)}; every one of {po_n} grain lines in the bundled piece objects is horizontal ({po_h})")
+if gr_n < 110 or gr_bad or po_h != po_n: fails.append(f'marker-only grain: {gr_bad} of {gr_n} slots without a horizontal grain; piece objects {po_h} of {po_n} horizontal')
+
+# v4.7: THE NEST SPEC (nest_spec.py) - the whole unplaced job as JSON / DXF / SVG for a nesting engine, from a marker-only ZIP.
+import tempfile, json as _json
+import nest_spec as ns
+bad = []; n_specs = n_shapes = n_inst = 0
+NEST_ZIPS = (('markers/1825D-SS21-UNLAID/1825D-BD 180 SS21.zip', 2), ('markers/5683D-SS21-UNLAID/5683D-BD 168 SS21.zip', 1), ('markers/2591A-SS21-UNLAID/2591A-BD 157 AW SS21.zip', 1),
+             ('markers/418T-SHAPESHIFTER-UNLAID/418T-BD 160 SHAPESHIFTER.zip', 1), ('markers-live/CLAUDE-UNP-D3-BLIND/CLAUDE-D3-BF-MARKER-ONLY.zip', 1),
+             ('markers-live/CLAUDE-UNP-D4-CURVE/CLAUDE-D4-MARKER-ONLY.zip', 1), ('markers-live/CLAUDE-UNP-D2-TWIN/CLAUDE-D2-M0.zip', 1), ('markers/2303-BD137-UNLAID/2303-BD 137.zip', 1))
+with tempfile.TemporaryDirectory() as td:
+    for rel, nm in NEST_ZIPS:
+        zp = os.path.join(HERE, rel)
+        if not os.path.isfile(zp): continue
+        specs = ns.build_nest_spec(zp)
+        if len(specs) != nm: bad.append(f'{rel}: {len(specs)} markers, expected {nm}')
+        for sp in specs:
+            n_specs += 1; n_shapes += len(sp['shapes']); n_inst += sum(d['quantity'] for d in sp['demand'])
+            if not sp['complete']: bad.append(f"{sp['source']['marker']}: incomplete {[c['name'] for c in sp['checks'] if not c['ok']]}")
+            if _json.loads(_json.dumps(sp)) != sp: bad.append(f"{sp['source']['marker']}: not JSON round-trippable")
+            # the DXF says what the JSON says: one CUT polyline per shape (+ mirrored copies), same areas
+            dp = os.path.join(td, 'x.dxf'); ns.write_dxf(sp, dp); pl = ns.read_dxf_polylines(dp)
+            want = sorted(abs(ns._area([tuple(p) for p in (s['outline_mirrored'] if mir else s['outline'])])) for s in sp['shapes'] if s['complete'] for mir in ([False] + ([True] if s.get('outline_mirrored') else [])))
+            got = sorted(abs(ns._area(p)) for p in pl.get('CUT', []))
+            if len(want) != len(got) or any(abs(a_ - b_) > 2e-4 * max(1.0, a_) for a_, b_ in zip(want, got)): bad.append(f"{sp['source']['marker']}: DXF cut polylines {len(got)} vs {len(want)} (areas differ)")
+            if sum(len(v) for k_, v in pl.items() if k_ == 'SEAM') != sum(1 for s in sp['shapes'] if s.get('seam_outline')) * 1 + sum(1 for s in sp['shapes'] if s.get('seam_outline_mirrored')): bad.append(f"{sp['source']['marker']}: DXF seam polylines")
+            # every shape: notches and grain lie inside / on its own box, demand covers every slot exactly once
+            slots = [o for d in sp['demand'] for o in d['slots']]
+            if len(slots) != len(set(slots)) or len(slots) != sp['totals']['instances']: bad.append(f"{sp['source']['marker']}: demand slots not unique")
+            for s in sp['shapes']:
+                for nt in s['notches']:
+                    if not (-0.01 <= nt['x'] <= s['width'] + 0.01 and -0.01 <= nt['y'] <= s['height'] + 0.01): bad.append(f"{sp['source']['marker']} {s['id']}: notch outside the box"); break
+            svp = os.path.join(td, 'x.svg'); ns.write_svg(sp, svp)
+            if not open(svp, encoding='utf-8').read().startswith('<svg'): bad.append('svg')
+    # units: the same job in in / cm / mm
+    z = os.path.join(HERE, 'markers', '5683D-SS21-UNLAID', '5683D-BD 168 SS21.zip')
+    a_in, a_cm, a_mm = (ns.build_nest_spec(z, u)[0]['totals']['area'] for u in ('in', 'cm', 'mm'))
+    if abs(a_cm / a_in - 6.4516) > 1e-3 or abs(a_mm / a_in - 645.16) > 0.1: bad.append(f'unit conversion {a_in} {a_cm} {a_mm}')
+    # independence from the piece objects: the spec of the marker-only ZIP == the spec of the full ZIP (whose outlines come from the piece object)
+    for full, only in (('markers-live/CLAUDE-UNP-D4-CURVE/CLAUDE-D4.zip', 'markers-live/CLAUDE-UNP-D4-CURVE/CLAUDE-D4-MARKER-ONLY.zip'), ('markers-live/CLAUDE-UNP-D3-BLIND/CLAUDE-D3-BF.zip', 'markers-live/CLAUDE-UNP-D3-BLIND/CLAUDE-D3-BF-MARKER-ONLY.zip')):
+        if not (os.path.isfile(os.path.join(HERE, full)) and os.path.isfile(os.path.join(HERE, only))): continue
+        sf = ns.build_nest_spec(os.path.join(HERE, full))[0]; so = ns.build_nest_spec(os.path.join(HERE, only))[0]
+        if [d['quantity'] for d in sf['demand']] != [d['quantity'] for d in so['demand']]: bad.append(f'{full}: demand differs')
+        for a_, b_ in zip(sf['shapes'], so['shapes']):
+            if len(a_['outline']) != len(b_['outline']) or max(max(abs(p[0] - q[0]), abs(p[1] - q[1])) for p, q in zip(a_['outline'], b_['outline'])) > 6e-4: bad.append(f"{full}: {a_['piece']} {a_['size']} outline differs between the full and the marker-only ZIP")
+        if 'D4' in full and so['totals']['outline_source'] != 'stream': bad.append('D4 marker-only spec must come from the stream')
+    # mirrored geometry (CLAUDE-D4 has 3 mirrored pairs): same area / box, grain and notches reflected about the middle of the box
+    sd = ns.build_nest_spec(os.path.join(HERE, 'markers-live', 'CLAUDE-UNP-D4-CURVE', 'CLAUDE-D4-MARKER-ONLY.zip'))[0]
+    if sd['totals']['mirrored_instances'] != 3: bad.append('D4 mirrored instances')
+    for s in sd['shapes']:
+        mo = [tuple(p) for p in s['outline_mirrored']]; o = [tuple(p) for p in s['outline']]
+        if abs(abs(ns._area(mo)) - s['area']) > 1e-6 or abs(max(p[1] for p in mo) - s['height']) > 1e-9 or min(p[1] for p in mo) < -1e-9: bad.append(f"{s['id']}: mirrored outline")
+        if abs(s['grain_mirrored']['points'][0][1] - (s['height'] - s['grain']['points'][0][1])) > 1e-9 or abs(s['drills_mirrored'][0][1] - (s['height'] - s['drills'][0][1])) > 1e-9: bad.append(f"{s['id']}: mirrored grain / drill")
+        if ns._area(mo) <= 0: bad.append(f"{s['id']}: mirrored outline not counter-clockwise")
+    # a part-laid marker lists only what is left: instances + already placed == slots of the marker
+    zc = os.path.join(HERE, 'markers', '2303-CP150-JULY', '2303-CP 150 CPL.zip')
+    if os.path.isfile(zc):
+        rc_ = am.place_marker(zc)
+        for sp, mm in zip(ns.build_nest_spec(zc), rc_['markers']):
+            if sp['totals']['instances'] + sp['totals']['already_placed'] != len(mm['marker']['slots']) or sp['source']['laid_state'] != 'partial': bad.append(f"{sp['source']['marker']}: part-laid accounting")
+print(f"   {'ok ' if not bad else 'FAIL'} NEST SPEC (v4.7): {n_specs} markers, {n_shapes} shapes, {n_inst} pieces - complete, JSON / DXF round trips, spec of the marker-only ZIP == spec of the full ZIP, units, mirrored geometry, part-laid accounting  {'; '.join(bad[:3])}")
+if bad: fails.append('nest spec: ' + '; '.join(bad[:5]))
+
+# a machine that knows nothing about AccuMark can use the spec: an independent geometry library (shapely, when installed) accepts every outline as a valid polygon of exactly
+# the stated area, and every seam line lies inside its cut line
+try:
+    from shapely.geometry import Polygon as _Poly
+except Exception: _Poly = None
+if _Poly:
+    sh_bad = []; sh_n = 0
+    for rel, _ in NEST_ZIPS:
+        zp = os.path.join(HERE, rel)
+        if not os.path.isfile(zp): continue
+        for sp in ns.build_nest_spec(zp):
+            for s_ in sp['shapes']:
+                P_ = _Poly(s_['outline']); sh_n += 1
+                if not s_.get('self_intersecting') and not P_.is_valid: sh_bad.append(f"{sp['source']['marker']} {s_['id']}: invalid polygon")
+                if abs(P_.area / s_['area'] - 1) > 1e-9: sh_bad.append(f"{sp['source']['marker']} {s_['id']}: area")
+                if s_.get('seam_outline') and not P_.contains(_Poly(s_['seam_outline']).buffer(-1e-6)): sh_bad.append(f"{sp['source']['marker']} {s_['id']}: seam outside cut")
+    print(f"   {'ok ' if not sh_bad else 'FAIL'} nest spec read by shapely: {sh_n} outlines are valid polygons of the stated area, seam lines inside their cut lines  {'; '.join(sh_bad[:3])}")
+    if sh_bad: fails.append('nest spec / shapely: ' + '; '.join(sh_bad[:4]))
+
+print('-- marker byte map (v4.4, see accumark_marker.marker_coverage)')
+# Every byte owned by a section a parser reads must be classified (identified /
+# raw / zero_pad / opaque) - only the envelope, the header scalars, sections 2-5,
+# section 10's 6-byte lead and the trailer may hold unknown bytes. This is the
+# measurable form of "fully decoded" for the marker: a parser change that loses
+# a section moves its bytes to `unknown` and fails here.
+PARSED_SECTIONS = {6, 11, 12, 13, 14, 15, 21, 30}
+n_mk = 0; leaks = []; unk = []; tot = Counter()
+for zp in sorted(glob.glob(os.path.join(HERE, 'markers', '**', '*.zip'), recursive=True)):
+    try: mos = am.list_zip(zp).get('marker', [])
+    except Exception: continue
+    for o in mos:
+        n_mk += 1; cv = am.marker_coverage(o['data'])
+        leaks += [f"{o['name']}: bytes {a}-{b} in section {k}" for a, b, k in cv['unknown_runs'] if k in PARSED_SECTIONS]
+        unk.append(cv['counts']['unknown']); tot.update(cv['counts'])
+ok = n_mk and not leaks
+print(f"   {'ok ' if ok else 'FAIL'} {n_mk} markers: every byte in sections {sorted(PARSED_SECTIONS)} is classified"
+      + (f"; unknown bytes per marker {min(unk)}-{max(unk)}, {100*tot['unknown']/sum(tot.values()):.2f}% overall "
+         f"(identified {100*tot['identified']/sum(tot.values()):.1f}%, raw {100*tot['raw']/sum(tot.values()):.1f}%, "
+         f"zero_pad {100*tot['zero_pad']/sum(tot.values()):.1f}%, opaque {100*tot['opaque']/sum(tot.values()):.1f}%)" if n_mk else '')
+      + ('  ' + '; '.join(leaks[:3]) if leaks else ''))
+if not ok: fails.append('marker byte map: ' + '; '.join(leaks[:5]))
+# and it can fail: break section 11's first name length and the model list's bytes must fall out of the map
+src = _mk(('5683D-SS21-UNLAID', '5683D-BD 168 SS21.zip'), '5683D-BD 168 SS21')
+if src:
+    b = bytearray(src[0]['data']); struct.pack_into('<H', b, src[1]['sections'][am.SEC_MODELS][0] - 6, 0)
+    cv = am.marker_coverage(bytes(b)); lost = [r for r in cv['unknown_runs'] if r[2] == am.SEC_MODELS]
+    print(f"   {'ok ' if lost else 'FAIL'} mutation: a broken model list surfaces as unknown bytes in section 11 ({sum(r[1]-r[0] for r in lost)} B)")
+    if not lost: fails.append('marker byte map: a broken model list did not surface as unknown bytes')
+
+print('-- unseen variants are loud (v4.6, see accumark_marker.marker_warnings)')
+# Reading "whatever marker AccuMark produces in future" means a marker unlike
+# the corpus must announce itself. Every fixture must be silent; every named
+# warning must fire when the fact it guards is broken in the bytes.
+n_mk = 0; noisy = []
+for zp in sorted(glob.glob(os.path.join(HERE, 'markers', '**', '*.zip'), recursive=True)):
+    try: mos = am.list_zip(zp).get('marker', [])
+    except Exception: continue
+    for o in mos:
+        n_mk += 1; mk = am.parse_marker(o['data'])
+        w = am.marker_warnings(mk) + am.coverage_warnings(mk)
+        if w: noisy.append(f"{o['name']}: {w[0]}")
+print(f"   {'ok ' if n_mk and not noisy else 'FAIL'} {n_mk} fixture markers raise no warning  {'; '.join(noisy[:3])}")
+if not n_mk or noisy: fails.append('marker warnings on fixtures: ' + '; '.join(noisy[:5]))
+src = _mk(('5683D-SS21-UNLAID', '5683D-BD 168 SS21.zip'), '5683D-BD 168 SS21')
+if src:
+    d0, mk0 = src[0]['data'], src[1]; sec = mk0['sections']
+    def _warn(off, fmt, val):
+        b = bytearray(d0); struct.pack_into(fmt, b, off, val); return am.marker_warnings(am.parse_marker(bytes(b)))
+    WMUT = [  # description, warnings after the patch, the text that must appear
+     ('a directory slot nobody has used (slot 20) now in use', _warn(am.DIR_OFF + 4*20, '<I', sec[am.SEC_SLOTS][0]), 'directory slot 20 is in use'),
+     ('directory word 40 = 5', _warn(am.DIR_OFF + 4*40, '<I', 5), 'directory word 40 is 5'),
+     ('directory word 41 non-zero', _warn(am.DIR_OFF + 4*41, '<I', 7), 'directory word 41'),
+     ('a never-laid slot with unknown orientation bits', _warn(mk0['slots'][3]['slot'] + 32, '<H', 0x0801), 'orientation bits'),
+     # a 1-byte shift of the first index entry still yields a plausible record (garbage area), so it is the
+     # per-slot area cross-check that must notice; a non-monotonic index is the index's own failure
+     ('section 13: first record offset shifted one byte', _warn(sec[am.SEC_INDEX][0] - 6, '<I', mk0['record_index'][0] + 1), 'declared area does not equal'),
+     ('section 13: index no longer monotonic', _warn(sec[am.SEC_INDEX][0] - 6, '<I', 0x7fffffff), 'record index) did not validate'),
+     ('a slot bundle disagrees with the size table', _warn(mk0['slots'][4]['slot'] - 6 + 4, '<H', 9), 'bundle or the record text disagree'),
+     ('section 10: header label broken', _warn(sec[am.SEC_PIECES][0] + 22, '<H', 0), 'section 10 (piece list)'),
+     ('section 15: first model block claims 5 more sizes', _warn(sec[am.SEC_ORDER_COPY][0] - 6 + 12, '<H', 11), 'section 15 (order copy) did not parse'),
+     ('a slot head points past the records', _warn(mk0['slots'][2]['slot'] - 6, '<H', 500), 'not bound structurally'),
+    ]
+    bad = [f'"{d}" did not raise "{t}": {w}' for d, w, t in WMUT if not any(t in x for x in w)]
+    print(f"   {'ok ' if not bad else 'FAIL'} {len(WMUT)} byte patches each raise the warning that names them  {'; '.join(bad)}")
+    if bad: fails.append('marker warnings mutation: ' + '; '.join(bad))
+    # and the report turns them into NEEDS A LOOK
+    b = bytearray(d0); struct.pack_into('<H', b, mk0['slots'][3]['slot'] + 32, 0x0801); mkp = am.parse_marker(bytes(b))
+    rep = am.inventory_report(am.unplaced_inventory(mkp), am.check_marker(mkp))
+    print(f"   {'ok ' if 'NEEDS A LOOK' in rep else 'FAIL'} an unseen variant makes the inventory report say NEEDS A LOOK, not DECODED CLEANLY")
+    if 'NEEDS A LOOK' not in rep: fails.append('inventory_report did not flag an unseen variant')
 
 print('-- coverage (informational only - see accumark_pds.coverage();'
       ' 0 unknown_bytes everywhere is the Phase D sign-off target, not'

@@ -1,5 +1,278 @@
 # Marker decode plan — AccuMark native marker export
 
+> ## STATUS 2026-09-21 (v4.7) - the controlled dataset: @88 is the record's own count; 0x0040 is a copy of a piece-row flag
+>
+> **Dataset design + harness: `MARKER_DATASET_DESIGN.md`.** One order, one setting changed per
+> run, an as-generated marker made on demand (Explorer Save As of the order > Easy Order on
+> the copy > edit the Step 4 *Marker Name* cell > Process; Explorer's Generate Marker on a copy
+> targets the ORIGINAL order's marker and stops at "Confirm Marker Replace" - my earlier
+> "overwrote AD1234 TEST 134" was a false alarm: nothing was replaced, the export is
+> byte-identical apart from stamps). Fixtures `markers-live/CLAUDE-UNP-D2-TWIN/`
+> (`CLAUDE-D2-M0`, `CLAUDE-D2-M5`); the laid twin is `markers/misc-test-markers/AD1234 TEST 134.zip`.
+>
+> Settled (all offline over the 111-marker corpus, each with a check row + mutation test):
+> * **`@88` = record head u16 @+10 + C, C one constant per piece** across sizes and markers
+>   (107 groups, 43 markers, 31 pieces, 0 exceptions). It was never a free signature.
+>   C is 4 (<= a grain line), 28-32 (grain + mirror), 216-266 (ten internal lines), 620+
+>   (eighteen): what exactly C counts is open [?] (F6: pieces of controlled topology).
+> * **The marker-level `0x0040` bit == the piece row's flag u16 @+14** (section 10): 9,122 of
+>   9,122 slots, no marker mixes values. What sets the flag is open: not a model-piece
+>   property (450 pairs), not the block buffer; by name it tracks the engine that wrote the
+>   marker (F5).
+> * **Laid vs as generated, same order:** records byte-identical; slots differ only in centre,
+>   orientation, two area ulps and `@88`; section 1 loses length / util / placed-area; word 40
+>   0 vs 2; the type-10 scratch object is 960 B larger once laid (~1 KB block of small offsets
+>   at its offset 310).
+> * **The harness is reproducible:** the same order processed again differs in 18 bytes (name
+>   digits + stamps).
+>
+> * **NEST SPEC (`nest_spec.py`, `NEST_SPEC.md`):** the deliverable of the plan - one command from a marker-only ZIP to fabric width, shapes (cut outline, seam, notches, grain,
+>   internal lines, drills, stored box / padding) and demand (with mirrored geometry written out); 176 shapes / 243 pieces over the real and blind markers, all complete, read back
+>   by shapely and by a DXF round trip. Says what it does not know: positions, one-way fabric, and for the older vintage the seam / internal lines / verified grain.
+> * **FOLD PIECES:** the stream of a fold half is cut half + grain + internal lines + SEW half + mirror line (verified on BACK / FRONT at 5 sizes and
+>   35 2303 OUCF records; the marker-only ZIP now carries the seam allowance), accepted only if the ends lie on the mirror line. The older vintage (1825D / 5683D /
+>   2591A / 418T) lays them out differently and is not decoded; its grain is inferred (horizontal 2-point segment, 89 / 89 records) and flagged `inferred`.
+> * **SECOND BLIND TEST (`CLAUDE-D4`, a piece I designed with make_aama_dxf.py, imported with the DCU, Easy Order):** grain, internal
+>   line and drill were wrong until the contours after the perimeter were split by the header counts (`I` / `H` / `D` / `G`) with each contour's
+>   absolute start = the main part alone - now identical to the piece objects on 77 / 77 records; and the piece-side grading rule (blend by chain
+>   length) was 0.295 in off where two different rules sit on one chain - the marker's stream matches a chord SIMILARITY to 1e-4 in, which
+>   `graded_outline` now uses. 268 / 268 streams verify.
+> * **THE BLIND TEST (`CLAUDE-D3-BF`, ID1005 BACK + FRONT, made in AccuMark for this):** the marker-only ZIP decoded right
+>   except outlines - my pen-move threshold was wrong for a 7-part step; fixed by trying 6 / 20 / never against the record's
+>   area + perimeter. Then 10 / 10 outlines, bounding box == stored home box (0.0001 in). And the answer key showed the
+>   marker lays the CUT line (stitch + seam allowance 0.375 / 0.25 / 1.0 in), not the piece object's stitch line -
+>   `_slot_geometry` now prefers the verified stream outline. 265 / 265 corpus streams verify.
+> * **The section-14 stream is geometry - ALL 255 corpus streams decode** (pen-move rule + fold halves unfolded):
+>   area + perimeter reproduce on 255 / 255, and the bounding box equals the stored home box to 0.000 in on every
+>   slot of the marker-only ZIPs 1825D, 5683D, 2591A, 418T. Real outlines from marker-only ZIPs: done. Left:
+>   the attribute meaning (extra byte, tag low nibble), classify the stream bytes in the byte map.
+> * (superseded) **The section-14 stream is geometry - the grammar is (mostly) solved.** One tag scheme (bit 7 main, bits
+>   6-5 width, bit 4 clear = extra byte); a point's step is the SUM of prefix parts + one main part; `0xa`
+>   prefix closes a contour; tag `0x00` and ASCII header records (S / M / F ...). 124 of 255 distinct corpus
+>   streams reproduce their own record's area + perimeter (max 0.29% / 0.04%) - marker-only 0418T and 2591A
+>   LEG included - and RUFFLE / the rectangle equal the piece outline exactly. Outlines from marker-only ZIPs now
+>   work for those pieces; 1825D / 5683D / fold / BPNL / POUTH / curved blouse contours still to do.
+> * (earlier, superseded by the line above) **The section-14 stream is geometry** (partial, verified): points as 20 / 16 / 12-bit
+>   deltas in 1e-4 in, ids counting down from 29999; `decode_record_stream()` equals the graded
+>   outline for the rectangle (4/4) and the first 45 of RUFFLE's 142 points; the items tagged
+>   0x33 0x53 0x4d 0x21 0x47 0x46 0xd8 0x7a are unknown, so 0/255 streams parse to the end.
+>   Retracts "per-piece attribute table, not geometry". The next big step of the whole project.
+> * **E7 (two more harness runs):** a model none of whose pieces has a used fabric type is dropped
+>   from the order AND the marker; a fresh two-model marker (`CLAUDE-D2-E7B`) has header `@422` / `@454`
+>   = the LAST model's sums (generation-time behaviour); the same LADIES-BLOUSE pieces read `flag @+14` 0
+>   there and 1 on older markers, so the flag is not a model property.
+>
+> Still open, each with a named run: C's meaning (F6), the origin of flag @+14 (F5), the
+> block-buffer table's purpose (F4), `@52/@54/@60`, the CP 150 y excess, two placed slots 7.2%
+> over their record, the two-model / two-fabric order.
+>
+> ## STATUS 2026-09-21 (v4.5, live) - a store changes an unplaced marker in six ways; "never laid" was the wrong label
+>
+> Live experiment on Save-As copies of my own scratch marker (`markers-live/
+> CLAUDE-UNP-E1-TWINS/`): `CLAUDE-QTY-TEST` (as generated) opened in Easy Marking and
+> stored as **E1A with nothing placed**; one piece dragged on, returned with Piece >
+> Return > Unplaced, stored as **E1B**. Prediction: E1B (laid once, cleared) reads slot
+> `@88` = 0, E1A does not. **Both read 0.** What ANY Easy Marking store does to an
+> unplaced marker [V]: directory word 40 `0 -> 1` (with zero placed - it is a store
+> code, not a count); every slot's centre `0,0 -> -1000,-1000`; orientation `+0x8000`
+> (and `+0x0004` beside a rot180 preset); `@88` -> 0; home box +5e-5 in (rounding).
+> **E1B vs E1A: 12 bytes, one of them the last byte of one slot's area double** - laying
+> a piece and returning it leaves no trace, so "laid once and cleared" is not
+> distinguishable from "opened and stored empty". `lay_history` is now `as_generated |
+> stored_empty | partial | laid`; `@88 != 0 <=> word 40 == 0` on all 60 markers.
+> Also explains the July CP 150 unplaced slots that carry `0x80c7` (they were stored).
+> Full write-up: `CHANGELOG.md` v4.5 (continued).
+>
+> Still open: what `@88` counts, `@52/@54/@60`, what sets the marker-level `0x0040`,
+> the block-buffer table's purpose. `selftest.py` PASS, `dataset_test.py` 36/36,
+> `robustness/run.py` 474/474.
+
+> ## STATUS 2026-09-21 (v4.6) - a marker unlike the corpus announces itself; the marker spec has its own file
+>
+> The goal is a decoder that reads WHATEVER never-laid marker AccuMark produces
+> in future, so the failure mode must be loud. `marker_warnings(mk)` and
+> `coverage_warnings(mk)` name every way a marker can differ from the corpus
+> (an unseen directory section, a bad state word, unknown orientation bits on a
+> never-laid slot, a chain that does not close, a record read at the wrong offset,
+> bytes in a parsed section no parser explains); all 18 fixtures are silent, ten
+> byte patches each raise the warning that names them, and
+> `python accumark_marker.py <zip> --inventory` ends `DECODED CLEANLY` or `NEEDS
+> A LOOK:`. Intake procedure: `CLAUDE_CODE_HANDOFF.md`.
+>
+> **Corpus finding.** On the July CP 150 markers 61 of 71 UNPLACED slots carry
+> orientation words like `0x80c7`; none of the six never-laid markers' slots do. A
+> partly laid marker's unplaced slots keep the state they had before they were
+> lifted, so their `preset` is history, not a clean pre-set pattern.
+>
+> **The marker's byte-level spec now lives in `MARKER_FORMAT_SPEC.md`** (current
+> state, [V] / [?]); this file stays the journal.
+>
+> **Not done - the live-capture round (v4.5), each item needing a controlled
+> AccuMark capture:** side order of unequal block buffers; what sets the `0x0040`
+> pair bit and the rot180 alternation; slot `u16 @88` and `@52/@54/@60` (a
+> never-laid vs cleared twin); the CP 150 y excess; two models / two fabric types;
+> size names with spaces.
+>
+> `python selftest.py` -> SELFTEST PASS; `dataset_test.py` 36/36;
+> `robustness/run.py` 474/474.
+
+> ## STATUS 2026-09-21 (v4.3 / v4.4) - the unplaced case is fuzzed; the marker has a byte map
+>
+> **v4.3.** No marker seed was ever unlaid and the marker canon only listed
+> placements, so an unlaid marker passed Oracle A/C vacuously; the canon now
+> serialises slots / records / sizes / models / order copy / buffers / laid state /
+> inventory and two unlaid seeds are fuzzed (robustness 303 -> 474, every
+> corruption detected). The dataset's `reused` branch used to return True without
+> looking; it now asserts.
+>
+> **v4.4.** `marker_coverage(d)` classifies every byte (identified / raw /
+> zero_pad / opaque / unknown). Over 18 markers: sections 6, 11-15, 21, 30 leak no
+> unknown byte (asserted in the selftest); **unknown = 1,187-1,829 bytes per
+> marker, 1.38% overall, the same count on a 3 KB marker as on a 280 KB one**;
+> opaque 91.3% = section 14's attribute stream + the type-10 object (bounded on
+> purpose). The unknown set lives in the trailer, section 1 (only six doubles of
+> 372 B read), sections 2-5 and the envelope, and is mostly constant across
+> markers (section 1: 271 of 316 aligned positions identical, 45 vary). Detail and
+> the honest limits (`raw` is located, not understood): `CHANGELOG.md` v4.4.
+>
+> `python selftest.py` -> SELFTEST PASS; `dataset_test.py` 36/36;
+> `robustness/run.py` 474/474.
+
+> ## STATUS 2026-09-21 (v4.2) - the unplaced job spec: a never-laid marker now reads as a cut order
+>
+> `python accumark_marker.py <zip> --inventory` prints what a never-laid marker
+> states - width, order lines (model, size, quantity), pieces with cut and
+> mirrored pairs, area to lay, the fabric length a 100%-efficient lay would
+> need, the pre-set lay pattern - and ends `DECODED CLEANLY` or `NEEDS A LOOK:`.
+> A marker-only ZIP reports `geometry none` rather than looking complete. Full
+> write-up: `CHANGELOG.md` v4.2; purely additive over v4.1 (all 18 fixture
+> markers' fields, placed outlines and existing checks byte-identical).
+>
+> **Section 15 = the order copy [V, 18/18]:** model blocks (48-byte header,
+> name, fabric types, size rows `<u16 len><u16 QUANTITY><24 x 00><name>`); the
+> QUANTITY equals the number of size-table rows for that (model, size), so the
+> marker carries its own quantities. **Section 6 = block buffers [V framing]:**
+> `(pieces + 1)` x 102 bytes, four f64 = 0.0591 in (1.5 mm); a piece's
+> `buffer_index` is its 1-based list position; side order [?]. **Laid state**
+> read from slots + directory word 40 + header (they agree on 18/18); `@430` =
+> the placed slots' summed area. **Header sums** reported as a mode (`all`,
+> `last_model`, `2x_all`), pinned per fixture.
+>
+> **First geometric check on an unlaid marker.** `2303-BD 137` unlaid with its
+> 18 pieces: 97/97 slot home boxes match the piece's own outline at the tiled
+> size (worst 0.0156 in), areas 66/66 pairs within 1%. July CP 150 (71 of 72
+> unplaced): x exact once the block buffer is subtracted; **y has a one-sided
+> excess up to 0.0786 in on 48/71 slots, unexplained [?]** (the DXF-verified
+> placed slot is exact). Found by the new checks: the dataset generator never
+> patched `@430` - fixed.
+>
+> **Next (needs live AccuMark, disposable `CLAUDE-UNP-*` markers only):** side
+> order of unequal block buffers; what sets the `0x0040` pair bit and the
+> pre-set rot180 alternation; slot `u16 @88` / `@52/@54/@60` via a never-laid vs
+> cleared twin; the CP 150 y excess; two models / two fabric types in one order.
+>
+> `python selftest.py` -> SELFTEST PASS; `dataset_test.py` 36/36;
+> `robustness/run.py` 303/303.
+
+> ## STATUS 2026-09-21 (v4.1) - unplaced markers: a slot is bound by its own structure, and the area rule it replaces was wrong on 2303
+>
+> Goal of this thread: read WHATEVER never-laid marker AccuMark produces (a cut
+> order: what to lay, on what width; no positions). Three more never-laid
+> samples arrived (`5683D`, `2591A`, `418T`; fixtures under `markers/`), all
+> marker-only like 1825D. Full write-up: `CHANGELOG.md` v4.1.
+>
+> **Bug found and fixed.** Slots were bound to a (piece, size) by nearest
+> declared area; sister sizes that tie on area were resolved arbitrarily -
+> **77 of 97 slots wrong on both 2303-BD 137 markers**, laid and unlaid, and
+> invisible to every check because style 2303's grading is all placeholder.
+> The drawn DXF proves the structural binding: every placed slot has a label
+> `<piece> <size>` at its centre - 97/97 structural vs 20/97 area on 2303-BD 137
+> PLACED, and 1/1 on each July CP 150 marker, 2/2 on CLAUDE-GRADE-MARKER.
+>
+> **Slot binding [V, 677/677 slots, 18 markers].** Size and model from the size
+> table's tiling of the slot table; record and piece from the slot's 6-byte
+> HEAD (`u16 record index`, `u16 piece index`, `u16 bundle`), which sits just
+> before its 96-byte body - the old "@90/@92/@94 circular triple" is the next
+> slot's head. Area, bundle and record text are checked against it, not used
+> to choose it. **Section 10** is a `MARKER`-headed length-prefixed chain
+> (row: `<u16 n1><u16 n2><24 flags><name><category><u16-counted fabric
+> types>`), closing at `directory[11] - 6`. **Section 14** is walked from
+> section 13's index. **Directory word 40** is a state code (0/1/2 = none /
+> some / all slots placed), not an offset.
+>
+> **Header sums (refines the v4 note).** `@422`/`@454` equal the sums over all
+> slots on the six markers nobody laid; on the 2303 markers `@454` (and `@422`
+> in the unlaid export) equals the sum over the LAST model's slots, `@422`
+> equals the all-slot sum in the laid export. "Stale" is retracted: exact
+> arithmetic, cause unproven [?].
+>
+> **Still open for unplaced markers** (plan and evidence in `CHANGELOG.md`
+> v4.1 "Observed"): slot `u16 @88` (non-zero and constant per (piece, size) on
+> every never-laid marker, 0 on all 97 slots of the laid twin - meaning
+> unknown), `@52/@54/@60`, orient bit `0x0040`, section 6 (block buffer:
+> `(pieces + 1)` x 102-byte entries of four equal doubles 0.0591 in = 1.5 mm
+> on the markers that have it), section 15 (the order copy, likely the
+> per-size quantity), sections 2/3/4/5, section 1's unread bytes. The July DXF
+> header line `MODEL:SZ/QTY:` is an unused answer key for order lines.
+>
+> `python selftest.py` -> SELFTEST PASS; `dataset_test.py` 36/36;
+> `robustness/run.py` 303/303.
+
+> ## STATUS 2026-09-21 (v4) - sections 11-12 are one length-prefixed chain; a foreign-origin marker reads; @422 / @454 refined
+>
+> First marker from outside this project's own AccuMark install:
+> `1825D-BD 180 SS21.zip` (now `markers/1825D-SS21-UNLAID/`): two UNLAID
+> kids' markers, 168 cm and 180 cm wide, exported 2020-10-16 by another user
+> (its own `comments.txt` says "version 9 data"), with **no piece, model or
+> order objects** - so it carries no geometry at all. The v3.0 decoder opened
+> it without error and read the envelope, directory, width, piece list, all 36
+> (piece, size) records and all 36 slots correctly (the header's total area
+> `@422` and `@454` equal the record sums to 1e-13), but returned no model, no
+> sizes, a wrong size / cut split on every record and junk created / modified
+> stamps. Full write-up and verification: `CHANGELOG.md` v4.0.
+>
+> **Sections 11-12 layout [V, 15 of 15 distinct corpus markers, both
+> vintages].** One length-prefixed chain that starts 6 bytes BEFORE
+> `directory[11]` (the directory offset lands 4 bytes into the first model
+> name):
+>
+>     model list   <u16 len><name>                                      x n_models
+>     size table   <u16 len><u16 model idx><u16 pieces><u32 first slot><u32 flags><name>   x n_rows
+>
+> The model list ends exactly where the size table's first row starts
+> (`directory[12] - 6`); the size table ends exactly at `directory[13] - 6`,
+> where section 13's u32 offset array starts. `model idx` is 0-based into the
+> model list; `pieces` is the number of section-21 slots the row owns and
+> `first slot` the index of the first of them, so the rows tile the slot table:
+> `sum(pieces) == slot count` and `first slot` is the running sum from 0 on
+> every marker (97 x2, 72 x4, 2 x4, 3, 13, 54, 9, 27). `flags` is `0xffff` on
+> 12 markers and 0 on LADIES-BLOUSE and both 1825D markers [?].
+>
+> **Corrections to earlier notes.** (1) Section 12's `f0` (open since the first
+> analysis) is the row's own name length, which the old reader saw one row
+> early because it read the fields AFTER each name; the "1-based model index"
+> was the next row's 0-based one. (2) The model list is length-BEFORE, not
+> length-after: the old reader dropped 3 of 11 models on 2303-BD 137 and 2 of
+> 11 on the CP 150 markers and found none on the 9 single-model markers. (3)
+> `@422` is the sum of ALL slots' declared areas on 14 of 15 markers - equal to
+> W x L x U / 100 only when every slot is placed, which resolves the
+> July-vintage "holds something else" `[?]`; the one exception is the 2303-BD
+> 137 unlaid export (6.27, stale: that marker had been laid). `@454` equals the
+> sum of all slots' record perimeters on 8 of 15 (1825D x2, CLAUDE-QTY-TEST,
+> CAP-C21-SEC14, the three CLAUDE-GRADE markers, AD1234) but not on 2303-BD 137
+> (19.5158), the CP 150 markers (104.04) or LADIES-BLOUSE (exactly 2x) - still
+> unexplained in general.
+>
+> **What an unlaid marker does and does not carry.** It says WHAT will be laid
+> - pieces, sizes, per-(piece, size) area and perimeter, the model - and
+> nothing about WHERE: `L = 0`, utilisation 0, every slot at (0, 0). Its slots
+> already alternate their orientation word (observation, cause not tested):
+> `0x2000` (rotate 180) sits on bundles 1, 3, 5, 7 of both 1825D markers (4 of
+> 9 and 12 of 27 slots) and on 49 of 97 slots of 2303-BD 137, so those bits are
+> a pre-set lay pattern and not evidence of placement.
+>
+> `python selftest.py` -> **SELFTEST PASS**; `robustness/run.py` (full) 303/303.
+>
 > ## STATUS 2026-09-11 (offline, stronger than expected) — slot 39's whole body is a function of piece topology, not content: proven, not just id2
 >
 > Follow-up test to the id2 investigation, using `CAP-C21-SEC14` (built
@@ -1284,7 +1557,8 @@
 > object (168 → 175 KB); every list section is byte-identical, just shifted.
 >
 > **Still open (unchanged from §5):** @454, the type-10 object, section 12's
-> `f0` field, the Order's quantity fields, the small parameter tables, and a
+> `f0` field (**resolved 2026-09-21**: the row's own name length - see the top
+> STATUS block), the Order's quantity fields, the small parameter tables, and a
 > *real* grading test. The three exports in §4 remain the next inputs.
 
 Rewritten 2026-09-09 after analysing four files: `2303-BD 137 marker.zip`
@@ -1349,13 +1623,20 @@ vintage; **the July vintage's residue trips `accumark_pds._find_field_block`**
   = absent. Used slots on both vintages: 1 header scalars · 2/3 options +
   name (grows with the marker name) · 4/5 per-piece label config
   (`-PDSTEXT-`) · 10 placed-piece list with fabric codes · 11 model list ·
-  12 size/bundle list · 13 index [?] · 14 (piece,size) records · 15 copy of
+  12 size table (one row per (model, size) order line; 11 + 12 layout in the
+  2026-09-21 STATUS block) · 13 index [?] · 14 (piece,size) records · 15 copy of
   the order's model/size list · **21 placement slot table** · **30 embedded
   type-10 object**. The marker's payload-length field points at slot 30.
 - **Header scalars (double, inches):** width @396, length @412,
   **total placed area @422** (= W·L·U/100, exact), utilisation % @446;
   @454 = 19.5158 on both 2303-BD exports, unnamed [?]. On an **unlaid**
   marker length/util are 0 and @422 holds a stale value.
+  **[Corrected 2026-09-21]** @422 is the sum of ALL slots' declared areas
+  (14 of 15 corpus markers) - equal to W·L·U/100 only when every slot is
+  placed; "stale" is specific to the 2303-BD 137 unlaid export (a marker that
+  had been laid). On never-laid markers it is the total area still to lay.
+  @454 = the sum of all slots' record perimeters on 8 of 15 markers, not on the
+  2303 / CP 150 / LADIES-BLOUSE ones - still unexplained there.
 - **Slot table = directory[21] … directory[30], 96-byte slots** (97 here, 72
   on the July markers; empty slots have placed = (0,0) on this vintage,
   (−1000,−1000) on older ones). Layout (dxfparser, confirmed): placed centre

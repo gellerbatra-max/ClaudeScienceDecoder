@@ -1,0 +1,308 @@
+# AccuMark native marker (type 9) - byte-level format spec
+
+The CURRENT state of what is known about the marker object inside an AccuMark
+"XGGT IXPORT DB5.x" export ZIP. `MARKER_DECODE_PLAN.md` is the journal (newest
+STATUS block first) and `CHANGELOG.md` the per-round evidence; this file is the
+reference that should read the same tomorrow as today. `FORMAT_SPEC.md` is the
+sister spec for PIECES (type 20).
+
+Tags: **[V]** demonstrated by a named file or a corpus-wide check; **[?]**
+consistent with the data but unproven. Corpus = the 18 markers under `markers/`
+(6 never-laid: 1825D x2, 5683D, 2591A, 418T, CLAUDE-QTY-TEST; 2303-BD 137 unlaid
+with its laid twin and a drawn DXF; 4 July CP 150 markers, 1 of 72 placed; 5 small
+CLAUDE-GRADE / CAP-C21 / AD1234 / LADIES-BLOUSE laid markers). All offsets are
+file offsets unless stated; all integers little-endian; lengths in inches.
+
+Reader: `accumark_marker.py` (`parse_marker`, `check_marker`, `marker_warnings`,
+`marker_coverage`, `unplaced_inventory`). `python accumark_marker.py <zip>
+--inventory` is the front door.
+
+## 1. Object envelope [V]
+
+Shared by every object type. Magic `XGGT IXPORT DB5.` at 0; the object name is a
+NUL-terminated string at 0x15; the object type is a u16 at 0x7a (marker = 9,
+type-10 geometry = 10, piece = 20, model = 12, order = 13, ...) with a u32 copy
+at 0x60 or 0x68 by export vintage; the payload length is a u32 at 0x7e; the
+payload starts at 0x80. The LAST 396 bytes are a trailer: the object's name again
+at +0x8a, created / modified Unix stamps as aligned u32s at +0xf4 / +0xf8, and two
+user-name strings at +0x110 / +0x162. Other envelope bytes (0x10-0x14, 0x48-0x5f,
+0x64-0x77, 0x83-0x89) and most of the trailer are unexplained [?]; `marker_coverage`
+counts them unknown.
+
+## 2. Directory [V]
+
+42 u32 ABSOLUTE offsets at 0x8a (0x8a-0x131). `0xffffffff` (or 0) = section absent.
+
+- **Words 0-39 are section offsets.** Used on the corpus: 1, 2, 3, 4, 5, 6, 10, 11,
+  12, 13, 14, 15, 21, 30. A section's span runs to the next used offset.
+- **Word 40 is a STATE code, not an offset:** 0 = AS GENERATED (never stored by Easy
+  Marking), 1 = stored by Easy Marking with fewer than all pieces placed - **including
+  none at all** - and 2 = all placed [V: 60 markers; live: a marker opened in Easy
+  Marking and stored empty reads 1]. It is not a count of placed slots. **Word 41 is 0.**
+  Reading them as offsets fabricated a section 40.
+- **The `-6` convention:** every list section's chain starts 6 bytes BEFORE its
+  directory offset and closes 6 bytes before the next section's [V for 6, 10-13,
+  15, 21]. The directory offset points 6 bytes into the first structure.
+
+## 3. Section 1 - header scalars
+
+Six f64 are read [V]: **@396 fabric width**, **@412 length** (0 on a never-laid
+marker), **@422 total area**, **@430 placed area** (= sum of the PLACED slots'
+declared areas = W x L x U / 100; 0 when nothing is placed) [V: 18/18], **@446
+utilisation %**, **@454** (a perimeter sum). The section is about 370 bytes and
+only these 48 are read. Of the 316 unread byte positions `marker_coverage`
+attributes to it, 271 are byte-identical across all 18 markers and 45 vary; their
+meaning is open [?].
+
+`@422` / `@454` relate to the slots in one of three MODES (`header_sums`): the sum
+over `all` slots' declared area / record perimeter; over the `last_model`'s slots
+only; or `2x_all` [V]. On the six never-laid single-model markers both are `all`;
+on the unlaid 2303-BD 137 both are `last_model`; on its laid twin `@422` is `all`,
+`@454` `last_model`; LADIES-BLOUSE's `@454` is `2x_all`. Why the last model [?].
+
+## 4. Sections 2, 3, 4, 5 [?]
+
+Not decoded. 2 = options + the marker's name (grows with the name); 3 = repeating
+`00 00 b0 07` groups; 4 = a 12-byte label-config header; 5 = the `-PDSTEXT-` label
+table (`-PDSTEXT-`, then a 3-byte gap and the piece's label text: what
+`declared_piece_names` scans). They hold most of the marker's unexplained bytes.
+
+## 5. Section 6 - block buffers [V framing]
+
+Only on some markers (1825D, 418T, July CP 150, the ZZC / ZZN scratch markers).
+Entries of 102 bytes from `dir[6] - 6`: `<u16 0><4 x f64 buffer, inches><68 zero
+bytes>` [V framing, 13 markers]. **The table is a list of buffer DEFINITIONS, and a
+piece points into it** by a 0-based `buffer_index` (section 10, flag bytes 4..5) or
+at none (`0xffff`) [V]. Where every piece has its own definition the table has
+`pieces + 1` entries and piece k points at k (1825D, 418T, July CP 150, ZZC-BIG);
+`ZZC-M1..M3` / `ZZN-F1` have 4 entries for 5 pieces - `[0.3937 x4]`, `[0.1968 x4]`,
+`[0.3937 x4]`, `[0.7874, 0.1968, 0, 0]` inches - with BK -> 0, COL -> 1, CUFF ->
+none, FR -> 2, SL -> 3. (An earlier reading, "entry k is piece k's, entry 0 the
+marker default", was an over-fit to the small corpus and is retracted.) Side order
+of the four doubles is [?].
+
+**The home box does NOT follow this table.** The same five pieces in ZZC-M1 (buffers
+0.5 cm / 1 cm / none / unequal) and ZZC-BIG (1 cm everywhere) have byte-identical
+home boxes [V], so what the table is for, and why the July CP 150 x residual
+(`home x 2 - bbox` = 0.1182 = 2 x 0.0591 in) matches it, are both open [?].
+
+## 6. Section 10 - piece list [V: 18 of 18]
+
+A 28-byte header whose last 6 bytes are the literal `MARKER`, then contiguous rows
+closing at `dir[11] - 6`:
+
+    <u16 name length> <u16 category length> <24 flag bytes> <name> <category>
+    <fabric types: u16 count at flag byte 18, then that many <u16 len><text>>
+
+Flag bytes 4..5 (u16) = 0-based index into section 6's table of buffer definitions (0xffff = none). The 'Fabric
+Type' role (A/B/C/D/G/M/F ...) is the fabric-type text. The other flag bytes stay
+raw [?].
+
+## 7. Sections 11 and 12 - models and size table [V: 18 of 18]
+
+11: `<u16 length><name>` per model, in order. 12: rows of `<u16 name length><u16 model
+index (0-based)><u16 pieces><u32 first slot><u32 flags><size name>`; `pieces` is
+how many section-21 slots the row owns and `first slot` the running sum, so the
+rows TILE the slot table. Each cut of a size is its own row (and bundle), so a
+size appears once per cut. `flags` is 0xffff on 12 markers and 0 on the rest [?].
+
+## 8. Sections 13 and 14 - records [V]
+
+13 is a u32 array of the section-14 records' byte offsets, relative to `dir[14] - 6`.
+A record: 48 bytes of head (8 unexplained, then a 10-byte prefix of 5 u16, then
+`f64 area`, `f64 perimeter`, `u16 3`, `u16 1`, `u16 stream length`, 8 zero bytes), a
+NUL-terminated label `<piece><cut description><size>G`, then the **stream** (extent = up
+to the next record). One record per (piece, size, cut). u16 @+10 of the head is the
+stream's per-size entry count (slot `@88 = it + C`, section 10).
+
+**The stream IS the graded outline (v4.7 [V, most of the grammar]).** `accumark_marker.decode_record_stream`.
+
+    00 02 00                              3-byte lead
+    [<tag> 00 <n> 00]*                    header records; tags are ASCII: S 0x53, M 0x4d, F 0x46, G 0x47,
+                                          I 0x49, H 0x48 ... with a point count n [?: read as contour kinds]
+    point items                           one per point: prefix parts + ONE main part + u16 point id
+    <attribute bytes 0x09 / 0x01 ...> <3 bytes>   trailer (first byte 0x09 or 0x01; last byte varies with size [?])
+
+A *part* is `<tag> <data>`. Tag bit 7 = MAIN (the last part of a point), bits 6-5 = width code (0: two
+i32 [8 B], 1: 12-bit [3 B: byte `x_hi<<4|y_hi`, x lo8, y lo8], 2: two i16 [4 B], 3: 20-bit [5 B: x lo16,
+y lo16, byte `x_hi<<4|y_hi`]), bit 4 CLEAR = ONE LEADING EXTRA BYTE before the data (meaning open [?]).
+Coordinates are 1e-4 in. **A point's step is the SUM of its parts** (a long or curved run is a chain of
+prefixes and one main part: 26 parts were seen on one point). The first point of a contour is absolute; every
+other point is a step from the previous. A prefix with low nibble `0xa` CLOSES the contour (its step returns to
+the start) and the main part after it is the absolute start of the next contour (the internal / grain line);
+tag `0x00` starts a contour with an absolute 20-bit pair. The point ids count 1, 2, 3, 4 on 'turn' points and
+down from 29999 on plain ones (restarting per contour). Low nibbles (1 plain, 9 turn, 8 / c / 4 ...) carry the
+point's attribute [?].
+
+A point with MORE THAN 6 parts is a **pen move**: a long jump decomposed into 12- / 16-bit steps (7 - 52
+parts seen; ordinary points have 1 - 3). The next contour starts where it ends (the far-away mirror line on a
+fold piece, a seam contour).
+
+**Fold pieces.** When the first contour does not reproduce the record's area and perimeter, it is ONE HALF of
+the piece: its first and last point lie on the fold line, the record's `area` is twice the half's, and the full
+outline is the half plus its mirror image about that line, in reverse (131 of 255 streams: 1825D, 5683D, the
+2303 OUCF pieces, 2591A, half of the blouse). The header records `M` / `S` describe the extra contours
+(a mirror line, a seam offset by about +0.28 in) that follow.
+
+Ground truth, three independent kinds - (1) the piece object: the first contour equals the graded outline
+EXACTLY - the rectangle 4 of 4 at sizes 2 / 8 / 18, RUFFLE 142 of 142 at all five sizes, its grain line
+(543131, 45098)-(584289, 45098) too; (2) the record head's own `area` and `perimeter`: the shoelace of the
+outline (unfolded when needed) reproduces both on **255 of 255 distinct corpus streams** (median error
+0.0000%, max 0.29% area / 0.04% perimeter); (3) the slot's stored home box, which the decode never uses: its
+bounding box equals the home box to 0.000 in on every slot of the MARKER-ONLY ZIPs 1825D (36), 5683D (24), 2591A
+(35), 0418T (22) and of every fixture with a piece object (2303-CP 150: 0.118 - 0.183 in larger, the stored /
+block-buffer effect [?]). `record_outline` reads an outline from a marker with NO piece objects, and
+`unplaced_inventory` uses it (`outline_source: stream`).
+
+**The stream is the CUT line (v4.7 blind test).** For a piece with seam allowances the stream is the stitch line
+offset by each segment's allowance (BACK: 1.0 in fold edge, 0.375, 0.25), not the piece object's perimeter - verified on
+`CLAUDE-D3-BF` (BACK / FRONT, never seen before): the stitch points lie exactly 0.375 / 0.25 in inside the stream outline
+and the stream's bounding box equals the stored home box to 0.0001 in. Contours are split by a pen-move threshold that is
+the one guess in the grammar (`_PEN_MOVE` 6; BACK / FRONT need 20: 7 parts is a normal long step there): `record_outline`
+tries 6, 20, never and keeps the first that reproduces the record's area and perimeter.
+
+**The other lines of the piece (v4.7 [V], blind test CLAUDE-D4).** After the perimeter the stream holds, back to back, the grain
+line (2 points; implicit unless the header has a `G`) and then one contour per header record - `I` internal line, `H` cutout, `D` drill hole
+(1 point) - each `n` points (`!`: 3 points' worth of something else, adds none). Each contour starts with an ABSOLUTE point that carries no
+marker of its own; the counts add up exactly to the points left after the perimeter, so that is how they are split. A contour-start item's
+absolute position is its MAIN part alone: the prefix parts in front of it (up to 6 on a 2303 piece) are not a movement. Internal lines and
+drills are NOT graded (identical at every size). Verified equal to the piece objects on 77 records (grain, internal, cutout, drill).
+Fold pieces (`S` / `M` / `F` records) are not split this way yet [?].
+
+**Fold halves (v4.7 [V for the newer vintage]).** After the cut half: the grain line (2 points), the internal lines (I / H / D counts), the SEW half (the
+stitch line - every point left over) and the mirror line (2 points). Accepted only when the cut and sew halves' end points lie on the mirror line. The mirror line is
+the chord of the sew half and moves with the size; the grain and internal lines do not. The 1825D / 5683D / 2591A / 418T vintage differs (id 0 items `(-10000, -1)`, a
+`00`-tag item at the end of a chain, more attribute bytes) - not decoded [?]; its grain is the second contour's first two points, a horizontal segment (89 of 89 records).
+
+**Grading between two ruled points (v4.7 [V], blind test CLAUDE-D4).** Points without a rule between two ruled points move by a SIMILARITY
+of the chord joining them: the chord is rotated and scaled onto the graded chord and the chain keeps its shape (matched to 1e-4 in on 20 points
+at two sizes; a blend of the two moves by chain length is up to 0.295 in off). Identical to a plain translation when both ruled moves are equal.
+
+**Point attributes (v4.7 [V]).** The low nibble of a point's main tag and its extra byte say what the point is: low
+nibble `1` = a PLAIN point, or a NOTCH when the tag carries an extra byte (notch type = the extra byte's low
+nibble: 5 and 1 seen; the high nibble is a flag, 0 / 1 / 2 seen [?]); any other low nibble (`9 8 c 4 0`) = a TURN
+(corner) point, with a notch type in the extra byte for a corner notch. Against the piece object's own perimeter
+points this classifies **7,455 of 7,455** points correctly (turn / plain / notch and notch type), so notches can be
+read from a marker with no piece object (`record_outline()['notches']`, `unplaced_inventory` slot `notches`: 36 type-1
+notches on 5683D). Turn points carry ids 1, 2, 3 ... (their sequence), plain / notch points count down from 29999.
+The trailer's attribute bytes are the turn points' attributes (`09`, `0d` ...) over all contours, then 3 bytes.
+
+Still open [?]: the extra byte's high nibble, the trailer's last 3 bytes (`ff ff xx` / `fe ff xx` / `00 00 xx`,
+xx varies with size), the header records' exact meaning (which contour is the cut line when several are present - the first
+is), the trailer's attribute bytes and its last byte (varies with size), curve segments (the stream is the
+finished, sampled line; the piece object holds control points: 35 points against ~100 on LADIES-BLOUSE-BK).
+
+## 9. Section 15 - the order copy [V: 18 of 18]
+
+The marker's own copy of the ORDER, closing at `dir[21] - 6`. Per model:
+
+    <48-byte header: u16 name length @+0, u16 ordinal (1-based) @+8,
+     u16 size count @+12, u16 fabric-type count @+14>
+    <name> <fabric types (<u16 len><text>)> <size rows>
+    size row = <u16 name length><u16 QUANTITY><24 zero bytes><size name>
+
+Model names equal section 11's, and **QUANTITY equals the number of size-table rows
+for that (model, size)** - the marker states its own cut quantities.
+
+## 10. Section 21 - slots [V]
+
+`(dir[30] - dir[21]) / 96` slots of 96 bytes; slot `i` starts at `dir[21] + 96 i`.
+
+    +0   f64 placed centre x     +8   f64 placed centre y      (0.0 while as generated;
+                                                                 -1000 once Easy Marking has
+                                                                 stored the slot unplaced [V live])
+    +16  f64 home x              +24  f64 home y     (half the piece's box; the block-buffer table does not drive it [?])
+    +32  u16 orientation         +34..+41  const  ff ff ff ff 00 00 00 00 [?]
+    +42  f64 declared area       +50..+63  raw (u16 @52, @54, @60 vary) [?]
+    +64  u32 bundle (low 16) + flags (high 16, 0)    +68..+87 const [?]
+    +88  u16 AS-GENERATED SIGNATURE [V]: non-zero on every slot of a marker Easy Marking
+         has never stored, 0 on every slot of every marker it has - laid, part-laid, or
+         stored EMPTY. `@88 != 0  <=>  word 40 == 0` holds on all 60 markers, and on the
+         live twins below. **@88 = record head u16 @+10 (per-size count) + C, C one constant
+         per piece** [V: 107 (marker, piece) groups, 43 markers, 31 pieces, 0 exceptions];
+         C = 4 for a piece with at most a grain line, 28-32 with grain + mirror, 216-266 with
+         ten internal lines, 620+ with eighteen - what exactly C counts is open [?].
+    +90..+95  the NEXT slot's head (below)
+
+**The head.** 6 bytes BEFORE each slot body: `<u16 record index (0-based, section 14
+order)> <u16 piece index (1-based, section 10)> <u16 bundle>` [V: 677 of 677 slots on
+all 18 markers]. (Earlier notes read `+90/+92/+94` as a circular pointer; it is the
+next slot's head.)
+
+**Orientation.** Bit 0x2000 = rotate 180, bit 0x0080 = mirror [V vs drawn DXF]. Bit
+0x0040 is a COPY of the piece row's flag u16 @+14 (section 10): slot bit == (flag == 1)
+[V: 9,122 of 9,122 slots, 111 markers; no marker mixes flag values, which is why it looked
+marker-level]. It is not the mirrored-pair bit (2303 has pairs and no 0x0040); what order /
+model option sets the flag is open [?]. **Bit 0x8000 = "stored by Easy Marking"** [V live: every slot
+gains it on a plain store, `0x0000 -> 0x8000`, and `0x2000 -> 0xa004` - a rot180 preset
+also gains 0x0004]. A placed slot's word also carries lay-
+session bits (0x8000, 0x0200, 0x0020 ... ). On a never-laid marker only the three
+known bits appear [V: 6 of 6]; on a PARTLY laid marker an unplaced slot keeps the
+bits it had before it was lifted (61 of 71 on July CP 150). So on a never-laid
+marker the word is a PRE-SET lay pattern, not a placement.
+
+**Placed vs unplaced** is a sentinel test on the centre (0,0 as generated, -1000 once
+stored, i.e. x < -900); the laid state cross-checks it with directory word 40 and `@430`.
+
+**What Easy Marking's STORE does to an unplaced marker** [V live, 2026-09-21,
+`markers-live/CLAUDE-UNP-E1-TWINS`]: `CLAUDE-QTY-TEST` (as generated) was opened and
+Saved As E1A with nothing placed; then one piece was dragged onto the marker, returned
+(Piece > Return > Unplaced) and stored as E1B. E1A vs the original: directory word 40
+0 -> 1; every slot's centre 0,0 -> -1000,-1000, orientation gains 0x8000 (and 0x0004
+beside rot180), `@88` 9 -> 0, home box +5e-5 in in x (rounding to the 1e-4 in unit);
+the header doubles, areas and every list section are unchanged; the type-10 object
+grows (1958 -> 2818 B). **E1B vs E1A differs in 12 bytes - the name, timestamps, session
+residue and the last byte of one slot's area double (1 ulp).** Laying a piece and
+returning it leaves no trace, so "laid once and cleared" cannot be told from "opened and
+stored empty", and "never laid" cannot be told from "never stored" by anything but the
+as-generated signature above.
+
+## 11. Section 30 - the embedded type-10 object [V structure, ? content]
+
+A full XGGT object (its own envelope + 42-slot directory) holding the layout's
+scratch data. Its slot 33 exists only when laid, and its own directory word 41 is
+the placed count (0 when never laid) [V: 18 of 18; 0x80002 on the July partial
+markers, meaning not understood [?]]. Slot 39 (95% of the bytes) is a function of the piece TOPOLOGY only -
+independent of layout, fabric cost, grading complexity. Not chased.
+
+## 12. Binding a slot [V]
+
+- **size, model** <- the size table tiles the slot table (row `i` owns slots
+  `ordinal .. ordinal + pieces - 1`);
+- **record** <- the slot head's record index;
+- **piece** <- section 10 at the head's piece index - 1;
+- **checked, never chosen from:** the declared area equals the record's; the slot's
+  bundle equals its head's bundle equals its size-row index; the record label ends
+  `<size>G`.
+
+Proof independent of area and geometry: the drawn DXF labels every placed piece
+`<piece> <size>` at its placed centre - 97/97 on 2303-BD 137 PLACED with this
+binding, 20/97 with binding by declared area (which ties on sister sizes).
+
+Pairs: slots sharing (bundle, record) form a group of 1 or 2; a group of 2 is a
+`CUT X02` mirrored pair - the plain slot then the `0x0080` one [V: 116 of 116].
+
+## 13. Byte-map status (`marker_coverage`, 18 markers)
+
+Every byte in sections 6, 11-15, 21, 30 is classified. Unknown = 1,187-1,829 bytes
+per marker (1.38% overall, the same on a 3 KB marker as a 280 KB one): trailer,
+section 1's unread bytes, sections 2-5, the envelope. **identified 32.4%, raw 7.1%,
+zero_pad 0.8%, opaque 58.3%** (v4.7: was 4.1 / 2.4 / 0.8 / 91.3 before the section-14 stream was decoded; a
+stream that verifies against its record's area + perimeter is identified up to its trailer). The opaque bytes are now almost entirely section 30, the embedded type-10 object.
+
+## 14. Open, and what settles each
+
+| open | evidence so far | method |
+|---|---|---|
+| side order of the four block-buffer doubles; what the table is for | home box ignores it (ZZC-M1 vs ZZC-BIG) | live: unequal buffers on a piece with real geometry |
+| what order / model option sets the piece-row flag @+14 (= the slot 0x0040 bit); the pre-set rot180 alternation | 0x0040 == flag @+14 on 9,122 / 9,122 slots [V]; alternates per bundle | live: flip one order / model option per run (DATASET_DESIGN F5) |
+| the extra byte's high nibble; the stream trailer's last 3 bytes | kinds and notch types classify 7,455 / 7,455 piece points | correlate with the piece's f2 / rule fields and the size |
+| what C counts in @88 = head count + C; slot @52/@54/@60 | @88 = p1 + C(piece) [V], C tracks internal-line points; stored-empty and laid-then-returned read 0 alike | pieces with 0 / 1 / 2 / 4 internal lines built in Pattern Design (DATASET_DESIGN F6); @52/@54/@60 vs piece/size |
+| the y excess on July CP 150 unplaced slots (up to 0.0786 in, one-sided) | x fits the CP 150 table but the table does not drive home | live: known notch / curve |
+| placed slots 7.2% larger than their record (ZZC-M3, ZZN-F1) | 2 slots each | live: repeat with a plain piece |
+| why `@422` / `@454` are last-model sums; LADIES-BLOUSE 2x | modes observed exactly; a FRESH two-model as-generated marker (`CLAUDE-D2-E7B`) shows `last_model` on both [V], so it is generation-time behaviour, not a laid-state artefact; the LADIES-BLOUSE `2x_all` case is still unexplained [?] | one more two-model order laid in Easy Marking |
+| size-row `flags` (0xffff vs 0) | 12 vs 6 markers | live |
+| sections 2, 3, 4, 5; section 1's 45 varying bytes; the trailer | mostly constant | twin diffs |
+
+Marker-only ZIPs (no piece objects) can never yield outlines, and an unplaced marker
+carries no positions - those are limits of the export, not of the decoder.

@@ -764,6 +764,20 @@ time **[V]** — confirmed by `CAP-C01-REEXPORT`: re-exporting `CAP-C00-BASE`
 two minutes later without a Save produced byte-identical timestamps. Files with two piece records can carry two distinct
 timestamps (`TASK5-GRADED`). Then `MSI` marker strings and zero padding.
 
+**Exact positions in the object's last 396 bytes [V, 2026-09-21: all 269
+objects in the repo's 103 zips, every object type - piece, model, order,
+marker, rule / notch / lay-limits / block-buffer / annotation tables]:** the
+object's own name at +0x8A (269/269); the two stamps are aligned `u32`s at
+**+0xF4 (created)** and **+0xF8 (modified)**; two user-name strings at +0x110 /
++0x162 (equal on 252 of 269, both empty on 41 - mostly rule tables). Created is
+<= modified on 268 of 269; the exception is a shared library table copied
+between storage areas (`M-MARKER`, created 2023, modified 2013). The stamps are
+UTC while the ZIP members' mtimes are local time (this project's exports and
+the 2020 `1825D-BD 180 SS21.zip` both show the ≈ 5 h 30 m offset of a UTC+5:30
+machine). `accumark_marker.read_object` reads them at these offsets (v4);
+before that it scanned the whole trailer at every byte offset for
+plausible-looking integers and was right on only 30 of the 269 objects.
+
 ## 8. Multiple piece records per file
 
 `TASK1-CUTQTY3` and `TASK2-NOSEAM` contain one piece record; the other six

@@ -199,6 +199,7 @@ def build_samebbox_marker(template_cache):
     new_util = total * 100 / (W * L) if W and L else mk0['util']
     _struct.pack_into('<d', md, 446, new_util)
     _struct.pack_into('<d', md, 422, total)
+    _struct.pack_into('<d', md, 430, total)      # v4.2: the placed-area double (= W x L x U / 100) - was left stale
     marker_data = bytes(md)
 
     out_members = dict(members)

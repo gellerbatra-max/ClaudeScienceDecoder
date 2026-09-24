@@ -13,7 +13,7 @@ Nothing here is needed to read a marker; it checks the reading against what Accu
 """
 import json, re, sys
 
-__version__ = '1.0'
+__version__ = '1.1'
 _LINE = re.compile(r'^([A-Z_0-9]+)(?:\s+(.*))?$')
 _PT = re.compile(r'\((-?\d+),(-?\d+)\)')
 
@@ -89,13 +89,46 @@ def read_engine_file(path):
     return dict(header=hdr, style_pieces=stp, sizes=sizes, size_pieces=sps, pieces=parse_pieces(txt))
 
 
-def engine_flags(options):
-    """The per-style-piece flags the engine is given for a Piece Options string (no Nest Markers overrides): `NAP_GROUP` 2 for a one-way piece (W) else 0, `FLIP_GROUP` 2 when the flip is forbidden (S) else 0,
-    `ROTATE_INCR` the rotation step in degrees - 0 for W, 45 for `4`, 90 for `9`, otherwise 180 [V: 19 (options, flip code, spread) rows of 73 jobs; the Nest Markers overrides change them: Rotation 45 / 90 -> ROTATE_INCR,
-    Flip Enable -> FLIP_GROUP 0, Tilt Limit n degrees -> CW / CCW_TILT_LIMIT -+ 10 n]. The tilt column: 0.1 degree units (10 degrees = 100)."""
+def parse_job_settings(text):
+    """v4.30: the `Job Settings` block of a Queue job's `nestserv.log` (what the Nest Markers dialog said) -> {section title: {key: value}}, e.g. `Overrides` -> {'Rotation': 'No', 'Flip': 'Enable', 'CW Tilt Limit': '10.000000Degrees',
+    'Piece Gap': '0.030000cm', ...}, `Fabric Options` -> {'Fabric Cost': '12.500000Per Meter', 'Fabric Weight': '200.003000GSM = Grams per Square Meter', ...}. Empty when there is no such block."""
+    out = {}; cur = None; on = False
+    for ln in text.split('\n'):
+        ln = ln.strip()
+        if ln.startswith('Job Settings'): on = True; continue
+        if not on: continue
+        m = re.match(r'^\*\*\* ?(\d+)\. ?(.*)$', ln)
+        if m: cur = out.setdefault(m.group(2).strip(), {}); continue
+        if cur is not None and ':' in ln:
+            k, v = ln.split(':', 1); cur[k.strip()] = v.strip()
+    return out
+
+
+def _override_number(v):
+    m = re.match(r'^(-?[0-9.]+)', v or '')
+    return float(m.group(1)) if m else None
+
+
+def engine_flags(options, overrides=None):
+    """The per-style-piece flags the engine is given: from a Piece Options string and the job's Nest Markers `overrides` (parse_job_settings(...)['Overrides']; None = no override).
+    `NAP_GROUP` 2 for a one-way piece (W) else 0, `FLIP_GROUP` 2 when the flip is forbidden (S) else 0, `ROTATE_INCR` the rotation step in degrees - 0 for W, 45 for `4`, 90 for `9`, otherwise 180
+    [V: 20 of 20 style pieces of the four base jobs; 8 jobs with every override kind, v4.30]. **Overrides:** `Rotation` N turns every category into a rotation step of N degrees AND drops its one-way flag (NAP_GROUP 0, ROTATE_INCR N); `Flip: Enable` clears the
+    no-flip group of every category (FLIP_GROUP 0); a tilt override of n degrees gives every category CW_TILT_LIMIT -10 n and CCW_TILT_LIMIT +10 n (0.1-degree units: 10 degrees = 100; without one a table tilt is converted by the engine [?]); `Piece Gap` is the job's GLOBAL_GAP (0.03 cm =
+    0.01181 in); `Marker Border Angle` changes no flag. A table edited after the marker was made changes the row the engine sees: 3 jobs whose marker snapshot says MWS have FLIP_GROUP 0."""
     o = set(options)
-    return dict(NAP_GROUP=2 if 'W' in o else 0, FLIP_GROUP=2 if 'S' in o else 0,
-                ROTATE_INCR=0 if 'W' in o else (45 if '4' in o else (90 if '9' in o else 180)))
+    f = dict(NAP_GROUP=2 if 'W' in o else 0, FLIP_GROUP=2 if 'S' in o else 0, ROTATE_INCR=0 if 'W' in o else (45 if '4' in o else (90 if '9' in o else 180)))
+    ov = overrides or {}
+    rot = _override_number(ov.get('Rotation'))
+    if rot: f.update(NAP_GROUP=0, ROTATE_INCR=int(round(rot)))
+    if (ov.get('Flip') or '').lower() == 'enable': f['FLIP_GROUP'] = 0
+    return f
+
+
+def engine_tilt_limits(overrides=None):
+    """v4.30: the (CW, CCW) tilt limits in 0.1 degree the engine gets when the job overrides them (-10 n, +10 n), else None (the table's own tilt is converted by the engine, one data point: 0.1574 in -> 2)."""
+    ov = overrides or {}; cw, ccw = _override_number(ov.get('CW Tilt Limit')), _override_number(ov.get('CCW Tilt Limit'))
+    if cw is None and ccw is None: return None
+    return (-int(round(10 * (cw or 0))), int(round(10 * (ccw or 0))))
 
 
 if __name__ == '__main__':

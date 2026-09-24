@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """nest_spec - turn an AccuMark marker export ZIP into a NESTING JOB a nesting engine can read.
 
-    python nest_spec.py "<marker>.zip" --json job.json [--dxf pieces.dxf] [--svg pieces.svg] [--units cm|mm|in] [--marker NAME]
+    python nest_spec.py "<marker>.zip" --json job.json [--dxf pieces.dxf] [--svg pieces.svg] [--units cm|mm|in] [--marker NAME] [--lay-limits NAME.GT_lay|other.zip]
 
 One command from the ZIP AccuMark exports (marker-only is enough: no piece objects needed, no AccuMark installed) to
 
@@ -19,11 +19,16 @@ a lay pattern, not a constraint.
 Coordinates: every shape has its own frame - the lower-left corner of its cut outline's bounding box is (0, 0), x is the grain direction -
 in `--units` (default cm); outlines are closed polygons without a repeated last point, counter-clockwise. The grain line is horizontal in
 every piece object of the corpus; where the marker stores it in the layout that was verified against piece objects its `basis` is `stream`,
-for the older 1825D / 5683D / 2591A / 418T vintage it is `inferred` (see MARKER_FORMAT_SPEC.md). Allowed rotations are NOT stored in the marker
-(they live in the Lay Limits table): the spec says `[0, 180]` with basis `assumed`.
+for the older 1825D / 5683D / 2591A / 418T vintage it is `inferred` (see MARKER_FORMAT_SPEC.md).
+
+Allowed rotations live in the LAY LIMITS table, not in the marker. The marker only NAMES its table (section 2); the table itself is read when the ZIP
+bundles it (export with components) or when you pass it: `--lay-limits NAME.GT_lay` (straight from a storage area's `lay` folder) or another ZIP that
+holds it. Then every shape carries the rotation / flip rules of its category's row and `rotation.basis` says `verified`; otherwise the spec says
+`[0, 180]` with basis `assumed` and names the missing table.
 """
 import json, math, os, sys
 import accumark_marker as am
+import accumark_laylimits as ll
 
 FORMAT = 'accumark-nest-spec/1'
 UNITS = {'in': 1.0, 'cm': 2.54, 'mm': 25.4}
@@ -61,10 +66,70 @@ def _mirror_y(pts, y0, y1):
     return [(x, y0 + y1 - y) for x, y in pts]
 
 
-def build_nest_spec(path, units='cm', marker=None):
-    """-> [spec] one per marker of the ZIP (or the one named `marker`)."""
+def _supplied_tables(lay_limits):
+    """`lay_limits`: a `.GT_lay` file, a ZIP holding lay-limits objects, an already parsed table, or a list of those -> {name: table}."""
+    out = {}
+    for x in ([] if lay_limits is None else (lay_limits if isinstance(lay_limits, (list, tuple)) else [lay_limits])):
+        if isinstance(x, dict) and 'rows' in x: out[x.get('name') or 'supplied'] = x
+        elif str(x).lower().endswith('.zip'): out.update({k: v for k, v in ll.load_zip_tables(x).items() if k != '_errors'})
+        else: t = ll.parse_lay_limits(x); out[t['name']] = t
+    return out
+
+
+def _bundle_pattern(inv, table):
+    """Does the 180-degree pattern the marker stores on its unplaced bundles follow the table's Bundling? -> ('consistent' | 'contradicted' | 'inconclusive', detail).
+    All bundles same direction: consecutive bundles equal; alternate bundles: they differ; same size same direction: equal within a (model, size), different
+    between neighbouring sizes."""
+    by = {}
+    for e in inv['slots']: by.setdefault(e['bundle'], []).append((e['model'], e['size'], int(e['preset']['rot180'])))
+    seq = sorted(by.items())
+    if any(len({r for _, _, r in v}) > 1 for _, v in seq): return 'inconclusive', 'a bundle mixes 0 and 180 degree presets'
+    pairs = [(a, b) for a, b in zip(seq, seq[1:]) if b[0] == a[0] + 1]
+    if not pairs: return 'inconclusive', f'{len(seq)} bundle(s) with a neighbour: nothing to compare'
+    mode = table['bundling']; bad = 0
+    for (_, a), (_, b) in pairs:
+        same_dir = a[0][2] == b[0][2]; same_size = a[0][:2] == b[0][:2]
+        want_same = True if mode == 0 else (False if mode == 1 else same_size)
+        bad += (same_dir != want_same)
+    return ('contradicted' if bad else 'consistent'), f"{len(pairs)} neighbouring bundle pairs, {bad} against '{table['bundling_label']}'"
+
+
+def _lay_limits_block(mk, inv, bundled, supplied, orders=None):
+    """-> (block, table, warnings): what is known about the marker's Lay Limits table. The marker names it (section 2); the order the marker was made
+    from names it too (the order object bundled in the ZIP, when there is one) and the two must agree."""
+    tb = mk.get('tables') or {}; name = tb.get('lay_limits') or None; table = None; source = None; warns = []
+    ot = (orders or {}).get(tb.get('order_name'))
+    if ot and ot.get('lay_limits'):
+        if not name: name = ot['lay_limits']
+        elif ot['lay_limits'] != name: warns.append(f"the order names lay limits '{ot['lay_limits']}' but the marker stores '{name}'")
+    if supplied:
+        table = supplied.get(name) or (next(iter(supplied.values())) if len(supplied) == 1 else None); source = 'supplied' if table is not None else None
+        if table is not None and name and table.get('name') != name: warns.append(f"the supplied lay-limits table is '{table.get('name')}', the marker names '{name}'")
+    if table is None and name and name in bundled: table = bundled[name]; source = 'bundled'
+    if table is None:
+        why = ('the marker does not name one' if not name else f"the marker names '{name}' but the ZIP does not bundle it: export the marker with its components, or pass --lay-limits")
+        if name and any(n == name for n, _ in bundled.get('_errors', [])): why = f"the bundled table '{name}' could not be read: " + next(m for n, m in bundled['_errors'] if n == name)
+        warns.append('rotation is assumed, not read: ' + why)
+        return dict(name=name, source='named only' if name else 'none', parsed=False, basis='assumed: ' + why, order_names=ot and ot['lay_limits']), None, warns
+    state, detail = _bundle_pattern(inv, table)
+    if state == 'contradicted': warns.append(f"the stored bundle directions contradict the lay-limits table '{table.get('name')}': {detail}")
+    warns += table['warnings']
+    block = dict(name=table.get('name') or name, source=source, parsed=True, vintage=table['vintage'], basis=table['basis'], spread=table['spread_name'],
+                 spread_label=table['spread_label'], bundling=table['bundling_name'], bundling_label=table['bundling_label'], per_model=table['per_model'],
+                 comment=table['comment'].strip(), bundle_pattern=dict(state=state, detail=detail), order_names=ot and ot['lay_limits'],
+                 rows=[dict(category=r['category'], **ll.orientation_rules(r)) for r in table['rows']])
+    return block, table, warns
+
+
+def build_nest_spec(path, units='cm', marker=None, lay_limits=None):
+    """-> [spec] one per marker of the ZIP (or the one named `marker`). `lay_limits`: a Lay Limits table the ZIP does not bundle (see `_supplied_tables`)."""
     if units not in UNITS: raise ValueError('units must be one of %s' % sorted(UNITS))
     k = UNITS[units]; res = am.place_marker(path); out = []
+    try:
+        listing = am.list_zip(path); bundled = ll.load_zip_tables(path, listing)
+        orders = {o['name']: am.parse_order_tables(o) for o in listing.get('order', [])}
+    except Exception: bundled = {}; orders = {}
+    supplied = _supplied_tables(lay_limits)
     for mkr in res['markers']:
         mk = mkr['marker']
         if marker and mk['name'] != marker: continue
@@ -99,8 +164,13 @@ def build_nest_spec(path, units='cm', marker=None):
                     shp['padding'] = [shp['stored_box'][0] - w, shp['stored_box'][1] - h]
                 else: problems.append(f"{e['piece']} {e['size']}: no outline")
                 shapes[rec_i] = shp
-            g = groups.setdefault((rec_i, mirrored), dict(shape=shapes[rec_i]['id'], quantity=0, mirrored=mirrored, slots=[], bundles=set(), preset_rot180=0))
-            g['quantity'] += 1; g['slots'].append(e['ordinal']); g['bundles'].add(e['bundle']); g['preset_rot180'] += int(e['preset']['rot180'])
+            g = groups.setdefault((rec_i, mirrored), dict(shape=shapes[rec_i]['id'], quantity=0, mirrored=mirrored, slots=[], bundles=set(), preset_rot180=0, presets=[]))
+            g['quantity'] += 1; g['slots'].append(e['ordinal']); g['bundles'].add(e['bundle']); g['preset_rot180'] += int(e['preset']['rot180']); g['presets'].append(int(e['preset']['rot180']))
+        lay, ltab, lwarn = _lay_limits_block(mk, inv, bundled, supplied, orders)
+        if ltab is not None:
+            for shp in shapes.values():
+                row, how = ll.row_for(ltab, shp['category'])
+                if row is not None: shp['rotation'] = dict(ll.orientation_rules(row), row=row['category'], matched=how, basis=f"verified: table {lay['name']}, row {row['category']}")
         # mirrored outlines, written out
         for shp in shapes.values():
             if shp['complete'] and any(g['mirrored'] and g['shape'] == shp['id'] for g in groups.values()):
@@ -112,7 +182,11 @@ def build_nest_spec(path, units='cm', marker=None):
                 shp['internal_lines_mirrored'] = [[list(p) for p in M(l)] for l in shp['internal_lines']]
                 shp['drills_mirrored'] = [list(p) for p in M(shp['drills'])]
             else: shp.pop('_y', None)
-        demand = [dict(shape=g['shape'], quantity=g['quantity'], mirrored=g['mirrored'], slots=g['slots'], bundles=sorted(g['bundles']), preset_rot180=g['preset_rot180'])
+        dflt = _default_rotation(lay, ltab)
+        # an instance is retrieved in its bundle's preset direction (0 or 180) and may be turned by `allowed_deg` from there: a `W` row (no rotation) therefore fixes it in its preset
+        # direction [measured, AccuNest: laylimits/EXPERIMENT_W_ALTERNATE.md]; a row that allows 180 leaves both directions open
+        demand = [dict(shape=g['shape'], quantity=g['quantity'], mirrored=g['mirrored'], slots=g['slots'], bundles=sorted(g['bundles']), preset_rot180=g['preset_rot180'], preset_rot180_by_slot=g['presets'],
+                       allowed_deg_by_slot=[sorted({(180 * pr + a) % 360 for a in (shapes_by(shapes, g['shape']).get('rotation') or dflt)['allowed_deg']}) for pr in g['presets']])
                   for g in sorted(groups.values(), key=lambda g: (g['shape'], g['mirrored']))]
         W = inv['marker']['width_cm'] / 2.54 * k
         n_inst = sum(d['quantity'] for d in demand)
@@ -120,20 +194,30 @@ def build_nest_spec(path, units='cm', marker=None):
         spec = dict(
             format=FORMAT, units=units,
             source=dict(file=os.path.basename(path), marker=mk['name'], models=inv['marker']['models'], laid_state=inv['marker']['laid_state'],
-                        lay_history=inv['marker']['lay_history'], decoder_version=am.__version__),
+                        lay_history=inv['marker']['lay_history'], decoder_version=am.__version__,
+                        tables={k: (mk.get('tables') or {}).get(k) or None for k in ('lay_limits', 'annotation', 'block_buffer', 'notch_table')}),
             fabric=dict(width=W, fabric_types=inv['marker']['fabric_types'],
                         block_buffer_in=[list(b) for b in inv['marker']['block_buffers']] or None,
                         min_length=(area_all / W) if W else None, min_length_note='total piece area / width: a 100%-efficient lay; not a nesting result'),
-            rotation=dict(allowed_deg=[0, 180], basis='assumed: the Lay Limits table is not stored in the marker; grain runs along x in every shape'),
+            rotation=dflt, lay_limits=lay,
             order_lines=[dict(model=o['model'], size=o['size'], quantity=o['quantity']) for o in inv['order_lines']],
             shapes=[_public(s) for s in sorted(shapes.values(), key=lambda s: s['id'])], demand=demand,
             totals=dict(instances=n_inst, shapes=len(shapes), mirrored_instances=sum(d['quantity'] for d in demand if d['mirrored']),
                         area=area_all, already_placed=inv['totals']['placed'], outline_source=inv['marker'].get('outline_source')),
-            warnings=[w for w in inv['warnings'] if not w.startswith('no piece objects')] + problems)
+            warnings=[w for w in inv['warnings'] if not w.startswith('no piece objects')] + lwarn + problems)
         spec['checks'] = [dict(name=n, ok=bool(ok), detail=d) for n, ok, d in validate_nest_spec(spec, _private=shapes, marker_checks=mkr['checks'], inv=inv, k=k)]
         spec['complete'] = all(c['ok'] for c in spec['checks']) and not problems
         out.append(spec)
     return out
+
+
+def _default_rotation(lay, table):
+    """The spec-wide rotation rule: the DEFAULT row of the table when it is known (every category without a row of its own), else the assumption."""
+    if table is not None:
+        row, _ = ll.row_for(table, 'DEFAULT')
+        if row is not None: return dict(ll.orientation_rules(row), row=row['category'], basis=f"verified: table {lay['name']}, row {row['category']} (shapes of other categories carry their own `rotation`)")
+    return dict(allowed_deg=[0, 180], basis='assumed: ' + ('the Lay Limits table is not bundled with the marker' if not lay.get('parsed') else 'the table has no DEFAULT row')
+                + '; grain runs along x in every shape')
 
 
 def shapes_by(shapes, sid):
@@ -170,6 +254,12 @@ def validate_nest_spec(spec, _private=None, marker_checks=(), inv=None, k=1.0):
     bad = [s['id'] for s in comp if s.get('outline_mirrored') and abs(abs(_area([tuple(p) for p in s['outline_mirrored']])) - s['area']) > 1e-6 * max(1, s['area'])]
     rows.append(('mirrored outlines have the same area', not bad, ''))
     rows.append(('the marker\'s own checks all pass', all(ok for _, ok, _ in marker_checks), ''))
+    lay = spec.get('lay_limits') or {}
+    if lay.get('parsed'):
+        rows.append(('lay-limits table read to its last byte (structure closes exactly)', True, f"{lay['name']} [{lay['vintage']}], {len(lay['rows'])} row(s), {lay['source']}"))
+        rows.append(('every shape has a rotation rule from its category row (or DEFAULT)', all(s.get('rotation') for s in spec['shapes'] if s.get('complete')), ''))
+        bp = lay['bundle_pattern']
+        rows.append(('stored bundle directions agree with the table\'s Bundling (informational when there is nothing to compare)', bp['state'] != 'contradicted', f"{bp['state']}: {bp['detail']}"))
     return rows
 
 
@@ -261,6 +351,11 @@ def report(spec):
     lines = [f"== {spec['source']['marker']} ({spec['source']['laid_state']}) ==",
              f"fabric width {f['width']:.1f} {spec['units']}; fabric types {', '.join(f['fabric_types']) or '-'}; shortest lay {f['min_length']:.1f} {spec['units']} at 100% efficiency",
              f"{t['instances']} pieces to lay ({t['mirrored_instances']} mirrored) over {t['shapes']} shapes, total area {t['area']:.1f} {spec['units']}^2, outline source {t['outline_source']}"]
+    lay = spec['lay_limits']; rt = spec['rotation']
+    if lay.get('parsed'):
+        lines.append(f"lay limits {lay['name']} ({lay['source']}): {lay['spread_label']}, {lay['bundling_label']}; DEFAULT row allows rotation {rt['allowed_deg']} deg, flip about X {'yes' if rt['flip_x_axis_allowed'] else 'no'}"
+                     + (f"; {len(lay['rows']) - 1} category row(s)" if len(lay['rows']) > 1 else ''))
+    else: lines.append(f"lay limits {lay.get('name') or '-'}: {lay['basis']}")
     lines += [f"   {'ok ' if x['ok'] else 'BAD'} {x['name']}" + (f": {x['detail']}" if x['detail'] else '') for x in c]
     lines += ['   note: ' + w for w in spec['warnings']]
     lines.append('NEST SPEC COMPLETE' if spec['complete'] else 'NEST SPEC INCOMPLETE - see the BAD lines')
@@ -273,7 +368,7 @@ def main(argv):
         return argv[argv.index(name) + 1] if name in argv else default
     if not a:
         print(__doc__); return 2
-    units = opt('--units', 'cm'); specs = build_nest_spec(a[0], units, opt('--marker'))
+    units = opt('--units', 'cm'); specs = build_nest_spec(a[0], units, opt('--marker'), opt('--lay-limits'))
     if not specs: print('no such marker in the ZIP'); return 1
     for sp in specs:
         tag = '' if len(specs) == 1 else '.' + ''.join(ch if ch.isalnum() else '_' for ch in sp['source']['marker'])

@@ -1,5 +1,38 @@
 # Changelog
 
+## v4.8 (2026-09-24) - the Lay Limits table: read from the order / marker, and what a row lets a nester do
+
+`__version__` stays `'3.0'`. New module `accumark_laylimits.py`; new fixtures `laylimits/` (13 tables + `GROUND_TRUTH.json`). Request: "read the lay limits from the order".
+
+**Where the table is named.** The marker's section 2 ends with ten name strings (lay limits, annotation, block buffer, notch table, customer, order name, reference, extra), eleven u16
+lengths at section start -4 .. +18 and the strings from section start + 231 - 69 of 69 markers, every vintage, including the user's real `NEED- TWO WAY` / `ALL GMT WAY` / `G-LAYLIMITS`
+(`parse_marker(...)['tables']`). The order stores the same slots (V17: u16 lengths at +10 .. +88 and strings from +176; older vintage: ten 20-character slots) and agrees with its marker
+on the four table names in 58 of 58 order-marker pairs (`parse_order_tables`, also `parse_order(...)['tables']`). So even a marker-only ZIP says which table it was made with.
+
+**The table itself (object type 6).** Decoded from its bytes with the Lay Limits Editor as ground truth (my own process, scratch area only): `ZZLL-1` read as shown, then `ZZLL-X1` (weft skew,
+group, degree units, rule 17, two different tilts), `ZZLL-X2` (every option letter one row at a time, Tubular, Same Size), `ZZLL-X3` (Per Model), each saved under a NEW name and byte-diffed.
+Found: spread 0-3 (single ply / face to face / book fold / tubular - the older guess "1 = single ply" was the bundling byte), bundling 0-2 (all same / alternate / same size), Per Model at
+payload byte 8, the comment as two 20-character lines, the row header (options are bits: `M W S 9 4 F O N` in b3, `U X Z P` in b2), flip code 1-12, u16 buffer rule, tilt limits x 10000 in inches (or
+degrees), weft skew x 10000 in a per-row array after the rows, and the Group column as the text property `Category group`. The older vintage (the user's real `L`, `SINGLE-PLY`) is read for single-row
+tables. Every field equals what the editor showed (`selftest`: 15 tables / 37 rows); a mutated table is refused, never guessed.
+
+**Confirmed by the markers themselves.** The table's Bundling predicts the 180-degree pattern stored on the marker's bundles: on 29 markers with a bundled table every neighbouring bundle pair
+follows it (alternate bundles differ; `L` = same size same direction is equal within a size and alternates between sizes; all-same is equal) and the wrong Bundling on `CLAUDE-D2-E7B` is
+contradicted. The stored presets carry no trace of a flip code (`ZZC-M1` SLEEVE, flip code 7).
+
+**In the nest spec.** `lay_limits` (name, `source`: `bundled` / `supplied` / `named only`, spread, bundling, rows), `rotation` (the DEFAULT row: `allowed_deg`, `flip_x_axis_allowed`, `locked`, tilt, skew,
+buffer rule, flags), a per-shape `rotation` from the shape's category row, `demand[].preset_rot180_by_slot`, three new checks, and `--lay-limits NAME.GT_lay|other.zip` for a marker-only ZIP. Without the
+table the spec still says `[0, 180]`, `assumed`, and names the missing table in a warning. Semantics (Gerber help): blank = 180 + flip, `W` = one way (no rotation), `S` = no flip, `W`+`S` = locked,
+`9` / `4` add 90 / 45 degrees - the one-way behaviour was also measured live earlier (`MW` markers: no reversed piece).
+
+**A real nest settles the `W` question.** `ZZC-M1` (made with `ZZLL-1`: FRONT = `MW`, alternating bundles) was copied in scratch (`amcopy`), nested in AccuNest through my own Queue Submit (Draft, no
+Overrides, Made after 70 s) and plotted to DXF (`laylimits/EXPERIMENT_W_ALTERNATE.DXF`, write-up beside it). Each plotted outline was matched to the marker's own stream outline in four orientations: the
+four FRONT pieces are two forward, two reversed - exactly the marker's presets - and the sleeves show the four preset x mirror combinations once each. So a one-way piece is fixed in the direction its bundle is
+retrieved in; `demand[].allowed_deg_by_slot` = `(180 x preset + allowed_deg) mod 360` encodes it (`selftest` re-derives it from the DXF). Option `4` is read as 45 degree steps (90s included).
+
+**Still open** (MARKER_FORMAT_SPEC.md section 14): the meaning of a row's b2 & 0x07 and of the Group column; older-vintage multi-row tables; whether a row that allows 180 lets the engine turn a piece against
+its preset (no piece did in that small nest).
+
 ## v4.7 (2026-09-21) - the controlled dataset: `@88` is the record's own count, `0x0040` is a copy of a piece-row flag
 
 Same labelling rule: `__version__` stays `'3.0'`. Design: `MARKER_DATASET_DESIGN.md`.

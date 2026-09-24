@@ -597,6 +597,11 @@ def parse_marker(d, size_vocab=None, binding='structural'):
     mk['laid'] = mk['length'] > 0 and mk['util'] > 0
     # v4.14: four counters of section 1 (file offsets 480 / 482 / 490 / 492): records, slots, models, size-table rows [V: 73 of 73 markers]
     mk['header_counts'] = dict(records=u16(d, 480), slots=u16(d, 482), models=u16(d, 490), size_rows=u16(d, 492)) if len(d) > 494 else None
+    # v4.20: three more counters [V: 98 of 98 markers]: @486 = pieces + 1, @496 = the rows of the marker's own Lay Limits table (section 4; 0 without), @498 = the block-buffer entries (section 6)
+    mk['header_counts2'] = dict(pieces_plus_1=u16(d, 486), lay_rows=u16(d, 496), block_entries=u16(d, 498)) if len(d) > 500 else None
+    # v4.20: two words that say which ENGINE laid the marker: @568 = 128 and @674 = 3 after AccuNest, 0 and 19 on an unmade or AutoMark-made marker (fixtures; @674 is 6 / 9 / 12 on the corpus markers nested more than once [?])
+    mk['engine_words'] = dict(w568=u16(d, 568), w674=u16(d, 674)) if len(d) > 676 else None
+    mk['nested_by'] = None if not mk['engine_words'] else ('accunest' if mk['engine_words']['w568'] == 128 else ('automark or none' if mk['engine_words']['w568'] == 0 else 'other (%d)' % mk['engine_words']['w568']))
     # v4.16: the SPREAD of the Lay Limits table the marker was made with, u16 at file offset 520 (section 1 + 216): 0 single ply, 1 face to face, 2 book fold, 3 tubular
     # [V: 56 of 56 markers that bundle their table, and four markers made from one order with one table of each spread]
     mk['spread'] = u16(d, 520) if len(d) > 522 else None
@@ -1307,6 +1312,11 @@ def check_marker(mk):
         pm_ = [(p['name'], p['major'], 'M' in lr_['rows'][p['lay_row']]['options']) for p in mk['pieces'] if 'major' in p and p['lay_row'] < len(lr_['rows'])]
         out.append(("piece row flag @+14 == the M (major piece) option of its Lay Limits row", all(a == b for _, a, b in pm_),
                     f"{sum(1 for _, a, b in pm_ if a == b)} of {len(pm_)} pieces"))
+    h2 = mk.get('header_counts2')
+    if h2:
+        sl_ = ((mk.get('snapshots') or {}).get('lay_limits') or {}).get('rows') or []
+        got2 = dict(pieces_plus_1=len(mk['pieces']) + 1, lay_rows=len(sl_), block_entries=len(mk.get('block_buffers') or []))
+        out.append(('section 1 counters (pieces + 1, lay-limit rows, block-buffer entries) equal what the sections hold', h2 == got2, f'{h2}' if h2 == got2 else f'header {h2}, sections {got2}'))
     hc = mk.get('header_counts')
     if hc:
         got = dict(records=len(mk['records']), slots=len(mk['slots']), models=len(mk['models']), size_rows=len(mk['sizes']))
@@ -1370,6 +1380,10 @@ def marker_coverage(d, mk=None):
         for o in (396, 412, 422, 430, 446, 454): mark(o, o+8, 'identified')
         if mk.get('header_counts'):
             for o in (480, 482, 490, 492): mark(o, o+2, 'identified')                                # v4.14: record / slot / model / size-row counters
+        if mk.get('header_counts2'):
+            for o in (486, 496, 498): mark(o, o+2, 'identified')                                     # v4.20: pieces + 1, lay-limit rows, block-buffer entries
+        if mk.get('engine_words'):
+            for o in (568, 674): mark(o, o+2, 'identified')                                          # v4.20: the engine words
         if mk.get('spread') is not None: mark(520, 522, 'identified')                                # v4.16: the lay table's spread
     # -- section 2 carries the marker's own name; section 5 the -PDSTEXT- label table
     if sec[2]:

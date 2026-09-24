@@ -1,5 +1,15 @@
 # Changelog
 
+## v4.20 (2026-09-25) - three more counters of section 1, the two engine words, and the attribute-point count
+
+`__version__` stays `'3.0'`. No new fixtures (the folders `twoply/`, `flipcount/`, `spread/`, `rotation/`, `blockarea/` and the corpus were enough). Plan item 7, offline: correlate every varying section 1 word with everything the decoder can count.
+
+* **Found** (MARKER_FORMAT_SPEC.md section 26): @486 = pieces + 1, @496 = the rows of the marker's own Lay Limits table, @498 = the block-buffer entries (97 of 97 markers each); @568 = 128 and @674 = 3 after AccuNest, 0 and 19 on an unmade or AutoMark-made marker (16 fixtures); @472 = the attribute points
+  (notch points plus numbered turn points) summed over the slots (29 of 29 fixture markers; exceptions documented: the 2303 vintage, two older sets, and the tubular `ZZQ-T` whose sleeve is missing from the count - its Process ended with warnings); @476 exact per piece on the LADIES-BLOUSE set (10 / 8 / 4 / 8 / 4) with an unknown rule.
+* **Code.** `mk['header_counts2']`, `mk['engine_words']`, `mk['nested_by']`, one new check row (the three counters), five words marked identified in the byte map.
+* **Checks.** `selftest` (new section): the three counters on 97 markers, @472 on the fixture folders (the tubular exception pinned at -24), @568 / @674 on 16 fixtures, a byte patch on each counter is noticed.
+* **Open.** The rule of @476, @484 (slots - c), @488, @530; what @674 = 6 / 9 / 12 counts; the rest of the byte map (section 2's names table, section 5, the trailer).
+
 ## v4.19 (2026-09-25) - the area a Block adds; the side order of a block-buffer entry
 
 `__version__` stays `'3.0'`. New fixtures `blockarea/` (unmade + placed marker, the lay table copy, `GROUND_TRUTH.json`). Plan item 9 (PLAN_v4.13_onward.md), started offline and finished with one live round.

@@ -35,6 +35,23 @@
   "MATCHING_TYPE": 1,
   "matching_rules_of_ZZ-PLAID": "fabric (Marker pt 2 <-> PFRONT 2, Same, Same); piece PFRONT 3 <-> PBACK 3 (Same, None); PFRONT 5 <-> PSLEEVE 2 (Relative 3 cm, None); PFRONT 4 <-> PPOCKET 1 (Same, Same); type codes 0 Relative, 1 None, 2 Same"
  },
- "matching_sections": "directory slots 9 (168 bytes), 23 (14 bytes: u16 18, 24, 30, 36, 1, 0, 2) and 24 (504 bytes = 42 records of 12: u16 a, i32 -1, u16 1, u16 b, u16 c) - present on every marker made with a Matching table; not decoded",
- "directory_words": "the first stripe-offset double (file offset 300) overlaps directory words 40 / 41: 0xda51xxxx / 0x32617c1b on a plaid marker"
+ "matching_sections": "directory slots 9 (42 bytes per rule), 23 (block start offsets) and 24 (blocks x bundles) - present on every marker made with a Matching table; DECODED in v4.25 (MARKER_FORMAT_SPEC.md section 31)",
+ "directory_words": "the first stripe-offset double (file offset 300) overlaps directory words 40 / 41: 0xda51xxxx / 0x32617c1b on a plaid marker",
+ "v4.25": {
+  "markers": [
+   "ZZP1-M",
+   "ZZPU-M",
+   "ZZPY-M",
+   "ZZP2-M",
+   "ZZC20-STD"
+  ],
+  "engine_files": "<marker>-frommed.mra (the AccuNest front end's text for each job: per piece instance the matching rules in the engine's order)",
+  "tables": {
+   "ZZP1-M": "ZZ-PLAID: fabric (MARKER 2 - PFRONT 2, same / same) + PFRONT 3 - PBACK 3 (same / none) + PFRONT 5 - PSLEEVE 2 (relative 3 cm / none) + PFRONT 4 - PPOCKET 1 (same / same)",
+   "ZZPU-M": "two piece rules only",
+   "ZZPY-M": "fabric + PFRONT 3 - PBACK 3 + PFRONT 5 - PSLEEVE 2 (relative 3 cm)",
+   "ZZP2-M": "as ZZP1-M with a 4 cm offset, a fabric rule same / none and a stale BACK point 5",
+   "ZZC20-STD": "two piece rules, ten bundles"
+  }
+ }
 }

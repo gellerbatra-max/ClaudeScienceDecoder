@@ -335,6 +335,15 @@ def build_nest_spec(path, units='cm', marker=None, lay_limits=None, notch_table=
                     hb = e['home_box_piece_in'] if 'home_box_piece_in' in e else e['home_box_in']      # the piece's own frame (a laid marker's slot may sit at a quarter turn)
                     shp['stored_box'] = None if hb is None else [hb[0] * k, hb[1] * k]
                     shp['padding'] = None if hb is None else [shp['stored_box'][0] - w, shp['stored_box'][1] - h]
+                    if mk.get('matching') and mk['matching']['ok']:
+                        # v4.25: the plaid / stripe rules this piece takes part in and the outline vertex each one anchors on (the engine's MATCHING_POINT is that vertex less the middle of the piece's box),
+                        # in the shape's frame and NOT mirrored (a mirrored instance reflects it like the rest of the geometry)
+                        shp['matching'] = []
+                        for r_ in am.matching_for_category(mk['matching'], (rows.get(e['piece']) or {}).get('fabric'), slot['bundle']):
+                            v_ = r_['vertex']
+                            if v_ is None or v_ >= len(ol): problems.append(f"{e['piece']} {e['size']}: matching rule {r_['index']} names outline vertex {v_}"); continue
+                            shp['matching'].append(dict(rule=r_['index'], kind=r_['kind'], role=r_['role'], partner=r_['partner'], point=r_['point'], vertex=v_, x=(ol[v_][0] - x0) * k, y=(ol[v_][1] - y0) * k,
+                                                        type_x=r_['type_x'], type_y=r_['type_y'], offset=[r_['offset_x_in'] * k, r_['offset_y_in'] * k]))
                 else: problems.append(f"{e['piece']} {e['size']}: no outline")
                 shapes[rec_i] = shp
             g = groups.setdefault((rec_i, mirrored), dict(shape=shapes[rec_i]['id'], quantity=0, mirrored=mirrored, slots=[], bundles=set(), preset_rot180=0, presets=[], flips=[], turns=[], retr=[]))
@@ -385,7 +394,7 @@ def build_nest_spec(path, units='cm', marker=None, lay_limits=None, notch_table=
                         fabric_types=inv['marker']['fabric_types'],
                         block_buffer_in=[list(b) for b in inv['marker']['block_buffers']] or None,
                         min_length=(area_all / W) if W else None, min_length_note='total piece area / width: a 100%-efficient lay; not a nesting result'),
-            rotation=dflt, lay_limits=lay, notch_table=notch, block_buffer=buf,
+            rotation=dflt, lay_limits=lay, notch_table=notch, block_buffer=buf, matching=_matching_block(mk, k),
             order_lines=[dict(model=o['model'], size=o['size'], quantity=o['quantity']) for o in inv['order_lines'] if o['quantity']],      # v4.23: not the sizes the order lists at 0
             shapes=[_public(s) for s in sorted(shapes.values(), key=lambda s: s['id'])], demand=demand,
             totals=dict(instances=n_inst, shapes=len(shapes), mirrored_instances=sum(d['quantity'] for d in demand if d['mirrored']),
@@ -395,6 +404,16 @@ def build_nest_spec(path, units='cm', marker=None, lay_limits=None, notch_table=
         spec['complete'] = all(c['ok'] for c in spec['checks']) and not problems
         out.append(spec)
     return out
+
+
+def _matching_block(mk, k):
+    """v4.25: the marker's plaid / stripe matching rules (None on a marker made without a Matching table): every rule with its two categories and points, the X / Y types (relative / none / same) and the offset."""
+    m = mk.get('matching')
+    if not m: return None
+    return dict(ok=m['ok'], problems=m['problems'], bundles=m['bundles'], categories=m['categories'],
+                rules=[dict(rule=r['index'], kind=r['kind'], first=r['first_category'] or 'MARKER', second=r['second_category'], first_point=r['first_point'], second_point=r['second_point'], type_x=r['type_x'], type_y=r['type_y'],
+                            offset=[r['offset_x_in'] * k, r['offset_y_in'] * k]) for r in m['rules']],
+                note="a `fabric` rule matches a piece point to the plaid of the fabric (the MARKER is the first side), a `piece` rule one point of a piece to one of another; each shape lists its own points in `shapes[].matching`")
 
 
 def _default_rotation(lay, table):

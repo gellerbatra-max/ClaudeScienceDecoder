@@ -2639,18 +2639,18 @@ for dn_ in ('twoply', 'flipcount', 'spread', 'rotation', 'notchnum', 'blockarea'
 print(f"   {'ok ' if not bad else 'FAIL'} 45 degrees = a tilt of exactly 45.0 on top of the code (14 slots + the collar, {nfit_} of 18 on the plot, worst {worst_['fixed']:.3f} in; tilt ignored / inverted misses); the thin tilted pieces' frame is flagged ambiguous, no earlier marker is; @472 / @476 = sums of record prefix words 3 / 4 on {n_pf} fixture markers  {'; '.join(bad[:3])}")
 if bad: fails.append('45 degrees: ' + '; '.join(bad[:5]))
 
-print('-- plaid / stripe markers and the real-marker scan (v4.23, MARKER_FORMAT_SPEC.md section 29): section 1 doubles, matching sections named, the relaxed @88 rule')
+print('-- plaid / stripe markers and the real-marker scan (v4.23, MARKER_FORMAT_SPEC.md section 29): section 1 doubles, matching sections, the relaxed @88 rule')
 # plaid/: the plaid / stripe repeats and offsets are twelve f64 in section 1 (@300..@395); the matching rules (sections 9, 23, 24) are named in a warning, bounded in the byte map, not decoded.
 PLD = os.path.join(HERE, 'plaid'); pgt = _json.load(open(os.path.join(PLD, 'GROUND_TRUTH.json'))); bad = []
 for nm_, matching_ in (('ZZP1-M', True), ('ZZPH-M', False)):
     d_ = am.read_storage_marker(os.path.join(PLD, nm_ + '.GT_mark')); mk_ = am.parse_marker(d_)
     if not mk_['has_plaid_stripe'] or any(abs(a_ - b_) > 1e-4 for k_ in pgt['section1_doubles_in'] for a_, b_ in zip(mk_['plaid_stripe'][k_], pgt['section1_doubles_in'][k_])): bad.append(f"{nm_}: plaid values {mk_['plaid_stripe']}")
     w_ = am.marker_warnings(mk_); has_ = [k_ for k_ in am.MATCHING_SECTIONS if mk_['directory'][k_] not in (0, 0xffffffff)]
-    if bool(has_) != matching_ or any('MATCHING' in x_ for x_ in w_) != matching_ or any('directory word 41' in x_ or 'never seen' in x_ for x_ in w_): bad.append(f'{nm_}: matching sections {has_}, warnings {[x_[:50] for x_ in w_]}')
+    if bool(has_) != matching_ or bool(mk_['matching']) != matching_ or any('MATCHING' in x_ for x_ in w_) or any('directory word 41' in x_ or 'never seen' in x_ for x_ in w_): bad.append(f'{nm_}: matching sections {has_}, warnings {[x_[:50] for x_ in w_]}')
     cv_ = am.marker_coverage(d_, mk_)
-    if any(k_ in am.PARSED_SECTIONS for a_, b_, k_ in cv_['unknown_runs']) or (matching_ and cv_['counts']['opaque'] < 600): bad.append(f"{nm_}: coverage {cv_['counts']}")
+    if any(k_ in am.PARSED_SECTIONS for a_, b_, k_ in cv_['unknown_runs']) or (matching_ and not mk_['matching']['ok']): bad.append(f"{nm_}: coverage {cv_['counts']}")
 spz_ = ns.build_nest_spec(os.path.join(PLD, 'ZZP1-M.GT_mark'))[0]; ps_ = spz_['fabric']['plaid_stripe']
-if ps_ is None or abs(ps_['plaid_repeat'][0] - 12.0) > 0.01 or abs(ps_['plaid_offset'][0] - 2.0) > 0.01 or abs(ps_['stripe_repeat'][0] - 10.0) > 0.01 or abs(ps_['stripe_offset'][0] - 1.0) > 0.01 or not any('MATCHING' in x_ for x_ in spz_['warnings']): bad.append(f'nest spec plaid {ps_}')
+if ps_ is None or abs(ps_['plaid_repeat'][0] - 12.0) > 0.01 or abs(ps_['plaid_offset'][0] - 2.0) > 0.01 or abs(ps_['stripe_repeat'][0] - 10.0) > 0.01 or abs(ps_['stripe_offset'][0] - 1.0) > 0.01 or any('MATCHING' in x_ for x_ in spz_['warnings']) or not spz_['matching']['ok']: bad.append(f'nest spec plaid {ps_}')
 # no marker of the fixture folders (or the corpus) is called plaid, and a non-zero directory word 41 without the plaid doubles is still reported
 n_np = 0
 for dn_ in ('twoply', 'flipcount', 'spread', 'rotation', 'notchnum', 'blockarea', 'deg45', 'tilt'):
@@ -2662,7 +2662,7 @@ if not any('directory word 41' in x_ for x_ in am.marker_warnings(m41_)) and m41
 # the slot @88 rule: a spread of 2 in the per-piece constant is accepted (a real production piece), a wider one is not
 def _s88_(cs_): return am._sig88_model(dict(slots=[dict(sig88=60 + c_, piece='P', record=dict(prefix=[0, 60, 0, 0, 0]), record_index=i_) for i_, c_ in enumerate(cs_)]))
 if not _s88_([94, 96, 96])['ok'] or _s88_([94, 96, 96])['constant'] != {'P': 94} or _s88_([94, 99])['ok'] or not _s88_([96, 96])['ok']: bad.append('@88 rule')
-print(f"   {'ok ' if not bad else 'FAIL'} plaid / stripe repeats and offsets read from section 1 (12 / 2 cm and 10 / 1 cm), the matching sections named, bounded and not decoded, the nest spec carries the plaid values; none of {n_np} fixture markers is plaid; a stray directory word 41 is still reported; the @88 rule takes a spread of 2  {'; '.join(bad[:3])}")
+print(f"   {'ok ' if not bad else 'FAIL'} plaid / stripe repeats and offsets read from section 1 (12 / 2 cm and 10 / 1 cm), the matching sections read (v4.25: section 31 of the spec), the nest spec carries the plaid values; none of {n_np} fixture markers is plaid; a stray directory word 41 is still reported; the @88 rule takes a spread of 2  {'; '.join(bad[:3])}")
 if bad: fails.append('plaid / real scan: ' + '; '.join(bad[:5]))
 
 print("-- the nest engine's own input file (v4.24, MARKER_FORMAT_SPEC.md section 30): frommed.mra of four AccuNest jobs as an independent check of the job spec")
@@ -2703,6 +2703,65 @@ if n_sty != n_kinds: bad.append(f'engine_flags agree for {n_sty} of {n_kinds} st
 if n_am != 17 or am_other != [('ZZQ-A', 'BK', True), ('ZZR-S', 'BK', True), ('ZZR-45', 'BK', True)] or n_grow != n_kinds: bad.append(f'AM_AREA equals the slot area on {n_am} of {n_kinds} piece kinds (others {am_other}); buffer growth {n_grow} of {n_kinds} (worst {worst_g:.2f})')
 print(f"   {'ok ' if not bad else 'FAIL'} frommed.mra of 4 jobs: {tot_i} instances agree with the decoded flip / turn (retrieval_orientation) and with the nest spec ({n_flip} / {n_ang} / {n_spec}; a wrong 0x2000 reading misses {n_mut}); {n_sty} of {n_kinds} style-piece flags follow the Piece Options; the engine outline = the piece + the block rectangle ({n_grow} of {n_kinds} within 1.5%)")
 if bad: fails.append('engine input file: ' + '; '.join(bad[:5]))
+
+print("-- plaid / stripe MATCHING rules (v4.25, MARKER_FORMAT_SPEC.md section 31): sections 9 / 23 / 24 against the engine's own per-piece rules")
+# plaid/: five markers made with Matching tables (a fabric rule + three piece rules; two piece rules only; a relative offset; a stale extra point; ten bundles), each with the frommed.mra of its AccuNest job.
+PL = os.path.join(HERE, 'plaid'); bad = []; MTYPE = {'relative': 0, 'none': 1, 'same': 2}
+MJOBS = (('ZZP1-M', 4, 6, 7), ('ZZPU-M', 2, 6, 4), ('ZZPY-M', 3, 6, 5), ('ZZP2-M', 4, 6, 8), ('ZZC20-STD', 2, 10, 4))
+def _mcmp(d_, mk_, ef_):
+    """(instances, instances whose rules equal the engine's, rule points, points on the engine's vertex, worst distance in)"""
+    m_ = mk_['matching']; ni = nok = np_ = npok = 0; wd = 0.0
+    if not m_: return 0, 0, 0, 0, 0.0
+    prow_ = {p_['name']: p_ for p_ in mk_['pieces']}
+    for s_, p_ in zip(mk_['slots'], ef_['pieces']):
+        rl_ = am.matching_for_category(m_, prow_[s_['piece']]['fabric'], s_['bundle'])
+        want_ = [(1 if r_['kind'] == 'fabric' else 0, 1 if r_['role'] == 'first' else 2, MTYPE[r_['type_x']], MTYPE[r_['type_y']], round(r_['offset_x_in'] * 1e4), round(r_['offset_y_in'] * 1e4)) for r_ in rl_]
+        got_ = [(g_['MATCHING_RULE_TYPE'], g_['MATCH_FIRST'], g_['MATCHING_TYPE_X'], g_['MATCHING_TYPE_Y'], g_['MATCHING_OFFSET'][0], g_['MATCHING_OFFSET'][1]) for g_ in p_['matching_rules']]
+        ni += 1; nok += want_ == got_
+        if rl_ and len(rl_) == len(p_['matching_rules']):
+            pts_ = am.record_outline(d_, s_['record'])['points']; xs_ = [q_[0] for q_ in pts_]; ys_ = [q_[1] for q_ in pts_]; cx_ = (min(xs_) + max(xs_)) / 2; cy_ = (min(ys_) + max(ys_)) / 2
+            for r_, g_ in zip(rl_, p_['matching_rules']):
+                np_ += 1
+                if r_['vertex'] is None or r_['vertex'] >= len(pts_): continue
+                dd_ = math.hypot(pts_[r_['vertex']][0] - cx_ - g_['MATCHING_POINT'][0] / 1e4, pts_[r_['vertex']][1] - cy_ - g_['MATCHING_POINT'][1] / 1e4); wd = max(wd, dd_); npok += dd_ < 0.002
+    return ni, nok, np_, npok, wd
+tot_ = [0, 0, 0, 0]; worst_m = 0.0; okfx = 0
+for nm_, nr_, nb_, nbl_ in MJOBS:
+    d_ = am.read_storage_marker(os.path.join(PL, nm_ + '.GT_mark')); mk_ = am.parse_marker(d_); m_ = mk_['matching']; ef_ = ae.read_engine_file(os.path.join(PL, nm_ + '-frommed.mra'))
+    if not m_ or not m_['ok'] or len(m_['rules']) != nr_ or m_['bundles'] != nb_ or len(m_['blocks']) != nbl_ or len(m_['blocks']) * nb_ != len(d_[mk_['sections'][24][0]:mk_['sections'][24][1]]) // 12: bad.append(f"{nm_}: {m_ and (len(m_['rules']), m_['bundles'], len(m_['blocks']), m_['problems'])}"); continue
+    r_ = _mcmp(d_, mk_, ef_); tot_ = [a_ + b_ for a_, b_ in zip(tot_, r_[:4])]; worst_m = max(worst_m, r_[4]); okfx += 1
+    if r_[0] != r_[1] or r_[2] != r_[3]: bad.append(f'{nm_}: {r_}')
+    if any('MATCHING' in x_ for x_ in am.marker_warnings(mk_)) or any(k_ in (9, 23, 24) for a_, b_, k_ in am.marker_coverage(d_, mk_)['unknown_runs']): bad.append(f'{nm_}: warning or unknown bytes')
+if tot_[0] != 204 or tot_[0] != tot_[1] or tot_[2] != tot_[3] or worst_m > 0.001: bad.append(f'instances {tot_[:2]}, rule points {tot_[2:]}, worst {worst_m:.5f}')
+# the rules themselves (ZZP1-M = the ZZ-PLAID table of plaid/GROUND_TRUTH.json): fabric rule MARKER 2 - PFRONT 2 (same, same); PFRONT 3 - PBACK 3 (same, none); PFRONT 5 - PSLEEVE 2 (relative 3 cm, none); PFRONT 4 - PPOCKET 1 (same, same)
+d1_ = am.read_storage_marker(os.path.join(PL, 'ZZP1-M.GT_mark')); mk1_ = am.parse_marker(d1_); rs_ = [(r_['kind'], r_['first_category'], r_['first_point'], r_['second_category'], r_['second_point'], r_['type_x'], r_['type_y'], round(r_['offset_x_in'] * 2.54, 3)) for r_ in mk1_['matching']['rules']]
+if rs_ != [('fabric', None, 2, 'PFRONT', 2, 'same', 'same', 0.0), ('piece', 'PFRONT', 3, 'PBACK', 3, 'same', 'none', 0.0), ('piece', 'PFRONT', 5, 'PSLEEVE', 2, 'relative', 'none', 3.0), ('piece', 'PFRONT', 4, 'PPOCKET', 1, 'same', 'same', 0.0)]: bad.append(f'ZZP1-M rules {rs_}')
+# byte patches: each must be caught (a rule type, a stored vertex, the separator of section 24, a start offset of section 23)
+ef1_ = ae.read_engine_file(os.path.join(PL, 'ZZP1-M-frommed.mra')); s9_, s23_, s24_ = mk1_['sections'][9][0], mk1_['sections'][23][0], mk1_['sections'][24][0]
+def _patch(off_, fmt_, v_):
+    b_ = bytearray(d1_); struct.pack_into(fmt_, b_, off_, v_); return bytes(b_)
+dm_ = _patch(s9_ + 42 + 6, '<H', 0); rm_ = _mcmp(dm_, am.parse_marker(dm_), ef1_)                  # rule 1: X type same -> relative
+dv_ = _patch(s24_, '<H', 4); rv_ = _mcmp(dv_, am.parse_marker(dv_), ef1_)                          # the vertex of the first item (PFRONT point 2, bundle 0)
+dc_ = _patch(s24_ + 2, '<i', 0); mc_ = am.parse_marker(dc_)                                          # the separator of the first record
+do_ = _patch(s23_, '<H', 19); mo_ = am.parse_marker(do_)                                             # a block start offset
+if rm_[0] - rm_[1] < 12 or rv_[2] == rv_[3] or mc_['matching']['ok'] or not any('did not read cleanly' in x_ for x_ in am.marker_warnings(mc_)) or mo_['matching']['ok']: bad.append(f'mutations: type {rm_[:2]}, vertex {rv_[2:4]}, separator {mc_["matching"]["ok"]}, offset {mo_["matching"]["ok"]}')
+# the nest spec of the laid marker as a job: the rules, and each shape's own points (the engine's point plus half the piece's box = the point in the shape's frame)
+sp1_ = ns.build_nest_spec(os.path.join(PL, 'ZZP1-M.GT_mark'), as_job=True)[0]; fx_ = next(s_ for s_ in sp1_['shapes'] if s_['piece'] == 'ZZPLD-FRONT' and s_['size'] == 'XS'); n_pt = 0
+for g_, e_ in zip(fx_['matching'], ef1_['pieces'][0]['matching_rules']):
+    n_pt += abs(g_['x'] / 2.54 - (e_['MATCHING_POINT'][0] / 1e4 + fx_['width'] / 2.54 / 2)) < 0.002 and abs(g_['y'] / 2.54 - (e_['MATCHING_POINT'][1] / 1e4 + fx_['height'] / 2.54 / 2)) < 0.002
+if not sp1_['matching']['ok'] or len(sp1_['matching']['rules']) != 4 or len(fx_['matching']) != 4 or n_pt != 4 or any('MATCHING' in x_ for x_ in sp1_['warnings']) or not sp1_['complete']: bad.append(f'nest spec: {n_pt} of 4 points, complete {sp1_["complete"]}')
+if any(ns.build_nest_spec(os.path.join(HERE, dn_, nm_ + '.GT_mark'))[0]['matching'] is not None for dn_, nm_ in (('twoply', 'ZZQ-W'), ('deg45', 'ZZR-45'))): bad.append('a marker without a Matching table has a `matching` block')
+# damaged matching bytes never stop the read: 240 random byte patches inside sections 9 / 23 / 24 - no exception, and most are flagged (a changed offset, vertex or pad word can stay a valid reading)
+import random as _rnd
+_rg = _rnd.Random(7); n_fz = n_fl = 0
+for i_ in range(240):
+    b_ = bytearray(d1_); a_, e_ = [(mk1_['sections'][k_][0] - 6, mk1_['sections'][k_][1]) for k_ in (9, 23, 24)][i_ % 3]
+    for _ in range(_rg.choice((1, 1, 2, 4))): b_[_rg.randrange(a_, e_)] = _rg.randrange(256)
+    try: mz_ = am.parse_marker(bytes(b_)); am.marker_warnings(mz_); n_fz += 1; n_fl += not mz_['matching']['ok']
+    except Exception as ex_: bad.append(f'a damaged matching byte raised {ex_!r}'); break
+if n_fz != 240 or n_fl < 120: bad.append(f'fuzz: {n_fz} read, {n_fl} flagged')
+print(f"   {'ok ' if not bad else 'FAIL'} {okfx} plaid markers: every rule (kind, role, X / Y type, offset) of {tot_[1]} instances equals the engine's, and {tot_[3]} rule points sit on the engine's vertex (worst {worst_m:.5f} in); the ZZ-PLAID rules read back; 4 byte patches caught, {n_fz} damaged reads never raise ({n_fl} flagged); the nest spec lists rules + per-shape points  {'; '.join(bad[:3])}")
+if bad: fails.append('plaid matching: ' + '; '.join(bad[:5]))
 
 print('-- marker byte map (v4.4, see accumark_marker.marker_coverage)')
 # Every byte owned by a section a parser reads must be classified (identified /

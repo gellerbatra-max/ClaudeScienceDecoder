@@ -26,7 +26,7 @@ bundles it (export with components) or when you pass it: `--lay-limits NAME.GT_l
 holds it. Then every shape carries the rotation / flip rules of its category's row and `rotation.basis` says `verified`; otherwise the spec says
 `[0, 180]` with basis `assumed` and names the missing table.
 
-Notches carry a NOTCH NUMBER (`type`): the row of the Notch Parameter Table the marker names. With that table (bundled, or `--notch-table`) the spec's `notch_table.entries`
+Notches carry a NOTCH CODE (`type`) = min(notch number, 5): 1-4 are the row of the Notch Parameter Table the marker names, 5 stands for row 5 or any higher one (a marker keeps no more; `notches[].numbers` lists the candidates). With that table (bundled, or `--notch-table`) the spec's `notch_table.entries`
 gives every defined notch its kind (slit, T, V, castle, ...), perimeter width, inside width and depth (positive = cut into the piece, negative = sticking out).
 """
 import json, math, os, sys
@@ -172,12 +172,25 @@ def _notch_block(mk, shapes, bundled, supplied, k):
     ent = {str(n['number']): dict(kind=n['type_name'], label=n['label'], perimeter_width=n['perimeter_in'] * k, inside_width=n['inside_in'] * k, depth=n['depth_in'] * k, direction=n['direction'])
            for n in table['notches']}
     legacy = source == 'marker snapshot' and snap['vintage'] != 'table'
-    undefined = [u for u in used if str(u) not in ent and not (legacy and u > 5)]
-    if undefined: warns.append(f"notch number(s) {undefined} are not defined in the notch table '{table.get('name')}'")
+    # v4.15: what a shape carries is the notch CODE, min(number, 5): 1-4 are the numbers themselves, 5 stands for notch 5 OR ANY HIGHER NUMBER (a piece keeps the full number, a marker does not)
+    by_code = {}
+    for c in range(1, 6):
+        nums = [n['number'] for n in table['notches'] if (n['number'] == c if c < 5 else n['number'] >= 5)]
+        geo = {(n['type_name'], n['perimeter_in'], n['inside_in'], n['depth_in']) for n in table['notches'] if n['number'] in nums}
+        by_code[str(c)] = dict(numbers=nums, same_geometry=len(geo) <= 1)
+    for s_ in shapes.values():
+        for n in s_.get('notches', []):
+            bc = by_code.get(str(n['type']))
+            if bc: n['numbers'] = bc['numbers']; n['number'] = bc['numbers'][0] if len(bc['numbers']) == 1 else None
+    undefined = [c for c in used if c in range(1, 6) and not by_code[str(c)]['numbers'] and not (legacy and c == 5)]
+    if undefined: warns.append(f"notch code(s) {undefined} match no notch of the table '{table.get('name')}'")
+    unclear = [c for c in used if str(c) in by_code and len(by_code[str(c)]['numbers']) > 1 and not by_code[str(c)]['same_geometry']]
+    if unclear: warns.append(f"notch code(s) {unclear} stand for several different notches of '{table.get('name')}' (numbers {[by_code[str(c)]['numbers'] for c in unclear]}): a marker keeps only min(number, 5) - the piece objects hold the number")
     if legacy: warns.append('the notch table is not bundled and the marker holds only the older 60-byte copy: notches 1-5 (perimeter, inside, depth) are read, no type codes and nothing beyond notch 5')
     basis = 'decoded: every field verified against the Notch editor; lengths in the spec units, depth > 0 cuts into the piece, depth < 0 sticks out'
     if source == 'marker snapshot': basis = "read from the marker's own copy of its notch table (section 3, as of the day it was made); " + basis
-    return dict(name=table.get('name') or name, source=source, parsed=True, entries=ent, numbers_used=used, undefined_numbers=undefined, snapshot=snap_note, basis=basis), warns
+    return dict(name=table.get('name') or name, source=source, parsed=True, entries=ent, by_code=by_code, numbers_used=used, undefined_numbers=undefined, snapshot=snap_note,
+                code_note="a shape's notch `type` is a CODE = min(notch number, 5): 1-4 are numbers, 5 = number 5 or higher; `by_code` lists the candidate numbers", basis=basis), warns
 
 
 def _bundle_pattern(inv, table):
@@ -322,7 +335,7 @@ def build_nest_spec(path, units='cm', marker=None, lay_limits=None, notch_table=
                 y0, y1 = shp.pop('_y'); M = lambda seq: _mirror_y([tuple(p) for p in seq], y0, y1)     # reflect about the grain axis through the middle of the box
                 shp['outline_mirrored'] = [list(p) for p in _ccw(M(shp['outline']))]
                 if shp.get('seam_outline'): shp['seam_outline_mirrored'] = [list(p) for p in _ccw(M(shp['seam_outline']))]
-                shp['notches_mirrored'] = [dict(x=n['x'], y=y1 + y0 - n['y'], type=n['type']) for n in shp['notches']]
+                shp['notches_mirrored'] = [dict(n, y=y1 + y0 - n['y']) for n in shp['notches']]
                 if shp.get('grain'): shp['grain_mirrored'] = dict(shp['grain'], points=[list(p) for p in M(shp['grain']['points'])])
                 shp['internal_lines_mirrored'] = [[list(p) for p in M(l)] for l in shp['internal_lines']]
                 shp['drills_mirrored'] = [list(p) for p in M(shp['drills'])]
@@ -516,7 +529,7 @@ def report(spec):
     if bf.get('parsed'): lines.append(f"block buffer {bf['name']} ({bf['source']}): rule(s) used {bf['rules_used']}" + ''.join(f"; rule {n} {bf['rules'][str(n)]['kind']} L{bf['rules'][str(n)]['static']['left']['value']:.2f} T{bf['rules'][str(n)]['static']['top']['value']:.2f} R{bf['rules'][str(n)]['static']['right']['value']:.2f} B{bf['rules'][str(n)]['static']['bottom']['value']:.2f}" for n in bf['rules_used'] if str(n) in bf['rules']))
     else: lines.append(f"block buffer {bf.get('name') or '-'}: {bf['basis']}")
     nb = spec['notch_table']
-    if nb.get('parsed'): lines.append(f"notch table {nb['name']} ({nb['source']}): notch number(s) used {nb['numbers_used']} = " + ', '.join(f"{n} {nb['entries'][str(n)]['label']} depth {nb['entries'][str(n)]['depth']:+.2f}" for n in nb['numbers_used'] if str(n) in nb['entries']))
+    if nb.get('parsed'): lines.append(f"notch table {nb['name']} ({nb['source']}): notch number(s) used {nb['numbers_used']} = " + ', '.join(f"{n} {nb['entries'][str(nb['by_code'][str(n)]['numbers'][0])]['label']}{'+' if len(nb['by_code'][str(n)]['numbers']) > 1 else ''} depth {nb['entries'][str(nb['by_code'][str(n)]['numbers'][0])]['depth']:+.2f}" for n in nb['numbers_used'] if str(n) in nb['by_code'] and nb['by_code'][str(n)]['numbers']))
     else: lines.append(f"notch table {nb.get('name') or '-'}: {nb['basis']}")
     lines += [f"   {'ok ' if x['ok'] else 'BAD'} {x['name']}" + (f": {x['detail']}" if x['detail'] else '') for x in c]
     lines += ['   note: ' + w for w in spec['warnings']]

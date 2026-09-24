@@ -155,6 +155,22 @@ def list_zip(path):
 
 STORAGE_HEADER = 0x90      # a `.GT_*` file in an AccuMark storage area: 0x90 bytes of its own header, then the payload an export object carries from 0x8a
 
+def _wrap_storage(disk, name, typ):
+    """A storage-area file (`.GT_*`) as the export-shaped object the readers take: header (magic, name, type, payload length), the payload from 0x90, a trailer with the file's own stamps."""
+    hdr = bytearray(DIR_OFF)
+    hdr[:17] = MAGIC + b'1'; nm = name.encode('latin1')[:63]; hdr[0x15:0x15+len(nm)] = nm
+    struct.pack_into('<I', hdr, 0x60, typ); struct.pack_into('<H', hdr, 0x7a, typ); struct.pack_into('<I', hdr, 0x7e, len(disk) - STORAGE_HEADER)
+    tr = bytearray(TRAILER)
+    struct.pack_into('<II', tr, TRAILER_CREATED, u32(disk, 0x6a), u32(disk, 0x6e))
+    user = disk[0x86:0x86+31].split(b'\0')[0]; tr[0x110:0x110+len(user)] = user; tr[0x162:0x162+len(user)] = user
+    return bytes(hdr) + disk[STORAGE_HEADER:] + bytes(tr)
+
+def read_storage_piece(path):
+    """v4.15: a piece read straight from a storage area (`<area>\\piece\\NAME.GT_piece`) as the export-shaped object accumark_pds.decode / summarize take."""
+    disk = open(path, 'rb').read()
+    if len(disk) < STORAGE_HEADER + 64: raise TruncatedObject('storage file too short to hold a piece', source=str(path), actual=len(disk))
+    return _wrap_storage(disk, os.path.splitext(os.path.basename(path))[0], 20)
+
 def read_storage_marker(path):
     """v4.13: a marker read straight from an AccuMark storage area - `<area>\\mark\\Made\\NAME.GT_mark` (or UnMade / Partial / NeedsApproval) - as the export-shaped
     object parse_marker takes. The payload is the same bytes an export ZIP carries (verified: slots, records, tables and stream outlines read identically for
@@ -162,14 +178,7 @@ def read_storage_marker(path):
     created / modified stamps and user names of the file's own header (stamps at 0x6a / 0x6e, names at 0x86). No embedded mext object, none is needed."""
     disk = open(path, 'rb').read()
     if len(disk) < STORAGE_HEADER + DIR_SLOTS*4: raise TruncatedObject('storage file too short to hold a marker directory', source=str(path), actual=len(disk))
-    name = os.path.splitext(os.path.basename(path))[0]
-    hdr = bytearray(DIR_OFF)
-    hdr[:17] = MAGIC + b'1'; nm = name.encode('latin1')[:63]; hdr[0x15:0x15+len(nm)] = nm
-    struct.pack_into('<I', hdr, 0x60, 9); struct.pack_into('<H', hdr, 0x7a, 9); struct.pack_into('<I', hdr, 0x7e, len(disk) - STORAGE_HEADER)
-    tr = bytearray(TRAILER)
-    struct.pack_into('<II', tr, TRAILER_CREATED, u32(disk, 0x6a), u32(disk, 0x6e))
-    user = disk[0x86:0x86+31].split(b'\0')[0]; tr[0x110:0x110+len(user)] = user; tr[0x162:0x162+len(user)] = user
-    d = bytes(hdr) + disk[STORAGE_HEADER:] + bytes(tr)
+    d = _wrap_storage(disk, os.path.splitext(os.path.basename(path))[0], 9)
     if not (dirs := directory(d)) or dirs[1] in (0, 0xffffffff) or dirs[1] >= len(d): raise NotAnAccuMarkObject('%s is not a marker storage file (no section 1)' % path)
     return d
 
@@ -899,9 +908,9 @@ def decode_record_stream(st, pen_move=None):
         else:
             x += dx; y += dy
         cur.append((x, y, u16(st, q))); cr.append((dx, dy, mx, my))
-        # the point's KIND: main tag low nibble 1 = plain (or a NOTCH when an extra byte follows: type = its low nibble,
-        # high nibble = a flag); any other low nibble = a TURN (corner point), with a notch type in the extra byte for a
-        # corner notch [V 7,208 of 7,209 piece points]
+        # the point's KIND: main tag low nibble 1 = plain (or a NOTCH when an extra byte follows: its low nibble = the notch CODE,
+        # min(notch number, 5) - see accumark_pds.notch_numbers -, high nibble = a flag); any other low nibble = a TURN (corner point),
+        # with a notch code in the extra byte for a corner notch [V 7,208 of 7,209 piece points]
         ex_ = [dat[0] for t, dat in parts if not t & 0x10]
         if parts[-1][0] & 0xf == 1: ck.append(('notch', ex_[-1] & 15) if ex_ else ('plain', None))
         else: ck.append(('turn', (ex_[-1] & 15) or None) if ex_ else ('turn', None))

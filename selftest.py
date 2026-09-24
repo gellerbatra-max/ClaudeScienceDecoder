@@ -2258,6 +2258,55 @@ if zc_ is not None:
 print(f"   {'ok ' if not bad else 'FAIL'} byte patches on ZZC-M1: a wrong flip code / row index on a piece row, a changed option byte in section 4, a broken notch count each show; sections 3 and 4 leave no unknown byte  {'; '.join(bad[:3])}")
 if bad: fails.append('marker tables mutations: ' + '; '.join(bad[:5]))
 
+print('-- notch numbers and notch codes (v4.15, MARKER_FORMAT_SPEC.md section 18): a piece keeps the number, a marker keeps min(number, 5)')
+# A notch's NUMBER (1-99, the row of the Notch Parameter Table) is the last byte of the 45-byte tag-0x07 child of its point in the piece's line table. The perimeter point and a marker's stream keep only the CODE
+# min(number, 5). Proved on a piece PDS made with numbers 3, 6, 6, 7, 12, 16, 25, 30, 30 and the marker Process made from it (notchnum/), and on every piece of the corpus that carries the number.
+import accumark_pds as _pds
+NDIR = os.path.join(HERE, 'notchnum'); ngt2 = _json.load(open(os.path.join(NDIR, 'GROUND_TRUTH.json'))); bad = []
+psum = _pds.summarize(am.read_storage_piece(os.path.join(NDIR, 'NN-PIECE.GT_piece')))
+want_nums = sorted(int(k) for k, v in ngt2['placed_numbers'].items() for _ in range(v))
+if sorted(psum['notch_numbers']) != want_nums or Counter(psum['notch_types']) != Counter({int(k): v for k, v in ngt2['piece_codes'].items()}): bad.append(f"piece: numbers {psum['notch_numbers']} codes {psum['notch_types']}")
+if any(min(n_, 5) != c_ for n_, c_ in zip(psum['notch_numbers'], psum['notch_types'])): bad.append('piece: a code is not min(number, 5)')
+dnn = am.read_storage_marker(os.path.join(NDIR, 'NN-MARKER.GT_mark')); mnn = am.parse_marker(dnn)
+for r_ in mnn['records']:
+    ro_ = am.record_outline(dnn, r_)
+    if not ro_ or not ro_['verified'] or Counter(n_[1] for n_ in ro_['notches']) != Counter({int(k): v for k, v in ngt2['marker_codes_per_size'].items()}): bad.append(f"marker record {r_['size']}: notch codes {ro_ and [n_[1] for n_ in ro_['notches']]}")
+# every piece of the corpus that carries numbers obeys it
+n_seen = n_bad = 0; seen_p = set()
+for zp_ in zips_all:
+    try: L_ = am.list_zip(zp_)
+    except Exception: continue
+    for o_ in L_.get('piece', []):
+        k_ = (o_['name'], len(o_['data']), hash(o_['data']))
+        if k_ in seen_p: continue
+        seen_p.add(k_)
+        try: sm_ = _pds.summarize(bytes(o_['data']))
+        except Exception: continue
+        for n_, c_ in zip(sm_['notch_numbers'], sm_['notch_types']):
+            if n_ is None: continue
+            n_seen += 1; n_bad += (min(n_, 5) != c_)
+if n_seen < 100 or n_bad: bad.append(f'corpus pieces: {n_seen} notches with a number, {n_bad} against code == min(number, 5)')
+# a broken number is noticed
+pb_ = bytearray(am.read_storage_piece(os.path.join(NDIR, 'NN-PIECE.GT_piece'))); i3_ = None
+for m_ in __import__('re').finditer(rb'\x10\x00.{8}\xff\xff\x01\x00\x03\x00\x02\x00\x07\x2d(.{45})', bytes(pb_), __import__('re').S): i3_ = m_.start(1) + 44
+if i3_ is None: bad.append('the code-3 notch was not found in its line table')
+else:
+    pb_[i3_] = 9; ps_ = _pds.summarize(bytes(pb_))
+    if not any(min(n_, 5) != c_ for n_, c_ in zip(ps_['notch_numbers'], ps_['notch_types']) if n_ is not None): bad.append('a notch number changed to 9 next to code 3 was not noticed')
+# the nest spec: a code names its candidates
+sn_ = ns.build_nest_spec(os.path.join(NDIR, 'NN-MARKER.GT_mark'))[0]; nb_ = sn_['notch_table']; bc_ = nb_.get('by_code') or {}
+if nb_['source'] != 'marker snapshot' or bc_.get('3', {}).get('numbers') != [3] or bc_.get('5', {}).get('numbers') != list(range(5, 26)): bad.append(f"nest spec of the PDS marker: {nb_['source']} {bc_}")
+n3_ = [n_ for sh_ in sn_['shapes'] for n_ in sh_['notches'] if n_['type'] == 3]; n5_ = [n_ for sh_ in sn_['shapes'] for n_ in sh_['notches'] if n_['type'] == 5]
+if not n3_ or any(n_['number'] != 3 for n_ in n3_) or not n5_ or any(n_['number'] is not None or n_['numbers'] != list(range(5, 26)) for n_ in n5_): bad.append('shape notches: code 3 -> number 3, code 5 -> the candidates 5..25')
+z25_ = os.path.join(HERE, 'markers', '2591A-SS21-UNLAID', '2591A-BD 157 AW SS21.zip')
+if os.path.isfile(z25_):
+    for sp_ in ns.build_nest_spec(z25_):
+        b5_ = (sp_['notch_table'].get('by_code') or {}).get('5')
+        if b5_ and (b5_['same_geometry'] or b5_['numbers'] != list(range(5, 16))): bad.append(f"2591A NEED-P-NOTCH code 5: {b5_}")
+        if 5 in sp_['notch_table']['numbers_used'] and not any('stand for several different notches' in w_ for w_ in sp_['warnings']): bad.append('2591A uses code 5 (numbers 5-15: slit and V) without the warning')
+print(f"   {'ok ' if not bad else 'FAIL'} PDS piece with numbers {want_nums}: codes {dict(Counter(psum['notch_types']))}, its marker stores the same codes at S / M / L; {n_seen} corpus notches all code == min(number, 5); a broken number is noticed; the spec lists the candidate numbers of code 5  {'; '.join(bad[:3])}")
+if bad: fails.append('notch numbers: ' + '; '.join(bad[:5]))
+
 print('-- marker byte map (v4.4, see accumark_marker.marker_coverage)')
 # Every byte owned by a section a parser reads must be classified (identified /
 # raw / zero_pad / opaque) - only the envelope, the header scalars, sections 2-5,

@@ -6,7 +6,7 @@
 
 The table defines the notches a piece can carry: up to 99, each with a TYPE (Slit, T, V, Castle, Left Check, Right Check, U, No Lift Slit), a
 PERIMETER WIDTH (the gap at the piece edge), an INSIDE WIDTH (the width at the bottom) and a DEPTH (positive = an internal notch, negative = an external
-one such as a Castle or an external V). A notch on a piece - and in a marker's stream - is identified by its NOTCH NUMBER, the row of this table.
+one such as a Castle or an external V). A notch on a piece is identified by its NOTCH NUMBER, the row of this table; a marker's stream keeps only the CODE min(number, 5) (v4.15: 1-4 are the numbers, 5 means 5 or higher).
 
 Byte format, VERIFIED against the Notch editor (Notch.exe): a table saved from the editor with one row of every type and distinct numbers
 (`ZZNT-X1`, `ZZNT-X2` in `notch/`), plus the real `NEED-P-NOTCH`, `V-NOTCH-ALL CUSTOMERS` and the default `P-NOTCH`, each shown by the editor and

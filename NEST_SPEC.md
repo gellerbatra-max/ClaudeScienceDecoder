@@ -38,7 +38,7 @@ A **shape** has its own frame: the lower-left corner of its cut outline's boundi
 | `area`, `declared_area`, `perimeter`, `width`, `height` | `area` is computed from `outline`; `declared_area` is the number AccuMark stored - they agree to 1% (checked) |
 | `stored_box`, `padding` | the box AccuMark stored for the piece and `stored_box - (width, height)`. `0` on every marker-only ZIP of the corpus; about 0.12 x 0.19 in on the July CP 150 markers (block buffer + curve allowance): **reserve that much around the piece**. In the piece's own frame (v4.13): a laid marker read as a job stores its home box as PLACED, so it is turned back by the slot's quarter turns; `null` when the first slot of the shape was placed tilted (its box in the piece frame is not derivable) |
 | `buffer` | only when the Lay Limits and the Block Buffer table are known: the rule this shape's row names - `rule`, `kind` (`buffer` / `block`), `static` and `dynamic` amounts per side (`left`, `top`, `right`, `bottom`, `segment`: `{value, unit}` in the spec units, or percent of the repeat) |
-| `notches[]` | `x`, `y`, `type` = the NOTCH NUMBER: the row of the Notch Parameter Table the marker names - what it looks like is in `notch_table.entries[type]` |
+| `notches[]` | `x`, `y`, `type` = the notch CODE `min(number, 5)` (v4.15: 1-4 are the row of the Notch Parameter Table the marker names, 5 = row 5 or any higher one), `numbers` (the candidate rows) and `number` (when there is only one) - what a row looks like is in `notch_table.entries[number]`, the candidates per code in `notch_table.by_code` |
 | `grain` | `points` (2), `angle_deg` 0, `basis`: `stream` (read from a stream layout verified against piece objects) or `inferred` (the older 1825D / 5683D / 2591A / 418T vintage: a horizontal 2-point segment, 89 of 89 records - not a verified read) |
 | `rotation` | only when the Lay Limits table is known: the row of this shape's `category` (else DEFAULT): `row`, `matched` (`category` / `default`), `allowed_deg`, `flip_x_axis_allowed`, ... and `basis` |
 | `internal_lines[]`, `drills[]` | internal lines / cutouts and drill holes, `[]` when none (or when the layout is the older, undecoded one) |
@@ -93,7 +93,7 @@ does not care can ignore them. `buffer_rule` is the number of the row in the Blo
 
 ## Notches - what a notch number is
 
-A notch on a shape is a NOTCH NUMBER (`type`). The marker names a Notch Parameter Table (`source.tables.notch_table`, e.g. `P-NOTCH`, `NEED-P-NOTCH`); the table is bundled when the ZIP is exported with its
+A notch on a shape is a NOTCH CODE (`type`) = `min(number, 5)`: a marker keeps no more of the notch number than that (v4.15; the piece objects keep the number). The marker names a Notch Parameter Table (`source.tables.notch_table`, e.g. `P-NOTCH`, `NEED-P-NOTCH`); the table is bundled when the ZIP is exported with its
 components, or passed as `--notch-table NAME.GT_notpt` (from the storage area's `notpt` folder) or another ZIP. Then `notch_table.entries` maps each defined number to
 `kind` (`slit`, `t`, `v`, `castle`, `left_check`, `right_check`, `u`, `no_lift_slit`), `perimeter_width` (the gap at the piece edge), `inside_width` (the width at the bottom) and `depth`
 (spec units; positive = cut into the piece, negative = sticking out, `direction` says which), and `numbers_used` lists the numbers the shapes carry. Without the table the marker's own copy is read (`notch_table.source: marker snapshot`, v4.14; the 16 older markers hold only notches 1-5 without types - a warning says so); a marker with neither says

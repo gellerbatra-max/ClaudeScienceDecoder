@@ -2155,6 +2155,18 @@ def unfold(pts, axis):
         return half + [refl(p) for p in reversed(half[1:-1])]
     return list(pts) + [refl(p) for p in reversed(pts)]
 
+def notch_numbers(block):
+    """v4.15: {(x, y): notch NUMBER} of one piece block - the row of the Notch Parameter Table each notch was placed with (1-99). The number is the LAST byte of the 45-byte tag-0x07
+    child of the notch's point in the line table (Region D); the perimeter point itself stores only its notch CODE, `min(number, 5)` (1-4 as is, every number from 5 up reads 5), and so does
+    a marker's stream [V: the bundled corpus pieces (134 notches, numbers 5 and 6), the real styles of the scratch area (numbers 1, 2, 4) and one PDS-made piece with numbers 3, 6, 7, 12, 16, 25, 30: 0 exceptions]. A notch with no line-table point is absent."""
+    out = {}
+    for rec in ((block.get('tail') or {}).get('line_records') or []):
+        for tp in rec['points']:
+            for tag, payload in tp['children']:
+                if tag == 0x07 and len(payload) == 45: out.setdefault((tp['x'], tp['y']), set()).add(payload[44])
+    return {k: next(iter(v)) for k, v in out.items() if len(v) == 1}
+
+
 def summarize(data):
     """High-level, validated summary of a piece file."""
     dec = decode(data)
@@ -2209,6 +2221,7 @@ def summarize(data):
         perimeter_in = [( p['x']/UNITS_PER_INCH, p['y']/UNITS_PER_INCH) for p in b0['perimeter']],
         notches_in = [(p['x']/UNITS_PER_INCH, p['y']/UNITS_PER_INCH) for p in b0['perimeter'] if p['is_notch']],
         notch_types = [p['notch_type'] for p in b0['perimeter'] if p['is_notch']],
+        notch_numbers = [notch_numbers(b0).get((p['x'], p['y'])) for p in b0['perimeter'] if p['is_notch']],
         grade_refs = [(p['id'], p['rule_ref']) for p in b0['perimeter'] if p['rule_ref'] is not None],
         grain_lines_in = [[(q['x']/UNITS_PER_INCH, q['y']/UNITS_PER_INCH) for q in seg]
                           for seg, k in zip(b0['internal_lines'], b0['internal_kinds']) if k == 'grain'],

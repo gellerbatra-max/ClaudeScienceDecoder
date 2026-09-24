@@ -300,7 +300,7 @@ stream that verifies against its record's area + perimeter is identified up to i
 | the COLLAR of the LADIES-BLOUSE set lies a quarter turn from the frame its orientation codes refer to (section 20, `frame_offsets`): why (grain line? a piece attribute?), and +90 vs +270 | 28 markers, one piece, +90 fits every one; the bundled pieces are stubs | a piece object with a real grain line whose stream outline is turned (a collar digitised with the grain along its length) |
 | how a 45-degree (or any other non-tilt) placement is stored | AccuNest's Rotation-45 override placed nothing off the 90-degree grid; tilts are the float at +38 (section 20) | Easy Marking: `Rotate 45 CW` on an asymmetric piece, stored, read back |
 | the exact area a BLOCK adds to a placed slot's declared area (the BACK piece, block rule 2 = 1 cm: slot 657.64 vs record 613.54 = +7.2%, the offset polygon says 652.9; ZZC-M3, ZZN-F1, the ZZROT set) | only the block rule's piece differs; buffer rules (FRONT, COLLAR, SLEEVE) leave the area equal | a block of another size on a simple rectangle |
-| notch numbers above 15 in a marker stream (the low nibble of the extra byte holds `type`; the table allows 99 numbers) | only numbers 1 and 5 occur in the corpus | a piece with notch number 20+ (PDS Add Standard Notch, Type 20) in a marker |
+| ~~notch numbers above 15 in a marker stream~~ CLOSED v4.15: a marker keeps only the code min(number, 5) (section 18); what a corner notch (a notch on a turn point) stores - its line-table twin holds code 0 - is not separately proved | 11 numbers (1-7, 12, 16, 25, 30) on PDS / imported pieces and their markers | a notch on a corner point with a number above 5 |
 | what order / model option sets the piece-row flag @+14 (= the slot 0x0040 bit); the pre-set rot180 alternation | 0x0040 == flag @+14 on 9,122 / 9,122 slots [V]; alternates per bundle | live: flip one order / model option per run (DATASET_DESIGN F5) |
 | the extra byte's high nibble; the stream trailer's last 3 bytes | kinds and notch types classify 7,455 / 7,455 piece points | correlate with the piece's f2 / rule fields and the size |
 | what C counts in @88 = head count + C; slot @52/@54/@60 | @88 = p1 + C(piece) [V], C tracks internal-line points; stored-empty and laid-then-returned read 0 alike | pieces with 0 / 1 / 2 / 4 internal lines built in Pattern Design (DATASET_DESIGN F6); @52/@54/@60 vs piece/size |
@@ -398,8 +398,15 @@ N x ( u32 type, i32 perimeter, i32 inside, i32 depth )       record k = notch nu
 Lengths x 10000 in inches (0.30 cm = 1181, -0.20 cm = -787); `type` 0 None (an undefined number), 1 Slit, 2 T, 3 V, 4 Castle, 5 Left Check, 6 Right Check, 7 U, 8 No Lift Slit (the editor's list order). Up to 99
 numbers. The editor greys out the widths a type does not use (Slit / T / No Lift Slit have no perimeter width, V / Slit / Left / Right Check no inside width) and stores 0 there. Depth > 0 cuts into the
 piece, depth < 0 sticks out (Castle, the external V of the 2303 and 1825D tables). A piece's `Notch Type N` (FORMAT_SPEC.md: "Notch Depth is not stored in the piece file: looked up from a system-wide table") and the
-notch code in a marker's section-14 stream are this notch number. Confirmed geometrically: the 30 notch spikes of a real AccuNest plot are all 0.40 cm = notch 1 of the default `P-NOTCH`. A table whose
-length is not 64 + 16 N (+ 4 zero bytes), whose triplets differ from records 1-5 or with a type above 8 is refused.
+notch code in a marker's section-14 stream are this notch number **for numbers 1-4 only - corrected in v4.15, see below**. Confirmed geometrically: the 30 notch spikes of a real AccuNest plot are all 0.40 cm =
+notch 1 of the default `P-NOTCH`. A table whose length is not 64 + 16 N (+ 4 zero bytes), whose triplets differ from records 1-5 or with a type above 8 is refused.
+
+**Number and code (v4.15) [V].** A notch keeps its NUMBER (1-99, the row of this table) on the PIECE only: it is the last byte of the 45-byte tag-0x07 child of the notch's point in the piece's line table (Region D;
+`accumark_pds.notch_numbers`). The perimeter point (its `f1` high byte) and the marker's stream (the low nibble of the extra byte) store the notch CODE **`min(number, 5)`**: numbers 1-4 as they are, every number from
+5 up reads 5 - the five older-layout triplets at the head of the table are why. Proved on a piece made in PDS with the Type list set to 3, 6 (the two imported notches), 7, 12, 16, 25, 30 and 30 and the marker Order Editor made
+from it (`notchnum/`: piece codes 3 + 8 x 5, the marker's stream the same at S / M / L, all nine notches), and on the corpus: the 134 notches of the bundled pieces that carry the number (numbers 5 and 6) and the real styles of the scratch area (numbers 1, 2 and 4) - none against the rule.
+So a marker cannot say which notch a code 5 is: notch 5 (a slit in `NEED-P-NOTCH`), 6-7 (V) or 8-15 (slit) all read 5. The nest spec gives each shape notch the CANDIDATE numbers (`notches[].numbers`, `number` when there is one)
+and warns when the candidates differ in shape; the piece objects, when bundled, hold the number. The old "numbers above 15 (a nibble)" worry is moot: no number above 5 is stored in a marker at all.
 
 ## 19. Block / Buffer tables (object type 3) [V]
 

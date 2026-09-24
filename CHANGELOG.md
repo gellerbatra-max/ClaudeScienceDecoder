@@ -1,5 +1,14 @@
 # Changelog
 
+## v4.27 (2026-09-25) - the byte map's residue; the engine's fabric weight and cost
+
+`__version__` stays `'3.0'`. New fixtures `engine/ZZN-B5.GT_mark`, `engine/INTOMED_HEADERS.json` (the header of the engine's OUTPUT file of five jobs). Plan item 7, offline.
+
+* **Result** (MARKER_FORMAT_SPEC.md section 33): two float32 of section 1 (@596 weight, @600 cost) are the engine's `FABRIC_WEIGHT` / `FABRIC_COST` (49 of 49 jobs); the byte map counts unidentified ZERO bytes outside the parsed sections as their own class (`zero`), so `unknown` = unidentified non-zero bytes: **105-371 per fixture marker, 0.21%** (933-1,182 before); @472 / @476 identified.
+  What remains is listed in section 33: none of it matters to a nester.
+* **Code.** `mk['fabric_weight_cost']`, the byte map (`zero` class, @472 / @476, @596-603). **Checks.** `selftest` (new section; the byte-map row reports `zero`): five made markers against the engine's output header, the unmade marker 0 / 0, a patch, the residue of `ZZN-B5`.
+* **Open:** section 5 (annotation table copy), the doubles @404 / @438, the words @484 / @488 / @494 / @522 / @530 / @588, the units of the cost / weight.
+
 ## v4.26 (2026-09-25) - the engine's outline: the buffer rectangle on every rule size, the collar's quarter turn
 
 `__version__` stays `'3.0'`. New fixtures `engine/ZZPV-M`, `engine/ZZPS-M` (marker + `frommed.mra`: buffers of 0.0059 and 0.0118 in). Plan items 12 (outline) and 10 (collar frame), offline.

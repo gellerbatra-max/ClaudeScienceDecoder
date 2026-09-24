@@ -1,0 +1,45 @@
+{
+ "what": "the header of the engine's own OUTPUT file (intomed.mra) of five AccuNest jobs: the marker length it laid and the fabric cost / weight it wrote back into the marker (v4.27)",
+ "jobs": {
+  "ZZQ-W": {
+   "job": 266,
+   "MARKER_LENGTH": 2028714,
+   "TARGET_LENGTH": 1897674,
+   "FABRIC_COST": 0.914402,
+   "FABRIC_WEIGHT": 0.029493,
+   "marker_file": "twoply/ZZQ-W-MADE.GT_mark"
+  },
+  "ZZQ-A": {
+   "job": 269,
+   "MARKER_LENGTH": 1993652,
+   "TARGET_LENGTH": 1897674,
+   "FABRIC_COST": 0.914402,
+   "FABRIC_WEIGHT": 0.029493,
+   "marker_file": "twoply/ZZQ-A-MADE.GT_mark"
+  },
+  "ZZR-S": {
+   "job": 272,
+   "MARKER_LENGTH": 3318351,
+   "TARGET_LENGTH": 3117049,
+   "FABRIC_COST": 0.914402,
+   "FABRIC_WEIGHT": 0.029493,
+   "marker_file": "flipcount/ZZR-S-MADE.GT_mark"
+  },
+  "ZZR-45": {
+   "job": 275,
+   "MARKER_LENGTH": 1131125,
+   "TARGET_LENGTH": 903214,
+   "FABRIC_COST": 0.914402,
+   "FABRIC_WEIGHT": 0.029493,
+   "marker_file": "deg45/ZZR-45-MADE.GT_mark"
+  },
+  "ZZN-B5": {
+   "job": 74,
+   "MARKER_LENGTH": 2790041,
+   "TARGET_LENGTH": 2870156,
+   "FABRIC_COST": 11.43,
+   "FABRIC_WEIGHT": 5.8987,
+   "marker_file": "engine/ZZN-B5.GT_mark"
+  }
+ }
+}

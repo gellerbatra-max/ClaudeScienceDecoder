@@ -1,5 +1,27 @@
 # Changelog
 
+## v4.14 (2026-09-24) - the marker carries its own tables: notch table, lay-limits rows, each piece's row
+
+`__version__` stays `'3.0'`. Request: "you can pick and continue" (the open byte-map items; `ALL GMT WAY` left out).
+
+* **Section 3 is the marker's copy of its Notch Parameter Table, section 4 its Lay Limits rows** (MARKER_FORMAT_SPEC.md section 22). Section 3 = the table payload byte for byte (144 / 160 / 304 / 464 bytes; 40 markers equal their bundled table, 6 more
+  without the optional zero dword); 16 scratch-set markers (`ZZ-AM-*`, `ZZN-*` ...) hold only its first 60 bytes (five older-layout triplets, no types). Section 4 = 12 bytes per row `u16 flip code, f64 tilt, b2, b3` in table order, no names: 76 of 76 rows of
+  the 56 markers that bundle their table agree. The real markers' copies equal the real tables (1825D / 5683D / 2591A: `NEED-P-NOTCH`, 15 numbers). The earlier readings of sections 3 and 4 ("repeating `00 00 b0 07` groups", "a 12-byte
+  label-config header") are retracted.
+* **The piece row's words:** w1 = the piece's Lay Limits row (0 = DEFAULT), w3 = its buffer rule, w4 = its flip code, w5-w6 = its tilt (i32 x 10000): 287 of 287 piece rows of 56 markers. So the marker states, per piece, the rotation rule it was made with.
+* **Code.** `parse_marker` -> `mk['snapshots']` (`notch`, `lay_limits` {rows, piece_rows, ok}, `warnings`) and per piece `lay_row`, `buffer_rule`, `flip_code`, `tilt_raw`; `accumark_notch.parse_notch_snapshot`,
+  `accumark_laylimits.parse_snapshot_rows`; `mk['header_counts']` (section 1's four counters at 480 / 482 / 490 / 492 = records, slots, models, size rows, 73 of 73); two `check_marker` rows plus the counters row; `marker_warnings` names a section 3 / 4 that
+  does not read or a piece row that disagrees with its row; `marker_coverage` counts sections 3, 4 and the piece words as identified (`PARSED_SECTIONS` now 3, 4, 6, 11-15, 21, 30): unknown bytes per marker 1,111-1,753 -> 1,031-1,280 (1.06%).
+* **The nest spec reads a marker-only ZIP's own rules.** `lay_limits.source` / `notch_table.source` = `marker snapshot` when the table is not bundled or supplied (rows are named by the category of the pieces that point at them; spread and bundling stay
+  `null` - not in the marker): the real 1825D / 5683D / 418T / 2591A specs no longer say `assumed` - locked one-way, every piece fixed in its preset direction; 2591A's notch numbers 1 and 5 are read from its own copy; the older 60-byte copy gives notches
+  1-5 (no types) and a warning. With a table as well, the two are compared (`lay_limits.snapshot`, `notch_table.snapshot`, a warning): the real `NEED- TWO WAY` reads `MWS` now, 1825D / 5683D hold `WS` (the table was edited after them?). The five old expectations
+  of `selftest` that a marker-only ZIP reads nothing were rewritten to this.
+* **`ALL GMT WAY`** (2591A, not in any file): its DEFAULT row is `MWS`, flip 1, no tilt - from the marker. The Bundling still rests on the presets. The table itself stays welcome.
+* **Checks.** `selftest` (new section): 67 markers, the notch copy vs the bundled table (40 equal, 16 older), the 76 rows, the 287 piece rows, byte patches (a wrong flip code or row index on a piece row, a changed option byte in section 4, a broken notch count each show; sections 3 and 4
+  leave no unknown byte), the real markers' rows and notch tables through the nest spec; `dataset_test` 36/36; robustness 730/730.
+* **Open.** Whether the marker's one tilt is the cw or the ccw limit (equal on every corpus row), and its unit for a table in degrees; section 1's other counters (no sum of records, slots, streams or areas matches); the Annotation copy (section 5); the trailer's
+  state words and stamps.
+
 ## v4.13 (2026-09-24) - laid-marker rotations: how a placed slot says which way the piece lies
 
 `__version__` stays `'3.0'`. New fixtures `rotation/` (five made markers + three plots + `GROUND_TRUTH.json`). Request: "laid-marker rotations (the 90 degree collar case)".

@@ -156,16 +156,28 @@ def _notch_block(mk, shapes, bundled, supplied, k):
         if table is not None and name and table.get('name') != name: warns.append(f"the supplied notch table is '{table.get('name')}', the marker names '{name}'")
     if table is None and name and name in bundled: table = bundled[name]; source = 'bundled'
     used = sorted({n['type'] for s_ in shapes.values() for n in s_.get('notches', [])})
+    snap = (mk.get('snapshots') or {}).get('notch')
+    snap = None if snap is None or 'error' in snap else snap
+    snap_note = None
+    if snap is not None and table is not None:       # the table AND the marker's own copy of it: do they still agree?
+        same = [(n['number'], n['perimeter_in'], n['inside_in'], n['depth_in']) for n in table['notches']] == [(n['number'], n['perimeter_in'], n['inside_in'], n['depth_in']) for n in snap['notches']]
+        snap_note = dict(agrees=(same if snap['vintage'] == 'table' else None), vintage=snap['vintage'])
+        if snap['vintage'] == 'table' and not same: warns.append(f"the marker's own copy of its notch table differs from '{table.get('name')}': the table changed after the marker was made")
+    if table is None and snap is not None:
+        table = dict(name=name, notches=snap['notches']); source = 'marker snapshot'
     if table is None:
         why = 'the marker does not name one' if not name else f"the marker names '{name}' but the ZIP does not bundle it: export the marker with its components, or pass --notch-table"
         if used: warns.append('notch sizes are not read: ' + why)
         return dict(name=name, source='named only' if name else 'none', parsed=False, numbers_used=used, basis='not read: ' + why), warns
     ent = {str(n['number']): dict(kind=n['type_name'], label=n['label'], perimeter_width=n['perimeter_in'] * k, inside_width=n['inside_in'] * k, depth=n['depth_in'] * k, direction=n['direction'])
            for n in table['notches']}
-    undefined = [u for u in used if str(u) not in ent]
+    legacy = source == 'marker snapshot' and snap['vintage'] != 'table'
+    undefined = [u for u in used if str(u) not in ent and not (legacy and u > 5)]
     if undefined: warns.append(f"notch number(s) {undefined} are not defined in the notch table '{table.get('name')}'")
-    return dict(name=table.get('name') or name, source=source, parsed=True, entries=ent, numbers_used=used, undefined_numbers=undefined,
-                basis='decoded: every field verified against the Notch editor; lengths in the spec units, depth > 0 cuts into the piece, depth < 0 sticks out'), warns
+    if legacy: warns.append('the notch table is not bundled and the marker holds only the older 60-byte copy: notches 1-5 (perimeter, inside, depth) are read, no type codes and nothing beyond notch 5')
+    basis = 'decoded: every field verified against the Notch editor; lengths in the spec units, depth > 0 cuts into the piece, depth < 0 sticks out'
+    if source == 'marker snapshot': basis = "read from the marker's own copy of its notch table (section 3, as of the day it was made); " + basis
+    return dict(name=table.get('name') or name, source=source, parsed=True, entries=ent, numbers_used=used, undefined_numbers=undefined, snapshot=snap_note, basis=basis), warns
 
 
 def _bundle_pattern(inv, table):
@@ -186,6 +198,35 @@ def _bundle_pattern(inv, table):
     return ('contradicted' if bad else 'consistent'), f"{len(pairs)} neighbouring bundle pairs, {bad} against '{table['bundling_label']}'"
 
 
+def _snapshot_table(mk, name):
+    """v4.14: the marker's own copy of its Lay Limits rows (section 4) as a table: rows named by the category of the pieces that point at them (the piece row's `lay_row`), row 0 = DEFAULT.
+    The table's own names, spread and bundling are not in the marker (None). -> table dict, or None when the marker has no readable copy."""
+    sn = (mk.get('snapshots') or {}).get('lay_limits')
+    if not sn or 'error' in sn or not sn['rows']: return None
+    cats = {}
+    for p in mk['pieces']:
+        if 'lay_row' in p: cats.setdefault(p['lay_row'], set()).add((p.get('fabric') or '').strip())
+    rows = []
+    for i, r in enumerate(sn['rows']):
+        c = cats.get(i, set()); r = dict(r)
+        r['category'] = 'DEFAULT' if i == 0 else (next(iter(c)) if len(c) == 1 and next(iter(c)) else '(row %d)' % i)
+        rows.append(r)
+    return dict(name=name, vintage='marker snapshot', spread=None, spread_name=None, spread_label=None, bundling=None, bundling_name=None, bundling_label=None, per_model=None, comment='', rows=rows,
+                properties={}, warnings=[], basis="decoded: the marker's own copy of its Lay Limits rows (section 4, as of the day it was made): options, flip code and tilt limit verified against the bundled table on 76 rows; "
+                "no names, spread or bundling in the marker")
+
+
+def _snapshot_diff(snap, table):
+    """Where the marker's copy of the rows and the table differ (the table was edited after the marker was made) -> [str]."""
+    d = []
+    if len(snap['rows']) != len(table['rows']): return ['%d rows in the marker, %d in the table' % (len(snap['rows']), len(table['rows']))]
+    for i, (s, t) in enumerate(zip(snap['rows'], table['rows'])):
+        if s['options'] != t['options']: d.append("row %d (%s): options '%s' in the marker, '%s' in the table" % (i, t['category'], s['options'], t['options']))
+        if s['flip_code'] != t['flip_code']: d.append('row %d (%s): flip code %d in the marker, %d in the table' % (i, t['category'], s['flip_code'], t['flip_code']))
+        if abs((s['tilt_cw'] or 0) - (t['tilt_cw'] or 0)) > 1e-4 and abs((s['tilt_cw'] or 0) - (t['tilt_ccw'] or 0)) > 1e-4: d.append('row %d (%s): tilt %.4f in the marker, %.4f / %.4f in the table' % (i, t['category'], s['tilt_cw'] or 0, t['tilt_cw'] or 0, t['tilt_ccw'] or 0))
+    return d
+
+
 def _lay_limits_block(mk, inv, bundled, supplied, orders=None):
     """-> (block, table, warnings): what is known about the marker's Lay Limits table. The marker names it (section 2); the order the marker was made
     from names it too (the order object bundled in the ZIP, when there is one) and the two must agree."""
@@ -198,18 +239,23 @@ def _lay_limits_block(mk, inv, bundled, supplied, orders=None):
         table = supplied.get(name) or (next(iter(supplied.values())) if len(supplied) == 1 else None); source = 'supplied' if table is not None else None
         if table is not None and name and table.get('name') != name: warns.append(f"the supplied lay-limits table is '{table.get('name')}', the marker names '{name}'")
     if table is None and name and name in bundled: table = bundled[name]; source = 'bundled'
+    snap_tab = _snapshot_table(mk, name)
+    snap_diffs = _snapshot_diff(snap_tab, table) if (snap_tab is not None and table is not None) else None
+    if snap_diffs: warns.append("the marker's own copy of its Lay Limits rows differs from '%s': %s (the table changed after the marker was made)" % (table.get('name') or name, '; '.join(snap_diffs)))
+    if table is None and snap_tab is not None: table = snap_tab; source = 'marker snapshot'
     if table is None:
         why = ('the marker does not name one' if not name else f"the marker names '{name}' but the ZIP does not bundle it: export the marker with its components, or pass --lay-limits")
         if name and any(n == name for n, _ in bundled.get('_errors', [])): why = f"the bundled table '{name}' could not be read: " + next(m for n, m in bundled['_errors'] if n == name)
         warns.append('rotation is assumed, not read: ' + why)
         return dict(name=name, source='named only' if name else 'none', parsed=False, basis='assumed: ' + why, order_names=ot and ot['lay_limits']), None, warns
-    state, detail = _bundle_pattern(inv, table)
+    state, detail = _bundle_pattern(inv, table) if table.get('bundling') is not None else ('inconclusive', "the marker does not carry the table's Bundling")
     if state == 'contradicted': warns.append(f"the stored bundle directions contradict the lay-limits table '{table.get('name')}': {detail}")
     warns += table['warnings']
     block = dict(name=table.get('name') or name, source=source, parsed=True, vintage=table['vintage'], basis=table['basis'], spread=table['spread_name'],
                  spread_label=table['spread_label'], bundling=table['bundling_name'], bundling_label=table['bundling_label'], per_model=table['per_model'],
                  comment=table['comment'].strip(), bundle_pattern=dict(state=state, detail=detail), order_names=ot and ot['lay_limits'],
-                 rows=[dict(category=r['category'], **ll.orientation_rules(r)) for r in table['rows']])
+                 rows=[dict(category=r['category'], **ll.orientation_rules(r)) for r in table['rows']],
+                 snapshot=(None if snap_tab is None else (dict(agrees=None, differences=[]) if source == 'marker snapshot' else dict(agrees=not snap_diffs, differences=snap_diffs or []))))
     return block, table, warns
 
 
@@ -269,7 +315,7 @@ def build_nest_spec(path, units='cm', marker=None, lay_limits=None, notch_table=
         if ltab is not None:
             for shp in shapes.values():
                 row, how = ll.row_for(ltab, shp['category'])
-                if row is not None: shp['rotation'] = dict(ll.orientation_rules(row), row=row['category'], matched=how, basis=f"verified: table {lay['name']}, row {row['category']}")
+                if row is not None: shp['rotation'] = dict(ll.orientation_rules(row), row=row['category'], matched=how, basis=f"verified: table {lay['name']}, row {row['category']}" + (" (the marker's own copy of the row)" if lay['source'] == 'marker snapshot' else ''))
         # mirrored outlines, written out
         for shp in shapes.values():
             if shp['complete'] and any(g['mirrored'] and g['shape'] == shp['id'] for g in groups.values()):
@@ -314,7 +360,7 @@ def _default_rotation(lay, table):
     """The spec-wide rotation rule: the DEFAULT row of the table when it is known (every category without a row of its own), else the assumption."""
     if table is not None:
         row, _ = ll.row_for(table, 'DEFAULT')
-        if row is not None: return dict(ll.orientation_rules(row), row=row['category'], basis=f"verified: table {lay['name']}, row {row['category']} (shapes of other categories carry their own `rotation`)")
+        if row is not None: return dict(ll.orientation_rules(row), row=row['category'], basis=f"verified: table {lay['name']}, row {row['category']}" + (" (the marker's own copy of the row)" if lay['source'] == 'marker snapshot' else '') + " (shapes of other categories carry their own `rotation`)")
     return dict(allowed_deg=[0, 180], basis='assumed: ' + ('the Lay Limits table is not bundled with the marker' if not lay.get('parsed') else 'the table has no DEFAULT row')
                 + '; grain runs along x in every shape')
 
@@ -366,6 +412,7 @@ def validate_nest_spec(spec, _private=None, marker_checks=(), inv=None, k=1.0):
     lay = spec.get('lay_limits') or {}
     if lay.get('parsed'):
         rows.append(('lay-limits table read to its last byte (structure closes exactly)', True, f"{lay['name']} [{lay['vintage']}], {len(lay['rows'])} row(s), {lay['source']}"))
+        if (lay.get('snapshot') or {}).get('agrees') is not None: rows.append(("the marker's own copy of the Lay Limits rows equals the table (informational: a table edited after the marker was made differs)", True, 'equal' if lay['snapshot']['agrees'] else '; '.join(lay['snapshot']['differences'])))
         rows.append(('every shape has a rotation rule from its category row (or DEFAULT)', all(s.get('rotation') for s in spec['shapes'] if s.get('complete')), ''))
         bp = lay['bundle_pattern']
         rows.append(('stored bundle directions agree with the table\'s Bundling (informational when there is nothing to compare)', bp['state'] != 'contradicted', f"{bp['state']}: {bp['detail']}"))

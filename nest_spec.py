@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """nest_spec - turn an AccuMark marker export ZIP into a NESTING JOB a nesting engine can read.
 
-    python nest_spec.py "<marker>.zip" --json job.json [--dxf pieces.dxf] [--svg pieces.svg] [--units cm|mm|in] [--marker NAME] [--lay-limits NAME.GT_lay|other.zip]
+    python nest_spec.py "<marker>.zip" --json job.json [--dxf pieces.dxf] [--svg pieces.svg] [--units cm|mm|in] [--marker NAME] [--lay-limits NAME.GT_lay|other.zip] [--notch-table NAME.GT_notpt|other.zip]
 
 One command from the ZIP AccuMark exports (marker-only is enough: no piece objects needed, no AccuMark installed) to
 
@@ -25,10 +25,14 @@ Allowed rotations live in the LAY LIMITS table, not in the marker. The marker on
 bundles it (export with components) or when you pass it: `--lay-limits NAME.GT_lay` (straight from a storage area's `lay` folder) or another ZIP that
 holds it. Then every shape carries the rotation / flip rules of its category's row and `rotation.basis` says `verified`; otherwise the spec says
 `[0, 180]` with basis `assumed` and names the missing table.
+
+Notches carry a NOTCH NUMBER (`type`): the row of the Notch Parameter Table the marker names. With that table (bundled, or `--notch-table`) the spec's `notch_table.entries`
+gives every defined notch its kind (slit, T, V, castle, ...), perimeter width, inside width and depth (positive = cut into the piece, negative = sticking out).
 """
 import json, math, os, sys
 import accumark_marker as am
 import accumark_laylimits as ll
+import accumark_notch as nt
 
 FORMAT = 'accumark-nest-spec/1'
 UNITS = {'in': 1.0, 'cm': 2.54, 'mm': 25.4}
@@ -76,6 +80,35 @@ def _supplied_tables(lay_limits):
     return out
 
 
+def _supplied_notch(notch_table):
+    out = {}
+    for x in ([] if notch_table is None else (notch_table if isinstance(notch_table, (list, tuple)) else [notch_table])):
+        if isinstance(x, dict) and 'by_number' in x: out[x.get('name') or 'supplied'] = x
+        elif str(x).lower().endswith('.zip'): out.update({k: v for k, v in nt.load_zip_notch_tables(x).items() if k != '_errors'})
+        else: t = nt.parse_notch_table(x); out[t['name']] = t
+    return out
+
+
+def _notch_block(mk, shapes, bundled, supplied, k):
+    """-> (block, warnings): the Notch Parameter Table the marker names, with the geometry of every notch number."""
+    name = (mk.get('tables') or {}).get('notch_table') or None; table = None; source = None; warns = []
+    if supplied:
+        table = supplied.get(name) or (next(iter(supplied.values())) if len(supplied) == 1 else None); source = 'supplied' if table is not None else None
+        if table is not None and name and table.get('name') != name: warns.append(f"the supplied notch table is '{table.get('name')}', the marker names '{name}'")
+    if table is None and name and name in bundled: table = bundled[name]; source = 'bundled'
+    used = sorted({n['type'] for s_ in shapes.values() for n in s_.get('notches', [])})
+    if table is None:
+        why = 'the marker does not name one' if not name else f"the marker names '{name}' but the ZIP does not bundle it: export the marker with its components, or pass --notch-table"
+        if used: warns.append('notch sizes are not read: ' + why)
+        return dict(name=name, source='named only' if name else 'none', parsed=False, numbers_used=used, basis='not read: ' + why), warns
+    ent = {str(n['number']): dict(kind=n['type_name'], label=n['label'], perimeter_width=n['perimeter_in'] * k, inside_width=n['inside_in'] * k, depth=n['depth_in'] * k, direction=n['direction'])
+           for n in table['notches']}
+    undefined = [u for u in used if str(u) not in ent]
+    if undefined: warns.append(f"notch number(s) {undefined} are not defined in the notch table '{table.get('name')}'")
+    return dict(name=table.get('name') or name, source=source, parsed=True, entries=ent, numbers_used=used, undefined_numbers=undefined,
+                basis='decoded: every field verified against the Notch editor; lengths in the spec units, depth > 0 cuts into the piece, depth < 0 sticks out'), warns
+
+
 def _bundle_pattern(inv, table):
     """Does the 180-degree pattern the marker stores on its unplaced bundles follow the table's Bundling? -> ('consistent' | 'contradicted' | 'inconclusive', detail).
     All bundles same direction: consecutive bundles equal; alternate bundles: they differ; same size same direction: equal within a (model, size), different
@@ -121,7 +154,7 @@ def _lay_limits_block(mk, inv, bundled, supplied, orders=None):
     return block, table, warns
 
 
-def build_nest_spec(path, units='cm', marker=None, lay_limits=None):
+def build_nest_spec(path, units='cm', marker=None, lay_limits=None, notch_table=None):
     """-> [spec] one per marker of the ZIP (or the one named `marker`). `lay_limits`: a Lay Limits table the ZIP does not bundle (see `_supplied_tables`)."""
     if units not in UNITS: raise ValueError('units must be one of %s' % sorted(UNITS))
     k = UNITS[units]; res = am.place_marker(path); out = []
@@ -129,7 +162,9 @@ def build_nest_spec(path, units='cm', marker=None, lay_limits=None):
         listing = am.list_zip(path); bundled = ll.load_zip_tables(path, listing)
         orders = {o['name']: am.parse_order_tables(o) for o in listing.get('order', [])}
     except Exception: bundled = {}; orders = {}
-    supplied = _supplied_tables(lay_limits)
+    supplied = _supplied_tables(lay_limits); supplied_n = _supplied_notch(notch_table)
+    try: bundled_n = nt.load_zip_notch_tables(path, listing)
+    except Exception: bundled_n = {}
     for mkr in res['markers']:
         mk = mkr['marker']
         if marker and mk['name'] != marker: continue
@@ -167,6 +202,7 @@ def build_nest_spec(path, units='cm', marker=None, lay_limits=None):
             g = groups.setdefault((rec_i, mirrored), dict(shape=shapes[rec_i]['id'], quantity=0, mirrored=mirrored, slots=[], bundles=set(), preset_rot180=0, presets=[]))
             g['quantity'] += 1; g['slots'].append(e['ordinal']); g['bundles'].add(e['bundle']); g['preset_rot180'] += int(e['preset']['rot180']); g['presets'].append(int(e['preset']['rot180']))
         lay, ltab, lwarn = _lay_limits_block(mk, inv, bundled, supplied, orders)
+        notch, nwarn = _notch_block(mk, shapes, bundled_n, supplied_n, k)
         if ltab is not None:
             for shp in shapes.values():
                 row, how = ll.row_for(ltab, shp['category'])
@@ -199,12 +235,12 @@ def build_nest_spec(path, units='cm', marker=None, lay_limits=None):
             fabric=dict(width=W, fabric_types=inv['marker']['fabric_types'],
                         block_buffer_in=[list(b) for b in inv['marker']['block_buffers']] or None,
                         min_length=(area_all / W) if W else None, min_length_note='total piece area / width: a 100%-efficient lay; not a nesting result'),
-            rotation=dflt, lay_limits=lay,
+            rotation=dflt, lay_limits=lay, notch_table=notch,
             order_lines=[dict(model=o['model'], size=o['size'], quantity=o['quantity']) for o in inv['order_lines']],
             shapes=[_public(s) for s in sorted(shapes.values(), key=lambda s: s['id'])], demand=demand,
             totals=dict(instances=n_inst, shapes=len(shapes), mirrored_instances=sum(d['quantity'] for d in demand if d['mirrored']),
                         area=area_all, already_placed=inv['totals']['placed'], outline_source=inv['marker'].get('outline_source')),
-            warnings=[w for w in inv['warnings'] if not w.startswith('no piece objects')] + lwarn + problems)
+            warnings=[w for w in inv['warnings'] if not w.startswith('no piece objects')] + lwarn + nwarn + problems)
         spec['checks'] = [dict(name=n, ok=bool(ok), detail=d) for n, ok, d in validate_nest_spec(spec, _private=shapes, marker_checks=mkr['checks'], inv=inv, k=k)]
         spec['complete'] = all(c['ok'] for c in spec['checks']) and not problems
         out.append(spec)
@@ -254,6 +290,10 @@ def validate_nest_spec(spec, _private=None, marker_checks=(), inv=None, k=1.0):
     bad = [s['id'] for s in comp if s.get('outline_mirrored') and abs(abs(_area([tuple(p) for p in s['outline_mirrored']])) - s['area']) > 1e-6 * max(1, s['area'])]
     rows.append(('mirrored outlines have the same area', not bad, ''))
     rows.append(('the marker\'s own checks all pass', all(ok for _, ok, _ in marker_checks), ''))
+    nb = spec.get('notch_table') or {}
+    if nb.get('parsed'):
+        rows.append(('notch table read to its last byte (structure closes exactly)', True, f"{nb['name']}, {len(nb['entries'])} defined notch(es), {nb['source']}"))
+        rows.append(('every notch number the shapes use is defined in the table (informational)', True, 'all defined' if not nb['undefined_numbers'] else f"undefined: {nb['undefined_numbers']}"))
     lay = spec.get('lay_limits') or {}
     if lay.get('parsed'):
         rows.append(('lay-limits table read to its last byte (structure closes exactly)', True, f"{lay['name']} [{lay['vintage']}], {len(lay['rows'])} row(s), {lay['source']}"))
@@ -356,6 +396,9 @@ def report(spec):
         lines.append(f"lay limits {lay['name']} ({lay['source']}): {lay['spread_label']}, {lay['bundling_label']}; DEFAULT row allows rotation {rt['allowed_deg']} deg, flip about X {'yes' if rt['flip_x_axis_allowed'] else 'no'}"
                      + (f"; {len(lay['rows']) - 1} category row(s)" if len(lay['rows']) > 1 else ''))
     else: lines.append(f"lay limits {lay.get('name') or '-'}: {lay['basis']}")
+    nb = spec['notch_table']
+    if nb.get('parsed'): lines.append(f"notch table {nb['name']} ({nb['source']}): notch number(s) used {nb['numbers_used']} = " + ', '.join(f"{n} {nb['entries'][str(n)]['label']} depth {nb['entries'][str(n)]['depth']:+.2f}" for n in nb['numbers_used'] if str(n) in nb['entries']))
+    else: lines.append(f"notch table {nb.get('name') or '-'}: {nb['basis']}")
     lines += [f"   {'ok ' if x['ok'] else 'BAD'} {x['name']}" + (f": {x['detail']}" if x['detail'] else '') for x in c]
     lines += ['   note: ' + w for w in spec['warnings']]
     lines.append('NEST SPEC COMPLETE' if spec['complete'] else 'NEST SPEC INCOMPLETE - see the BAD lines')
@@ -368,7 +411,7 @@ def main(argv):
         return argv[argv.index(name) + 1] if name in argv else default
     if not a:
         print(__doc__); return 2
-    units = opt('--units', 'cm'); specs = build_nest_spec(a[0], units, opt('--marker'), opt('--lay-limits'))
+    units = opt('--units', 'cm'); specs = build_nest_spec(a[0], units, opt('--marker'), opt('--lay-limits'), opt('--notch-table'))
     if not specs: print('no such marker in the ZIP'); return 1
     for sp in specs:
         tag = '' if len(specs) == 1 else '.' + ''.join(ch if ch.isalnum() else '_' for ch in sp['source']['marker'])

@@ -1,7 +1,7 @@
 # Nest spec - an unplaced AccuMark marker as a nesting job
 
 ```
-python nest_spec.py "<marker>.zip" --json job.json [--dxf pieces.dxf] [--svg pieces.svg] [--units cm|mm|in] [--marker NAME] [--lay-limits NAME.GT_lay|other.zip]
+python nest_spec.py "<marker>.zip" --json job.json [--dxf pieces.dxf] [--svg pieces.svg] [--units cm|mm|in] [--marker NAME] [--lay-limits NAME.GT_lay|other.zip] [--notch-table NAME.GT_notpt|other.zip]
 python accumark_marker.py "<marker>.zip" --nest-spec --json job.json          # same thing
 ```
 
@@ -37,7 +37,7 @@ A **shape** has its own frame: the lower-left corner of its cut outline's boundi
 | `seam_outline` | the stitch line, only when the marker holds one (a fold piece with seam allowance); it lies inside the cut line |
 | `area`, `declared_area`, `perimeter`, `width`, `height` | `area` is computed from `outline`; `declared_area` is the number AccuMark stored - they agree to 1% (checked) |
 | `stored_box`, `padding` | the box AccuMark stored for the piece and `stored_box - (width, height)`. `0` on every marker-only ZIP of the corpus; about 0.12 x 0.19 in on the July CP 150 markers (block buffer + curve allowance): **reserve that much around the piece** |
-| `notches[]` | `x`, `y`, `type` (5 and 1 seen) |
+| `notches[]` | `x`, `y`, `type` = the NOTCH NUMBER: the row of the Notch Parameter Table the marker names - what it looks like is in `notch_table.entries[type]` |
 | `grain` | `points` (2), `angle_deg` 0, `basis`: `stream` (read from a stream layout verified against piece objects) or `inferred` (the older 1825D / 5683D / 2591A / 418T vintage: a horizontal 2-point segment, 89 of 89 records - not a verified read) |
 | `rotation` | only when the Lay Limits table is known: the row of this shape's `category` (else DEFAULT): `row`, `matched` (`category` / `default`), `allowed_deg`, `flip_x_axis_allowed`, ... and `basis` |
 | `internal_lines[]`, `drills[]` | internal lines / cutouts and drill holes, `[]` when none (or when the layout is the older, undecoded one) |
@@ -49,7 +49,7 @@ A **shape** has its own frame: the lower-left corner of its cut outline's boundi
 
 * **Positions.** An unlaid marker has none; the 0 / 180 degree pattern in it is a pre-set lay pattern.
 * **Whether the fabric is one-way, unless the Lay Limits table is available.** The marker names its table but does not contain it (`lay_limits.source: named only`); the real production table `ALL GMT WAY` (2591A) is not in the corpus, so that spec says `assumed`. `NEED- TWO WAY` (1825D, 5683D) and `G-LAYLIMITS` (418T) are read from the user's support files: pass `all support files.zip` (or the `.GT_lay` files) as `--lay-limits` and those specs are `verified` (`MWS`: locked, every piece fixed in its preset direction).
-* **Notch and drill sizes** (only positions and, for notches, a type code), **piece and fabric rules of a nester** (buffers between pieces beyond `padding`, matching, splicing).
+* **Notch sizes, unless the Notch Parameter Table is available** (`notch_table.source: named only`: the spec has the notch number but not its shape), **drill sizes**, **piece and fabric rules of a nester** (buffers between pieces beyond `padding`, matching, splicing).
 * For the older marker vintage: internal lines, drills, seam lines and the mirror line of a fold piece (see `MARKER_FORMAT_SPEC.md`), and a *verified* grain (it is `inferred`).
 
 ## Checks (each a row in `checks`)
@@ -89,3 +89,13 @@ does not care can ignore them. `buffer_rule` is the number of the row in the Blo
 * `initial_orientation` (the flip code, e.g. 7 = rotate 90 CW) is not stored in the marker's slots (the SLEEVE pieces of `ZZC-M1`, flip code 7, carry only the 0 / 180 preset bits), so the spec cannot say
   whether the piece outlines already include it; treat it as information.
 * Older-vintage tables (the user's real `L`, `SINGLE-PLY`) are read for a single row only; their tilt and skew bytes are zero in every sample and reported only when they are.
+
+## Notches - what a notch number is
+
+A notch on a shape is a NOTCH NUMBER (`type`). The marker names a Notch Parameter Table (`source.tables.notch_table`, e.g. `P-NOTCH`, `NEED-P-NOTCH`); the table is bundled when the ZIP is exported with its
+components, or passed as `--notch-table NAME.GT_notpt` (from the storage area's `notpt` folder) or another ZIP. Then `notch_table.entries` maps each defined number to
+`kind` (`slit`, `t`, `v`, `castle`, `left_check`, `right_check`, `u`, `no_lift_slit`), `perimeter_width` (the gap at the piece edge), `inside_width` (the width at the bottom) and `depth`
+(spec units; positive = cut into the piece, negative = sticking out, `direction` says which), and `numbers_used` lists the numbers the shapes carry. Without the table `notch_table.source` is
+`named only` and a warning says so. Verified in the Notch editor and against a real plot (every notch spike of a nested `ZZC-M1` is exactly the table's 0.40 cm depth); `MARKER_FORMAT_SPEC.md` section 18.
+The real 1825D / 5683D notch (number 1) is a 0.50 cm slit; the default `P-NOTCH` defines notch 1 as a 0.40 cm slit; `V-NOTCH-ALL CUSTOMERS` (2303) is 25 external Vs, perimeter 0.30 cm, depth -0.20 cm.
+The DXF / SVG piece libraries still draw a notch as a point.

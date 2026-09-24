@@ -1779,6 +1779,95 @@ if os.path.isfile(z25):
 print(f"   {'ok ' if not bad else 'FAIL'} real support files: L / G-LAYLIMITS / NEED- TWO WAY / ONE GMT ONW WAY read as the editor showed (two AccuMark 9 layouts with a short trailer); the real 1825D / 5683D / 418T markers follow them on {sum(real_pairs.values())} bundle pairs; 2591A's presets predict ALL GMT WAY = All Bundle, Same Direction  {'; '.join(bad[:3])}")
 if bad: fails.append('real support tables: ' + '; '.join(bad[:5]))
 
+print('-- notch tables (v4.10, see accumark_notch): what a notch number means')
+# A notch on a piece and in a marker's stream is a NOTCH NUMBER; the Notch Parameter Table gives it a type, widths and a depth. Read here against what the Notch editor
+# SHOWED (notch/GROUND_TRUTH.json: ZZNT-X1 / X2 were made by editing one row of every type in the editor and diffed), against the real tables, and against the geometry
+# of a real AccuNest plot (every notch spike is exactly the table's depth).
+import accumark_notch as nt
+bad = []; NDIR = os.path.join(HERE, 'notch'); ngt = _json.load(open(os.path.join(NDIR, 'GROUND_TRUTH.json')))
+IN = 2.54
+def _rowcm(n): return (n['label'], round(n['perimeter_in'] * IN, 2), round(n['inside_in'] * IN, 2), round(n['depth_in'] * IN, 2))
+for nm, want in ngt['tables'].items():
+    if 'file' not in want: continue
+    t = nt.parse_notch_table(os.path.join(NDIR, want['file']))
+    if t['count'] != want['count'] or t['trailer'] is not True: bad.append(f'{nm}: count {t["count"]} trailer {t["trailer"]}')
+    got = {str(n['number']): _rowcm(n) for n in t['notches']}
+    for k, w in want['rows'].items():
+        if w[0] == 'None':
+            if k in got: bad.append(f'{nm} {k}: defined but the editor showed None')
+        elif got.get(k) != (w[0], w[1], w[2], w[3]): bad.append(f'{nm} {k}: {got.get(k)} vs {tuple(w)}')
+    for k in range(9, 26):
+        if got.get(str(k)) != ('V', 0.30, 0.0, -0.20): bad.append(f'{nm} {k}: {got.get(str(k))}'); break
+real_n = {k: nt.parse_notch_table(bytes.fromhex(v), name=k) for k, v in ngt['real_tables_hex'].items()}
+ne = real_n['NEED-P-NOTCH']
+if ne['count'] != 15 or [(n['number'], n['type_name'], round(n['perimeter_in'] * IN, 2), round(n['depth_in'] * IN, 2)) for n in ne['notches']] != [(i, 'slit', 0.0, 0.5) if i not in (6, 7) else (i, 'v', 0.5, -0.25) for i in range(1, 16)]: bad.append('NEED-P-NOTCH does not read as the editor showed it')
+dp = real_n['P-NOTCH']
+if [(n['number'], n['type_name'], round(n['depth_in'] * IN, 2)) for n in dp['notches']] != [(1, 'slit', 0.4)] or dp['count'] != 5: bad.append('default P-NOTCH')
+# every notch-table object of the corpus reads; the tables of the 2303 style and the scratch P-NOTCH read as the editor showed them
+n_nt = 0; seen_nt = {}
+for zp in zips_all:
+    try: tt = nt.load_zip_notch_tables(zp)
+    except Exception: continue
+    n_nt += len([k for k in tt if k != '_errors']); bad += [f'{os.path.basename(zp)}: {a_}: {b_}' for a_, b_ in tt.get('_errors', [])]
+    for k, v in tt.items():
+        if k != '_errors': seen_nt[(k, v['count'])] = v
+vn = seen_nt.get(('V-NOTCH-ALL CUSTOMERS', 25))
+if not vn or [(n['type_name'], round(n['perimeter_in'] * IN, 2), round(n['depth_in'] * IN, 2)) for n in vn['notches']] != [('v', 0.30, -0.20)] * 25: bad.append('V-NOTCH-ALL CUSTOMERS')
+sp6 = seen_nt.get(('P-NOTCH', 6))
+if not sp6 or [(n['number'], n['type_name'], round(n['depth_in'] * IN, 2)) for n in sp6['notches']] != [(1, 'slit', 0.4), (6, 'slit', 0.0)]: bad.append('scratch P-NOTCH (6 records)')
+if n_nt < 10: bad.append(f'only {n_nt} notch objects read')
+print(f"   {'ok ' if not bad else 'FAIL'} notch tables: X1 / X2 (one row of every type, 8 type codes) + NEED-P-NOTCH + default P-NOTCH read as the editor showed; {n_nt} bundled notch objects in the corpus all read  {'; '.join(bad[:3])}")
+if bad: fails.append('notch tables: ' + '; '.join(bad[:5]))
+
+# the parser refuses what it does not understand
+bad = []
+raw_n = open(os.path.join(NDIR, 'ZZNT-X2.GT_notpt'), 'rb').read()[0x90:]
+def _nrefused(b):
+    try: nt.parse_notch_table(bytes(b)); return False
+    except nt.NotchTableError: return True
+muts = {'one byte short': raw_n[:-1], 'a non-zero trailer': raw_n[:-4] + b'\x01\x00\x00\x00', 'a stray extra dword': raw_n + b'\x00\x00\x00\x00', 'too short': raw_n[:30]}
+b_ = bytearray(raw_n); struct.pack_into('<I', b_, 64 + 16 * 3, 9); muts['unknown type code 9'] = b_
+b_ = bytearray(raw_n); struct.pack_into('<i', b_, 8, 1234); muts['first-five triplet differs from record 1'] = b_
+b_ = bytearray(raw_n); struct.pack_into('<I', b_, 60, 100); muts['100 records'] = b_
+b_ = bytearray(raw_n); struct.pack_into('<I', b_, 60, 24); muts['count says 24, bytes hold 25'] = b_
+for what, b in muts.items():
+    if not _nrefused(b): bad.append(f'{what}: read as if valid')
+if _nrefused(raw_n): bad.append('a clean table was refused')
+print(f"   {'ok ' if not bad else 'FAIL'} the notch parser refuses {len(muts)} broken variants of a table  {'; '.join(bad[:3])}")
+if bad: fails.append('notch mutations: ' + '; '.join(bad[:5]))
+
+# the markers: a shape's notch code is a number of the table its marker names; the real plot's notch spikes are the table's depth
+bad = []; used = Counter(); checked = 0
+zsupp = os.path.join(HERE, 'markers', '418T-SHAPESHIFTER-UNLAID')
+for zp in [os.path.join(HERE, rel_) for rel_, _ in NEST_ZIPS] + [zsa]:
+    try: sps = ns.build_nest_spec(zp, notch_table=[real_n['NEED-P-NOTCH']] if ('1825D' in zp or '5683D' in zp) else None)
+    except Exception: continue
+    for sp_ in sps:
+        nb = sp_['notch_table']
+        if nb['parsed']:
+            checked += 1
+            for u_ in nb['numbers_used']: used[u_] += 1
+            if _json.loads(_json.dumps(sp_)) != sp_: bad.append(f"{sp_['source']['marker']}: not JSON round-trippable")
+            if nb['undefined_numbers'] and 'CLAUDE-D4' not in sp_['source']['marker']: bad.append(f"{sp_['source']['marker']}: undefined notch numbers {nb['undefined_numbers']}")
+if checked < 30 or set(used) - {1}: bad.append(f'{checked} specs with a notch table; numbers used {dict(used)}')
+# real production: the 1825D notch (number 1) is a 0.50 cm slit; without the table the spec names it but reads nothing
+z18 = os.path.join(HERE, 'markers', '1825D-SS21-UNLAID', '1825D-BD 180 SS21.zip')
+s18 = next((sp_['notch_table'] for sp_ in ns.build_nest_spec(z18, notch_table=real_n['NEED-P-NOTCH']) if sp_['notch_table']['numbers_used']), {'parsed': False}); s18n = ns.build_nest_spec(z18)[0]['notch_table']
+if not s18['parsed'] or s18['name'] != 'NEED-P-NOTCH' or s18['numbers_used'] != [1] or abs(s18['entries']['1']['depth'] - 0.5) > 0.005 or s18['entries']['1']['kind'] != 'slit' or s18['entries']['6']['direction'] != 'external': bad.append(f'1825D notch block {s18}')
+if s18n['parsed'] or s18n['source'] != 'named only' or s18n['name'] != 'NEED-P-NOTCH': bad.append('1825D marker-only notch block')
+# geometry: the plotted marker of ZZC-M1 (default P-NOTCH: notch 1 = slit, depth 0.40 cm) has 30 notch spikes, every one 0.40 cm long
+fxp = os.path.join(LLDIR, 'EXPERIMENT_W_ALTERNATE.DXF')
+if os.path.isfile(fxp):
+    spk = Counter()
+    for pl_ in ns.read_dxf_polylines(fxp).get('T001L001', []):
+        for i_ in range(len(pl_) - 2):
+            a_, b_2, c_ = pl_[i_], pl_[i_ + 1], pl_[i_ + 2]
+            if math.dist(a_, c_) < 0.02 and math.dist(a_, b_2) > 0.05: spk[round(math.dist(a_, b_2), 2)] += 1
+    dz = nt.load_zip_notch_tables(zsa).get('P-NOTCH')
+    if dict(spk) != {0.4: 30} or not dz or round(dz['by_number'][1]['depth_in'] * IN, 2) != 0.4: bad.append(f'plot spikes {dict(spk)} vs the table')
+print(f"   {'ok ' if not bad else 'FAIL'} notch numbers: {checked} corpus specs read their table (numbers used {dict(used)}); 1825D notch 1 = slit 0.50 cm (NEED-P-NOTCH); the real plot's 30 notch spikes are all 0.40 cm = the table's depth  {'; '.join(bad[:3])}")
+if bad: fails.append('notch numbers: ' + '; '.join(bad[:5]))
+
 print('-- marker byte map (v4.4, see accumark_marker.marker_coverage)')
 # Every byte owned by a section a parser reads must be classified (identified /
 # raw / zero_pad / opaque) - only the envelope, the header scalars, sections 2-5,

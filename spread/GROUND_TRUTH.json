@@ -1,0 +1,40 @@
+{
+ "what": "v4.16: section 1 of a marker holds the SPREAD of its Lay Limits table as a u16 at file offset 520 (section 1 + 216): 0 single ply, 1 face to face, 2 book fold, 3 tubular. And the piece-row flag at +14 is the M (major piece) option of the piece's Lay Limits row.",
+ "how": "Order Editor (own process) on a copy of the order CLAUDE-D4 (model CLAUDE-CURVE: three sizes, its one piece is a CUT X02 pair): only the Lay Limits table and the marker name changed, then Process. Read straight from storage (accumark_marker.read_storage_marker).",
+ "markers": {
+  "ZZSP-CT": {
+   "lay_limits": "L",
+   "table_spread": 0,
+   "spread_word": 0,
+   "slots": 6,
+   "row": "DEFAULT '' flip 1",
+   "note": "single ply: the pair is two slots (plain + mirrored 0x80), presets alternate per size"
+  },
+  "ZZSP-F2": {
+   "lay_limits": "ZZLL-F2F-R5",
+   "table_spread": 1,
+   "spread_word": 1,
+   "slots": 3,
+   "row": "DEFAULT MW rule 5",
+   "note": "face to face: the pair is ONE slot; slot word 0x0040 = the M option"
+  },
+  "ZZSP-BK": {
+   "lay_limits": "ZZLL-BOOKFOLD",
+   "table_spread": 2,
+   "spread_word": 2,
+   "slots": 3,
+   "row": "DEFAULT '' (no M)",
+   "note": "book fold: one slot per size, no 0x0040"
+  },
+  "ZZSP-TB": {
+   "lay_limits": "ZZLL-X2",
+   "table_spread": 3,
+   "spread_word": 3,
+   "slots": 3,
+   "row": "DEFAULT F (no M) rule 17 tilt 1.5",
+   "note": "tubular: one slot per size; presets 0 / 0x2000 / 0 (same size same direction)"
+  }
+ },
+ "tables": "laylimits/ZZLL-F2F-R5.GT_lay, ZZLL-BOOKFOLD.GT_lay, ZZLL-X2.GT_lay; the real L in laylimits/REAL_SUPPORT_TABLES.json",
+ "corpus": "56 of 56 markers that bundle their Lay Limits table: table spread == the word (54 single ply, 2 face to face); 341 of 341 piece rows on 78 markers: flag @+14 == the M option of the row."
+}

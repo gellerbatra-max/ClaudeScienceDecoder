@@ -50,7 +50,7 @@ Six f64 are read [V]: **@396 fabric width**, **@412 length** (0 on a never-laid
 marker), **@422 total area**, **@430 placed area** (= sum of the PLACED slots'
 declared areas = W x L x U / 100; 0 when nothing is placed) [V: 18/18], **@446
 utilisation %**, **@454** (a perimeter sum). The section is about 370 bytes and
-only these 48 are read (v4.14: plus four u16 counters at 480 / 482 / 490 / 492 = records, slots, models, size rows - section 22). Of the 316 unread byte positions `marker_coverage`
+only these 48 are read (v4.14: plus four u16 counters at 480 / 482 / 490 / 492 = records, slots, models, size rows - section 22; v4.16: the u16 at 520 = the lay table's SPREAD - section 23). Of the 316 unread byte positions `marker_coverage`
 attributes to it, 271 are byte-identical across all 18 markers and 45 vary; their
 meaning is open [?].
 
@@ -301,7 +301,7 @@ stream that verifies against its record's area + perimeter is identified up to i
 | how a 45-degree (or any other non-tilt) placement is stored | AccuNest's Rotation-45 override placed nothing off the 90-degree grid; tilts are the float at +38 (section 20) | Easy Marking: `Rotate 45 CW` on an asymmetric piece, stored, read back |
 | the exact area a BLOCK adds to a placed slot's declared area (the BACK piece, block rule 2 = 1 cm: slot 657.64 vs record 613.54 = +7.2%, the offset polygon says 652.9; ZZC-M3, ZZN-F1, the ZZROT set) | only the block rule's piece differs; buffer rules (FRONT, COLLAR, SLEEVE) leave the area equal | a block of another size on a simple rectangle |
 | ~~notch numbers above 15 in a marker stream~~ CLOSED v4.15: a marker keeps only the code min(number, 5) (section 18); what a corner notch (a notch on a turn point) stores - its line-table twin holds code 0 - is not separately proved | 11 numbers (1-7, 12, 16, 25, 30) on PDS / imported pieces and their markers | a notch on a corner point with a number above 5 |
-| what order / model option sets the piece-row flag @+14 (= the slot 0x0040 bit); the pre-set rot180 alternation | 0x0040 == flag @+14 on 9,122 / 9,122 slots [V]; alternates per bundle | live: flip one order / model option per run (DATASET_DESIGN F5) |
+| ~~what sets the piece-row flag @+14 (= the slot 0x0040 bit)~~ CLOSED v4.16: the M (major piece) option of the piece's Lay Limits row (section 23); the pre-set rot180 alternation follows the table's Bundling [V] | 0x0040 == flag @+14 on 9,122 / 9,122 slots [V]; flag == the row's M on 341 / 341 piece rows | live: flip one order / model option per run (DATASET_DESIGN F5) |
 | the extra byte's high nibble; the stream trailer's last 3 bytes | kinds and notch types classify 7,455 / 7,455 piece points | correlate with the piece's f2 / rule fields and the size |
 | what C counts in @88 = head count + C; slot @52/@54/@60 | @88 = p1 + C(piece) [V], C tracks internal-line points; stored-empty and laid-then-returned read 0 alike | pieces with 0 / 1 / 2 / 4 internal lines built in Pattern Design (DATASET_DESIGN F6); @52/@54/@60 vs piece/size |
 | the y excess on July CP 150 unplaced slots (up to 0.0786 in, one-sided) | x fits the CP 150 table but the table does not drive home | live: known notch / curve |
@@ -311,7 +311,7 @@ stream that verifies against its record's area + perimeter is identified up to i
 | section 2 (its 211 constant bytes before the name strings), section 5 (the Annotation copy's packed format), section 1's other counters (+168, +172, +180, +182, +184, +190 ... : equal no sum tried), the trailer's filler and state words | constant across 73 markers / varying with content | twin diffs; Annotation editor ground truth |
 | the two tilt directions of a Lay Limits row (a marker keeps ONE value: cw or ccw?) and its unit when the table is in DEGREES | the only corpus rows with a tilt have cw == ccw == 0.1574 | a table with cw 1 / ccw 2 (or degrees), a marker made from it, read section 4 |
 | Lay Limits: the low three bits of a row's byte b2 (0x07), the eight constant bytes `01 00 .. 00` before the skew array and `7f 00 ..` after it, what the Group column does; older-vintage multi-row tables and their tilt / skew bytes | b2 & 0x07 varies (06 / 05 / 01 / 00) with no visible setting behind it; every other byte is constant across 15 tables | a fresh table from File > New, one row edited at a time; a real multi-row table of the older vintage |
-| `ALL GMT WAY` (2591A): the marker's own row says DEFAULT = MWS, flip 1 (section 22); its Bundling rests on the presets (all 0 over 7 sizes = All Bundle, Same Direction) - unconfirmed until the file arrives | 2591A marker, bundle presets | the table from Explorer `OldFiles` |
+| `ALL GMT WAY` (2591A): the marker's own row says DEFAULT = MWS, flip 1, single ply (sections 22 / 23); its Bundling is INFERRED from the presets (all 0 over 7 sizes = All Bundle, Same Direction) - unconfirmed until the file arrives | 2591A marker, bundle presets | the table from Explorer `OldFiles` |
 | does a row that allows 180 let the nest engine turn a piece against its preset? | presets follow the table's Bundling on 29 markers [V]; a `W` piece keeps its preset in a real AccuNest nest [V, `laylimits/EXPERIMENT_W_ALTERNATE.md`]; no piece in that small draft nest was turned | live: a blank-options table with alternating bundles, a marker with room to gain, read the placed orientations |
 
 Marker-only ZIPs (no piece objects) can never yield outlines, and an unplaced marker
@@ -487,7 +487,7 @@ No names, no buffer rule, no spread, no bundling: those stay in the table (and o
 **The piece row's words** (section 10, `<24 flag bytes>` = 12 u16 words w0..w11): **w1 = the piece's row of the Lay Limits table** (0 = DEFAULT: the row its category names, else DEFAULT), **w2 = the block-buffer entry**
 (0-based, 0xffff none; as before), **w3 = the buffer rule number** of that row, **w4 = its flip code**, **w5, w6 = its tilt limit as an i32 x 10000** (the CUFF's 0.1574 in = 1574), w7 = the 0x0040 flag (section 10), w9 = the
 fabric-type count; w0, w8, w10, w11 are 0. 287 of 287 piece rows on the 56 markers with a bundled table agree with the table (row index by category name, buffer rule, flip code). So **the marker states, per piece, the rotation
-rule it was made with** - row options (section 4) at index w1 - without the table. What it does not carry: the row's NAME (a nester matches a piece to its row by the piece's row index, not by category), the table's spread and its Bundling.
+rule it was made with** - row options (section 4) at index w1 - without the table. What it does not carry: the row's NAME (a nester matches a piece to its row by the piece's row index, not by category) and the table's Bundling; the table's SPREAD is section 1's word at 520 (v4.16, section 23).
 
 **Consequences.** (1) `nest_spec` of a marker-only ZIP reads its own rotation rules and notch sizes (`lay_limits.source` / `notch_table.source` = `marker snapshot`): the four real production markers no longer say `assumed` -
 1825D / 5683D / 418T / 2591A are locked one-way (W + S), every piece fixed in its preset direction; the notch numbers of 2591A (1 and 5) are read from its own copy. With a bundled or supplied table as well, the two are
@@ -500,3 +500,19 @@ more counters, two constants of 3750 / 1476, a value 257 / 0, a 33280-33304 word
 
 **Not decoded.** Section 5's first part is the Annotation table's copy in a packed form (row names without padding, then the field codes) - the format of the table itself is open, it does not affect a nest; section 2's 211 constant
 bytes before the name strings and the trailer's filler (`00 01 01 02 00` repeated 27 times) are identical on every marker.
+
+## 23. The spread and the major piece [V, v4.16]
+
+**Spread.** Section 1's u16 at file offset 520 (section 1 + 216) is the SPREAD of the Lay Limits table the marker was made with: **0 single ply, 1 face to face, 2 book fold, 3 tubular** (the table's own byte, section 16).
+Proved on four markers made from ONE order (`CLAUDE-D4`: model `CLAUDE-CURVE`, three sizes, one piece that is a `CUT X02` pair) with only the table changed (`spread/`: `L`, `ZZLL-F2F-R5`, `ZZLL-BOOKFOLD`, `ZZLL-X2` = words
+0, 1, 2, 3) and on the 56 corpus markers that bundle their table (54 single ply, 2 face to face; 56 of 56 equal the table's spread). What a spread does to the marker: a **single-ply** marker lays the pair as TWO slots (the plain piece
+and its mirror, slot bit `0x0080`; 6 slots for 3 sizes), each **two-ply spread lays it as ONE slot** (3 slots): the second ply is the mirror under it. The header's slot counters (+178, +180), the size-table rows and the
+order copy (quantity 1 per size) do not change - only the slot table halves. So a nester of a two-ply marker lays each listed shape once and cuts it twice (`fabric.plies` = 2 in the nest spec).
+
+**The major piece.** The piece-row flag @+14 (section 10; the slot bit `0x0040` is a copy of it) is the **M option** of the piece's Lay Limits row ("major piece": AccuNest places these first): 341 of 341 piece rows on the 78
+markers whose row could be read (`M` in the row's options <=> flag 1). This closes the old question what sets it - no order or model option, and not the engine that wrote the marker (the earlier readings "0 in one marker, 1 in
+another for the same pieces" were two different tables).
+
+**Bundling.** Still not stored, but the presets it produces are: `nest_spec` lists the modes the stored bundle directions do not contradict (`lay_limits.bundling_candidates`) and, when one is left, states it as INFERRED
+(`bundling_basis`): the real 2591A (all 7 sizes preset 0) -> All Bundle, Same Direction - the still-missing `ALL GMT WAY`; the fixtures `ZZLL-F2F-R5` and `ZZLL-BOOKFOLD` (all bundles preset alike) infer their own table's
+mode correctly, and `ZZLL-X2` (tubular, same size same direction) leaves {alternate, same size} of which its own is one.

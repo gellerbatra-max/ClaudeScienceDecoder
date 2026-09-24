@@ -1699,9 +1699,9 @@ if os.path.isfile(zb) and os.path.isfile(zo):
     if not all(s_.get('rotation') and s_['rotation']['matched'] == 'default' for s_ in sb['shapes']): bad.append('bundled: shapes without a rotation rule')
     if not sb['complete']: bad.append('bundled spec incomplete')
     so = ns.build_nest_spec(zo)[0]
-    # v4.14: a marker-only ZIP reads its own rows (section 4) - the same rules the bundled table gives, the table named 'L', no spread / bundling (the marker does not carry them)
+    # v4.14: a marker-only ZIP reads its own rows (section 4) - the same rules the bundled table gives, the table named 'L', its spread from section 1 (v4.16; the bundling is not carried)
     if so['lay_limits']['source'] != 'marker snapshot' or so['lay_limits']['name'] != 'L' or not so['rotation']['basis'].startswith('verified') or not all(s_.get('rotation') for s_ in so['shapes']): bad.append(f"marker-only: {so['lay_limits']['source']}")
-    if so['rotation']['allowed_deg'] != sb['rotation']['allowed_deg'] or so['lay_limits']['rows'][0]['options'] != sb['lay_limits']['rows'][0]['options'] or so['lay_limits']['spread'] is not None or not so['complete']: bad.append('marker-only: the marker snapshot does not give the bundled table\'s rule / incomplete')
+    if so['rotation']['allowed_deg'] != sb['rotation']['allowed_deg'] or so['lay_limits']['rows'][0]['options'] != sb['lay_limits']['rows'][0]['options'] or so['lay_limits']['spread'] != sb['lay_limits']['spread'] or not so['complete']: bad.append('marker-only: the marker snapshot does not give the bundled table\'s rule / incomplete')
     if [d['allowed_deg_by_slot'] for d in so['demand']] != [d['allowed_deg_by_slot'] for d in sb['demand']]: bad.append('marker-only demand rotations differ from the bundled-table spec')
     # supplying the table (a storage-area file) turns a marker-only spec into a verified one, per category
     sz = ns.build_nest_spec(zo, lay_limits=os.path.join(LLDIR, 'ZZLL-1.GT_lay'))[0]
@@ -2306,6 +2306,54 @@ if os.path.isfile(z25_):
         if 5 in sp_['notch_table']['numbers_used'] and not any('stand for several different notches' in w_ for w_ in sp_['warnings']): bad.append('2591A uses code 5 (numbers 5-15: slit and V) without the warning')
 print(f"   {'ok ' if not bad else 'FAIL'} PDS piece with numbers {want_nums}: codes {dict(Counter(psum['notch_types']))}, its marker stores the same codes at S / M / L; {n_seen} corpus notches all code == min(number, 5); a broken number is noticed; the spec lists the candidate numbers of code 5  {'; '.join(bad[:3])}")
 if bad: fails.append('notch numbers: ' + '; '.join(bad[:5]))
+
+print('-- spread and major piece (v4.16, MARKER_FORMAT_SPEC.md section 23): the marker states its lay table\'s spread; the piece flag @+14 is the row\'s M option')
+# Section 1 word +216 (file offset 520) = the Lay Limits table's SPREAD (0 single ply, 1 face to face, 2 book fold, 3 tubular); a two-ply spread lays a CUT X02 pair as ONE slot. The piece-row flag @+14 (= the slot
+# bit 0x0040) is the M (major piece) option of the piece's row. Proved on four markers made from ONE order with one table of each spread (spread/), and on every marker of the corpus that bundles its table.
+SPD = os.path.join(HERE, 'spread'); sgt = _json.load(open(os.path.join(SPD, 'GROUND_TRUTH.json'))); bad = []
+tabs_sp = {'ZZSP-CT': real_t['L'], 'ZZSP-F2': _ll.parse_lay_limits(os.path.join(LLDIR, 'ZZLL-F2F-R5.GT_lay')), 'ZZSP-BK': _ll.parse_lay_limits(os.path.join(LLDIR, 'ZZLL-BOOKFOLD.GT_lay')), 'ZZSP-TB': _ll.parse_lay_limits(os.path.join(LLDIR, 'ZZLL-X2.GT_lay'))}
+for nm_, want_ in sgt['markers'].items():
+    fp_ = os.path.join(SPD, nm_ + '.GT_mark'); mk_ = am.parse_marker(am.read_storage_marker(fp_)); sp_ = ns.build_nest_spec(fp_)[0]; tb_ = tabs_sp[nm_]
+    if mk_['spread'] != want_['spread_word'] or mk_['spread'] != tb_['spread'] or len(mk_['slots']) != want_['slots']: bad.append(f"{nm_}: spread word {mk_['spread']}, table {tb_['spread']}, {len(mk_['slots'])} slots")
+    if sp_['lay_limits']['source'] != 'marker snapshot' or sp_['lay_limits']['spread'] != tb_['spread_name'] or sp_['fabric']['plies'] != (1 if tb_['spread'] == 0 else 2) or not sp_['complete']: bad.append(f"{nm_}: nest spec spread {sp_['lay_limits']['spread']} plies {sp_['fabric']['plies']}")
+    cd_ = sp_['lay_limits']['bundling_candidates']
+    if tb_['bundling'] not in cd_ or (len(cd_) == 1 and sp_['lay_limits']['bundling'] != tb_['bundling_name']): bad.append(f"{nm_}: table Bundling {tb_['bundling']} not among the marker's candidates {cd_}")
+    if not all(ok_ for n_, ok_, dd_ in am.check_marker(mk_) if n_.startswith(('section 1 spread', 'piece row flag @+14 == the M'))): bad.append(f'{nm_}: a spread / major check row failed')
+# a broken word or flag is noticed
+d0_ = bytearray(am.read_storage_marker(os.path.join(SPD, 'ZZSP-F2.GT_mark'))); struct.pack_into('<H', d0_, 520, 7); m7_ = am.parse_marker(bytes(d0_))
+if not any('spread word is 7' in w_ for w_ in am.marker_warnings(m7_)) or all(ok_ for n_, ok_, dd_ in am.check_marker(m7_) if n_.startswith('section 1 spread')): bad.append('a spread word of 7 was not noticed')
+m0_ = am.parse_marker(bytes(am.read_storage_marker(os.path.join(SPD, 'ZZSP-F2.GT_mark')))); r0_ = m0_['pieces'][0]['offset'] - 28
+d1_ = bytearray(am.read_storage_marker(os.path.join(SPD, 'ZZSP-F2.GT_mark'))); struct.pack_into('<H', d1_, r0_ + 18, 0); m1_ = am.parse_marker(bytes(d1_))
+if all(ok_ for n_, ok_, dd_ in am.check_marker(m1_) if n_.startswith('piece row flag @+14 == the M')): bad.append('a major flag against its row\'s M option was not noticed')
+# the corpus
+n_mk = n_ok = n_pr = n_prok = 0; seen_s = set(); cnt_sp = Counter()
+for zp_ in zips_all:
+    try: L_ = am.list_zip(zp_)
+    except Exception: continue
+    tl_ = {}
+    for o_ in L_.get('lay_limits', []):
+        try: tl_[o_['name']] = _ll.parse_lay_limits(o_)
+        except _ll.LayLimitsError: pass
+    for o_ in L_.get('marker', []):
+        k_ = (o_['name'], len(o_['data']), hash(o_['data']))
+        if k_ in seen_s: continue
+        seen_s.add(k_)
+        try: mk_ = am.parse_marker(o_['data'])
+        except Exception: continue
+        rows_ = (mk_['snapshots']['lay_limits'] or {}).get('rows')
+        for p_ in mk_['pieces']:
+            if rows_ and 'major' in p_ and p_['lay_row'] < len(rows_): n_pr += 1; n_prok += (p_['major'] == ('M' in rows_[p_['lay_row']]['options']))
+        t_ = tl_.get(mk_['tables'].get('lay_limits'))
+        if t_: n_mk += 1; n_ok += (t_['spread'] == mk_['spread']); cnt_sp[t_['spread']] += 1
+if n_mk < 50 or n_ok != n_mk or n_pr < 300 or n_prok != n_pr or set(cnt_sp) != {0, 1}: bad.append(f'corpus: spread {n_ok}/{n_mk} {dict(cnt_sp)}, major {n_prok}/{n_pr}')
+# the real production markers: their Bundling from the stored presets
+z25b_ = os.path.join(HERE, 'markers', '2591A-SS21-UNLAID', '2591A-BD 157 AW SS21.zip'); z18b_ = os.path.join(HERE, 'markers', '1825D-SS21-UNLAID', '1825D-BD 180 SS21.zip')
+if os.path.isfile(z25b_) and os.path.isfile(z18b_):
+    l25_ = ns.build_nest_spec(z25b_)[0]['lay_limits']; l18_ = ns.build_nest_spec(z18b_)[0]['lay_limits']
+    if l25_['bundling'] != 'all_bundle_same_direction' or not l25_['bundling_basis'].startswith('inferred') or l25_['spread'] != 'single_ply': bad.append(f"2591A: {l25_['spread']} {l25_['bundling']} {l25_['bundling_basis']}")
+    if 1 not in l18_['bundling_candidates'] or 0 in l18_['bundling_candidates'] or l18_['spread'] != 'single_ply': bad.append(f"1825D: NEED- TWO WAY is Alternate Bundle, candidates {l18_['bundling_candidates']}")
+print(f"   {'ok ' if not bad else 'FAIL'} four markers from one order, one table of each spread (word {[m_['spread_word'] for m_ in sgt['markers'].values()]}, slots {[m_['slots'] for m_ in sgt['markers'].values()]}, plies 1 / 2 / 2 / 2); {n_ok} of {n_mk} corpus markers carry their table's spread; {n_prok} of {n_pr} piece flags @+14 = the row's M; ALL GMT WAY's Bundling inferred (All Bundle, Same Direction)  {'; '.join(bad[:3])}")
+if bad: fails.append('spread / major: ' + '; '.join(bad[:5]))
 
 print('-- marker byte map (v4.4, see accumark_marker.marker_coverage)')
 # Every byte owned by a section a parser reads must be classified (identified /

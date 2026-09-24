@@ -1,5 +1,21 @@
 # Changelog
 
+## v4.16 (2026-09-24) - the spread is in the marker; the piece flag @+14 is the major-piece option
+
+`__version__` stays `'3.0'`. New fixtures `spread/` (four markers + `GROUND_TRUTH.json`). Request: "go to the next step" (open items: what the marker keeps of the lay table; the piece-row flag @+14).
+
+* **Spread** (MARKER_FORMAT_SPEC.md section 23). Section 1's u16 at file offset 520 = the Lay Limits table's spread: 0 single ply, 1 face to face, 2 book fold, 3 tubular. Found by correlation (56 of 56 corpus markers that bundle their table) and proved live: my own Order Editor,
+  one order (`CLAUDE-D4` copy), only the Lay Limits table and the marker name changed - `L` / `ZZLL-F2F-R5` / `ZZLL-BOOKFOLD` / `ZZLL-X2` gave 0 / 1 / 2 / 3. A single-ply marker lays a `CUT X02` pair as two slots (plain + mirror, 6 for 3 sizes), every two-ply
+  spread as ONE slot (3): the header counters, size rows and order copy stay. Corrects v4.14's "the marker does not carry the table's spread".
+* **The piece-row flag @+14 = the M (major piece) option of the row** (= the slot bit `0x0040`): 341 of 341 piece rows on 78 markers. Closes the open item "what sets it" (not the engine, not an order or model option - two different tables).
+* **Bundling inferred.** Not stored, but the presets are: `lay_limits.bundling_candidates` (the modes the stored directions do not contradict) and, when one is left, `bundling` with `bundling_basis: inferred`. The real 2591A -> All Bundle, Same Direction (the missing
+  `ALL GMT WAY`); the F2F and book-fold fixtures infer their own table's mode, the tubular one leaves {alternate, same size} which contains its own.
+* **Code.** `mk['spread']`, `piece['major']`; check rows (spread is 0-3, flag == the row's M); a `marker_warnings` entry for another value; coverage marks the word; nest spec: `lay_limits.spread` from the marker when no table is bundled (a difference against a
+  bundled table is reported like a changed row), `fabric.spread` and `fabric.plies` (1 single ply, 2 for the other three).
+* **Checks.** `selftest` (new section): the four markers (word, table, slots, plies, Bundling candidates), the corpus (spread 56 of 56, major 306 of 306), byte patches (a spread word of 7, a major flag against its row's M), the real 2591A / 1825D Bundling; `dataset_test` 36/36; robustness 730/730.
+* **Scratch state:** my `ZZSP-*` orders / markers removed; my Order Editor closed; the user's windows untouched.
+* **Open.** How a two-ply marker treats a piece with a cut quantity of 1 (only the `CUT X02` pair was measured); whether the tubular spread lays anything differently from face to face (the marker shows no other difference); what the other section-1 counters are.
+
 ## v4.15 (2026-09-24) - notch numbers: a piece keeps the number, a marker only min(number, 5)
 
 `__version__` stays `'3.0'`. New fixtures `notchnum/` (a PDS-made piece and its marker + `GROUND_TRUTH.json`). Request: "proceed to the next step" (open item: notch numbers above 15).
@@ -27,7 +43,7 @@
 * **Code.** `parse_marker` -> `mk['snapshots']` (`notch`, `lay_limits` {rows, piece_rows, ok}, `warnings`) and per piece `lay_row`, `buffer_rule`, `flip_code`, `tilt_raw`; `accumark_notch.parse_notch_snapshot`,
   `accumark_laylimits.parse_snapshot_rows`; `mk['header_counts']` (section 1's four counters at 480 / 482 / 490 / 492 = records, slots, models, size rows, 73 of 73); two `check_marker` rows plus the counters row; `marker_warnings` names a section 3 / 4 that
   does not read or a piece row that disagrees with its row; `marker_coverage` counts sections 3, 4 and the piece words as identified (`PARSED_SECTIONS` now 3, 4, 6, 11-15, 21, 30): unknown bytes per marker 1,111-1,753 -> 1,031-1,280 (1.06%).
-* **The nest spec reads a marker-only ZIP's own rules.** `lay_limits.source` / `notch_table.source` = `marker snapshot` when the table is not bundled or supplied (rows are named by the category of the pieces that point at them; spread and bundling stay
+* **The nest spec reads a marker-only ZIP's own rules.** `lay_limits.source` / `notch_table.source` = `marker snapshot` (v4.16: with the spread from section 1 + 216 and the Bundling inferred from the presets) when the table is not bundled or supplied (rows are named by the category of the pieces that point at them; spread and bundling stay
   `null` - not in the marker): the real 1825D / 5683D / 418T / 2591A specs no longer say `assumed` - locked one-way, every piece fixed in its preset direction; 2591A's notch numbers 1 and 5 are read from its own copy; the older 60-byte copy gives notches
   1-5 (no types) and a warning. With a table as well, the two are compared (`lay_limits.snapshot`, `notch_table.snapshot`, a warning): the real `NEED- TWO WAY` reads `MWS` now, 1825D / 5683D hold `WS` (the table was edited after them?). The five old expectations
   of `selftest` that a marker-only ZIP reads nothing were rewritten to this.

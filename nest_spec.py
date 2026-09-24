@@ -213,7 +213,8 @@ def _bundle_pattern(inv, table):
 
 def _snapshot_table(mk, name):
     """v4.14: the marker's own copy of its Lay Limits rows (section 4) as a table: rows named by the category of the pieces that point at them (the piece row's `lay_row`), row 0 = DEFAULT.
-    The table's own names, spread and bundling are not in the marker (None). -> table dict, or None when the marker has no readable copy."""
+    The spread is section 1's word (v4.16); the table's own names and its bundling are not in the marker (None; the bundling is inferred from the stored presets in _lay_limits_block).
+    -> table dict, or None when the marker has no readable copy."""
     sn = (mk.get('snapshots') or {}).get('lay_limits')
     if not sn or 'error' in sn or not sn['rows']: return None
     cats = {}
@@ -224,15 +225,18 @@ def _snapshot_table(mk, name):
         c = cats.get(i, set()); r = dict(r)
         r['category'] = 'DEFAULT' if i == 0 else (next(iter(c)) if len(c) == 1 and next(iter(c)) else '(row %d)' % i)
         rows.append(r)
-    return dict(name=name, vintage='marker snapshot', spread=None, spread_name=None, spread_label=None, bundling=None, bundling_name=None, bundling_label=None, per_model=None, comment='', rows=rows,
+    sp_ = mk.get('spread')
+    return dict(name=name, vintage='marker snapshot', spread=sp_, spread_name=ll.SPREADS.get(sp_), spread_label=ll.SPREAD_LABELS.get(sp_), bundling=None, bundling_name=None, bundling_label=None, per_model=None, comment='', rows=rows,
                 properties={}, warnings=[], basis="decoded: the marker's own copy of its Lay Limits rows (section 4, as of the day it was made): options, flip code and tilt limit verified against the bundled table on 76 rows; "
-                "no names, spread or bundling in the marker")
+                "the spread is section 1's word (+216); no names or bundling in the marker")
 
 
 def _snapshot_diff(snap, table):
     """Where the marker's copy of the rows and the table differ (the table was edited after the marker was made) -> [str]."""
     d = []
-    if len(snap['rows']) != len(table['rows']): return ['%d rows in the marker, %d in the table' % (len(snap['rows']), len(table['rows']))]
+    if snap.get('spread') is not None and table.get('spread') is not None and snap['spread'] != table['spread']:
+        d.append("spread '%s' in the marker, '%s' in the table" % (snap['spread_label'], table.get('spread_label')))
+    if len(snap['rows']) != len(table['rows']): return d + ['%d rows in the marker, %d in the table' % (len(snap['rows']), len(table['rows']))]
     for i, (s, t) in enumerate(zip(snap['rows'], table['rows'])):
         if s['options'] != t['options']: d.append("row %d (%s): options '%s' in the marker, '%s' in the table" % (i, t['category'], s['options'], t['options']))
         if s['flip_code'] != t['flip_code']: d.append('row %d (%s): flip code %d in the marker, %d in the table' % (i, t['category'], s['flip_code'], t['flip_code']))
@@ -256,6 +260,14 @@ def _lay_limits_block(mk, inv, bundled, supplied, orders=None):
     snap_diffs = _snapshot_diff(snap_tab, table) if (snap_tab is not None and table is not None) else None
     if snap_diffs: warns.append("the marker's own copy of its Lay Limits rows differs from '%s': %s (the table changed after the marker was made)" % (table.get('name') or name, '; '.join(snap_diffs)))
     if table is None and snap_tab is not None: table = snap_tab; source = 'marker snapshot'
+    bund_basis = 'the table' if source in ('bundled', 'supplied') else None
+    if source == 'marker snapshot':
+        # v4.16: the bundling is not in the marker, but the presets it stores rule modes out: the ones the stored directions do not contradict are the candidates; one left = inferred
+        cands = [m for m in (0, 1, 2) if _bundle_pattern(inv, dict(bundling=m, bundling_label=ll.BUNDLING_LABELS[m]))[0] != 'contradicted']
+        table = dict(table, bundling_candidates=cands)
+        if len(cands) == 1:
+            table.update(bundling=cands[0], bundling_name=ll.BUNDLINGS[cands[0]], bundling_label=ll.BUNDLING_LABELS[cands[0]]); bund_basis = 'inferred: the only Bundling the stored bundle directions do not contradict'
+        else: bund_basis = 'not carried by the marker; candidates ' + ', '.join(ll.BUNDLING_LABELS[m] for m in cands)
     if table is None:
         why = ('the marker does not name one' if not name else f"the marker names '{name}' but the ZIP does not bundle it: export the marker with its components, or pass --lay-limits")
         if name and any(n == name for n, _ in bundled.get('_errors', [])): why = f"the bundled table '{name}' could not be read: " + next(m for n, m in bundled['_errors'] if n == name)
@@ -266,6 +278,7 @@ def _lay_limits_block(mk, inv, bundled, supplied, orders=None):
     warns += table['warnings']
     block = dict(name=table.get('name') or name, source=source, parsed=True, vintage=table['vintage'], basis=table['basis'], spread=table['spread_name'],
                  spread_label=table['spread_label'], bundling=table['bundling_name'], bundling_label=table['bundling_label'], per_model=table['per_model'],
+                 bundling_basis=bund_basis, bundling_candidates=table.get('bundling_candidates'),
                  comment=table['comment'].strip(), bundle_pattern=dict(state=state, detail=detail), order_names=ot and ot['lay_limits'],
                  rows=[dict(category=r['category'], **ll.orientation_rules(r)) for r in table['rows']],
                  snapshot=(None if snap_tab is None else (dict(agrees=None, differences=[]) if source == 'marker snapshot' else dict(agrees=not snap_diffs, differences=snap_diffs or []))))
@@ -354,7 +367,8 @@ def build_nest_spec(path, units='cm', marker=None, lay_limits=None, notch_table=
             source=dict(file=os.path.basename(path), marker=mk['name'], models=inv['marker']['models'], laid_state=inv['marker']['laid_state'],
                         lay_history=inv['marker']['lay_history'], decoder_version=am.__version__, job_of_laid_marker=bool(as_job),
                         tables={k: (mk.get('tables') or {}).get(k) or None for k in ('lay_limits', 'annotation', 'block_buffer', 'notch_table')}),
-            fabric=dict(width=W, fabric_types=inv['marker']['fabric_types'],
+            fabric=dict(width=W, spread=lay.get('spread'), plies=(2 if lay.get('spread') in ('face_to_face', 'book_fold', 'tubular') else (1 if lay.get('spread') == 'single_ply' else None)),
+                        fabric_types=inv['marker']['fabric_types'],
                         block_buffer_in=[list(b) for b in inv['marker']['block_buffers']] or None,
                         min_length=(area_all / W) if W else None, min_length_note='total piece area / width: a 100%-efficient lay; not a nesting result'),
             rotation=dflt, lay_limits=lay, notch_table=notch, block_buffer=buf,

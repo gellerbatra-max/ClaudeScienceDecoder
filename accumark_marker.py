@@ -365,7 +365,7 @@ def _walk_piece_list(d, lo, hi):
         rows.append(dict(offset=pos+28, name=name.decode('latin1'), fabric=cat.decode('latin1'),
                          flag=fabric_types[0] if fabric_types else '', fabric_types=fabric_types,
                          buffer_index=None if buf == 0xffff else buf, raw=d[pos+4:pos+28].hex(),
-                         flag14=u16(d, pos+18),
+                         flag14=u16(d, pos+18), major=(u16(d, pos+18) == 1),      # v4.16: flag @+14 = the M (major piece) option of the piece's Lay Limits row [V: 341 of 341 piece rows, 78 markers]
                          # v4.14: the piece's Lay Limits row and what it gave the piece, as they were when the marker was made [V: 287 of 287 rows, 56 markers]
                          lay_row=u16(d, pos+6), buffer_rule=u16(d, pos+10), flip_code=u16(d, pos+12), tilt_raw=struct.unpack_from('<i', d, pos+14)[0]))
         pos = p
@@ -590,6 +590,9 @@ def parse_marker(d, size_vocab=None, binding='structural'):
     mk['laid'] = mk['length'] > 0 and mk['util'] > 0
     # v4.14: four counters of section 1 (file offsets 480 / 482 / 490 / 492): records, slots, models, size-table rows [V: 73 of 73 markers]
     mk['header_counts'] = dict(records=u16(d, 480), slots=u16(d, 482), models=u16(d, 490), size_rows=u16(d, 492)) if len(d) > 494 else None
+    # v4.16: the SPREAD of the Lay Limits table the marker was made with, u16 at file offset 520 (section 1 + 216): 0 single ply, 1 face to face, 2 book fold, 3 tubular
+    # [V: 56 of 56 markers that bundle their table, and four markers made from one order with one table of each spread]
+    mk['spread'] = u16(d, 520) if len(d) > 522 else None
     mk['piece_names'] = declared_piece_names(d)
     mk['pieces'] = parse_pieces_section(d, *sec[SEC_PIECES]) if sec[SEC_PIECES] else []
     # v4: sections 11 and 12 are one length-prefixed chain - see
@@ -682,7 +685,7 @@ def parse_marker_snapshots(d, sec, pieces):
             rows = ll.parse_snapshot_rows(raw, {i: next(iter(v)) for i, v in rules.items() if len(v) == 1})
             pr = [dict(piece=p['name'], row=p['lay_row'], flip_ok=p['lay_row'] < len(rows) and rows[p['lay_row']]['flip_code'] == p['flip_code']) for p in pieces if 'lay_row' in p]
             ok = all(x['flip_ok'] for x in pr)
-            out['lay_limits'] = dict(rows=rows, piece_rows=pr, ok=ok)
+            out['lay_limits'] = dict(rows=rows, piece_rows=pr, ok=ok, spread=u16(d, 520) if len(d) > 522 else None)
             if not ok: out['warnings'].append('section 4 (the marker\'s Lay Limits rows) disagrees with its piece rows: ' + ', '.join(x['piece'] for x in pr if not x['flip_ok'])[:120])
         except ll.LayLimitsError as e: out['lay_limits'] = dict(error=str(e), bytes=len(raw)); out['warnings'].append('section 4 (the marker\'s Lay Limits rows) does not read: %s' % e)
     return out
@@ -830,6 +833,7 @@ def marker_warnings(mk):
     if sm and sm['applicable'] and not sm['ok']:
         w.append('slot @88 is not (record head count + one constant per piece) for: ' + ', '.join(p for p, c in sm['constant'].items() if c is None))
     w += (mk.get('snapshots') or {}).get('warnings', [])
+    if mk.get('spread') not in (None, 0, 1, 2, 3): w.append('section 1 spread word is %s, expected 0-3 (single ply, face to face, book fold, tubular)' % mk['spread'])
     n_tilt = [s['index'] for s in mk['slots'] if not s['empty'] and s['tilt_deg'] is None]
     if n_tilt: w.append('%d placed slots carry a tilt word that is not an angle in radians (first: slot %d): their orientation is read without it' % (len(n_tilt), n_tilt[0]))
     return w
@@ -1221,6 +1225,13 @@ def check_marker(mk):
         out.append(('piece buffer indices resolve into the block-buffer table',
                     all(p.get('buffer_ok') for p in mk['pieces']),
                     f'{len(mk["block_buffers"])} entries; indices {[p.get("buffer_index") for p in mk["pieces"]]}'))
+    if mk.get('spread') is not None:
+        out.append(('section 1 spread word (+216) is one of the four spreads', mk['spread'] in (0, 1, 2, 3), f"{mk['spread']}"))
+    lr_ = (mk.get('snapshots') or {}).get('lay_limits')
+    if lr_ and 'error' not in lr_ and lr_['rows']:
+        pm_ = [(p['name'], p['major'], 'M' in lr_['rows'][p['lay_row']]['options']) for p in mk['pieces'] if 'major' in p and p['lay_row'] < len(lr_['rows'])]
+        out.append(("piece row flag @+14 == the M (major piece) option of its Lay Limits row", all(a == b for _, a, b in pm_),
+                    f"{sum(1 for _, a, b in pm_ if a == b)} of {len(pm_)} pieces"))
     hc = mk.get('header_counts')
     if hc:
         got = dict(records=len(mk['records']), slots=len(mk['slots']), models=len(mk['models']), size_rows=len(mk['sizes']))
@@ -1284,6 +1295,7 @@ def marker_coverage(d, mk=None):
         for o in (396, 412, 422, 430, 446, 454): mark(o, o+8, 'identified')
         if mk.get('header_counts'):
             for o in (480, 482, 490, 492): mark(o, o+2, 'identified')                                # v4.14: record / slot / model / size-row counters
+        if mk.get('spread') is not None: mark(520, 522, 'identified')                                # v4.16: the lay table's spread
     # -- section 2 carries the marker's own name; section 5 the -PDSTEXT- label table
     if sec[2]:
         i = d.find(mk['name'].encode('latin1'), sec[2][0], sec[2][1])

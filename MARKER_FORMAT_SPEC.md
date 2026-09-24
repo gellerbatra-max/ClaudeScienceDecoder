@@ -295,6 +295,7 @@ stream that verifies against its record's area + perimeter is identified up to i
 | open | evidence so far | method |
 |---|---|---|
 | side order of the four block-buffer doubles; what the table is for | home box ignores it (ZZC-M1 vs ZZC-BIG) | live: unequal buffers on a piece with real geometry |
+| notch numbers above 15 in a marker stream (the low nibble of the extra byte holds `type`; the table allows 99 numbers) | only numbers 1 and 5 occur in the corpus | a piece with notch number 20+ (PDS Add Standard Notch, Type 20) in a marker |
 | what order / model option sets the piece-row flag @+14 (= the slot 0x0040 bit); the pre-set rot180 alternation | 0x0040 == flag @+14 on 9,122 / 9,122 slots [V]; alternates per bundle | live: flip one order / model option per run (DATASET_DESIGN F5) |
 | the extra byte's high nibble; the stream trailer's last 3 bytes | kinds and notch types classify 7,455 / 7,455 piece points | correlate with the piece's f2 / rule fields and the size |
 | what C counts in @88 = head count + C; slot @52/@54/@60 | @88 = p1 + C(piece) [V], C tracks internal-line points; stored-empty and laid-then-returned read 0 alike | pieces with 0 / 1 / 2 / 4 internal lines built in Pattern Design (DATASET_DESIGN F6); @52/@54/@60 vs piece/size |
@@ -375,3 +376,21 @@ and the wrong Bundling on `CLAUDE-D2-E7B` is contradicted (`selftest`). The stor
 The order object stores the same ten name slots. **V17 vintage:** u16 lengths at payload +10, +12, +14, +74, +76, +78, +80, +82, +84, +88 (name = the marker name the order generates, customer, reference,
 lay limits, annotation, block buffer, -, notch table, -, extra) and the strings back to back from +176. **Older vintage** (`COSTORDER`, `LADIES-BLOUSE`): ten 20-character slots, space- or NUL-padded, at +10, +31,
 +52, +132, +153, +174, +195, +216, +237, +259. `accumark_marker.parse_order_tables` (also in `parse_order(...)['tables']`).
+
+## 18. Notch Parameter Tables (object type 17) [V]
+
+`accumark_notch.py`. In an export ZIP the table starts at object offset 0x8a and is `payload_len` long; a `.GT_notpt` file has the same bytes from 0x90. Verified in the Notch editor (`Notch.exe`) on a table
+with one row of every type and distinct numbers (`notch/ZZNT-X1`, `-X2`, saved under new names) and on the real `NEED-P-NOTCH`, `V-NOTCH-ALL CUSTOMERS` and default `P-NOTCH`:
+
+```
+5 x ( i32 perimeter, i32 inside, i32 depth )                 the first five notches again in the older three-value layout (always equal to records 1-5)
+u32 N                                                        the number of records = the highest notch number kept (a table ends at its last defined notch)
+N x ( u32 type, i32 perimeter, i32 inside, i32 depth )       record k = notch number k
+[ u32 0 ]                                                    optional trailer (present on tables saved by the V17 editor and on 2303's)
+```
+
+Lengths x 10000 in inches (0.30 cm = 1181, -0.20 cm = -787); `type` 0 None (an undefined number), 1 Slit, 2 T, 3 V, 4 Castle, 5 Left Check, 6 Right Check, 7 U, 8 No Lift Slit (the editor's list order). Up to 99
+numbers. The editor greys out the widths a type does not use (Slit / T / No Lift Slit have no perimeter width, V / Slit / Left / Right Check no inside width) and stores 0 there. Depth > 0 cuts into the
+piece, depth < 0 sticks out (Castle, the external V of the 2303 and 1825D tables). A piece's `Notch Type N` (FORMAT_SPEC.md: "Notch Depth is not stored in the piece file: looked up from a system-wide table") and the
+notch code in a marker's section-14 stream are this notch number. Confirmed geometrically: the 30 notch spikes of a real AccuNest plot are all 0.40 cm = notch 1 of the default `P-NOTCH`. A table whose
+length is not 64 + 16 N (+ 4 zero bytes), whose triplets differ from records 1-5 or with a type above 8 is refused.

@@ -1,5 +1,20 @@
 # Changelog
 
+## v4.10 (2026-09-24) - the Notch Parameter Table: what a notch number is
+
+`__version__` stays `'3.0'`. New module `accumark_notch.py`; fixtures `notch/` (two editor-built tables + `GROUND_TRUTH.json`). Request: "decode the notch tables".
+
+* **Ground truth.** The Notch editor (`Notch.exe`, own process) opened scratch copies of the real `NEED-P-NOTCH` (notches 1-5 and 8-15 = Slit 0.50 cm; 6-7 = V, perimeter 0.50, depth -0.25), `V-NOTCH-ALL CUSTOMERS`
+  (25 x V 0.30 / -0.20) and the default `P-NOTCH` (notch 1 = Slit 0.40); a copy of the V table was then edited to one row of every type with distinct numbers and saved under a new name (`ZZNT-X1`, `-X2`), and
+  the bytes were read against the numbers typed.
+* **Format** (MARKER_FORMAT_SPEC.md section 18): five legacy (perimeter, inside, depth) triplets, `u32 N` at +60, then `N` 16-byte records `(type, perimeter, inside, depth)` from +64 - record k is notch number k;
+  lengths x 10000 in inches; types 0 None, 1 Slit, 2 T, 3 V, 4 Castle, 5 Left Check, 6 Right Check, 7 U, 8 No Lift Slit; an optional zero dword at the end. Strict: any other length, a triplet that differs from
+  its record or an unknown type is refused.
+* **Notch number = the marker's notch code.** A piece's Notch Type N is looked up in this table (FORMAT_SPEC: depth is not stored on the piece), and the code in a marker's stream is that number. Confirmed on the
+  geometry: the 30 notch spikes of the real AccuNest plot of `ZZC-M1` are all exactly 0.40 cm = notch 1 of the default `P-NOTCH`; the real 1825D / 5683D notches (number 1) are 0.50 cm slits (`NEED-P-NOTCH`).
+* **Nest spec.** `notch_table` (bundled / supplied / named only) with `entries` per notch number (kind, perimeter width, inside width, depth, direction), `numbers_used`, two checks, `--notch-table`.
+* **Not done / open.** Notch numbers above 15 (the marker stream keeps the number in a nibble), `No Lift Slit` depth semantics (the editor stored depth 0), how the cutter draws a Castle / U in a plot.
+
 ## v4.9 (2026-09-24) - the user's real support files: `NEED- TWO WAY`, `G-LAYLIMITS`, `L` read and checked against the real markers
 
 `__version__` stays `'3.0'`. Source: `all support files.zip` (AccuMark Explorer "OldFiles", AccuMark 9 data): lay limits `L`, `G-LAYLIMITS` (418T), `NEED- TWO WAY` (1825D, 5683D), `ONE GMT ONW WAY`;

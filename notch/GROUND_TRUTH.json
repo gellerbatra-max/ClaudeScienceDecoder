@@ -1,0 +1,134 @@
+{
+ "_about": "Notch Parameter Tables as the Notch editor (Notch.exe, V17, own process, 2026-09-24) SHOWED them - written by hand from screenshots, not by the decoder. Lengths in cm as displayed (the file stores inches x 10000: 0.30 cm = 1181). Row = [type, perimeter, inside, depth]. ZZNT-X1 was made by editing rows 1-7 of a copy of V-NOTCH-ALL CUSTOMERS (25 rows: 25 x V, perimeter 0.30, depth -0.20) to one of each type with distinct numbers (the editor greys out fields a type does not use: Slit / T / No Lift Slit have no perimeter, V / Slit / Left Check / Right Check no inside width - those read 0), Save As under a new name; ZZNT-X2 = X1 with row 8 set to No Lift Slit (stored as type 8).",
+ "tables": {
+  "ZZNT-X1": {
+   "file": "ZZNT-X1.GT_notpt",
+   "count": 25,
+   "rows": {
+    "1": [
+     "Slit",
+     0,
+     0,
+     0.3
+    ],
+    "2": [
+     "T",
+     0,
+     0.5,
+     0.7
+    ],
+    "3": [
+     "V",
+     0.6,
+     0,
+     0.3
+    ],
+    "4": [
+     "Castle",
+     0.4,
+     0.9,
+     -0.6
+    ],
+    "5": [
+     "Left Check",
+     0.1,
+     0,
+     0.35
+    ],
+    "6": [
+     "Right Check",
+     0.15,
+     0,
+     0.45
+    ],
+    "7": [
+     "U",
+     0.55,
+     0.75,
+     0.65
+    ],
+    "8": [
+     "None",
+     0,
+     0,
+     0
+    ]
+   },
+   "rest": "rows 9-25: V, perimeter 0.30, inside 0, depth -0.20"
+  },
+  "ZZNT-X2": {
+   "file": "ZZNT-X2.GT_notpt",
+   "count": 25,
+   "rows": {
+    "1": [
+     "Slit",
+     0,
+     0,
+     0.3
+    ],
+    "2": [
+     "T",
+     0,
+     0.5,
+     0.7
+    ],
+    "3": [
+     "V",
+     0.6,
+     0,
+     0.3
+    ],
+    "4": [
+     "Castle",
+     0.4,
+     0.9,
+     -0.6
+    ],
+    "5": [
+     "Left Check",
+     0.1,
+     0,
+     0.35
+    ],
+    "6": [
+     "Right Check",
+     0.15,
+     0,
+     0.45
+    ],
+    "7": [
+     "U",
+     0.55,
+     0.75,
+     0.65
+    ],
+    "8": [
+     "No Lift Slit",
+     0,
+     0,
+     0
+    ]
+   },
+   "rest": "rows 9-25: V, perimeter 0.30, inside 0, depth -0.20"
+  },
+  "NEED-P-NOTCH": {
+   "source": "the user's real support file (1825D, 5683D)",
+   "count": 15,
+   "rows": "1-5 Slit depth 0.50; 6-7 V perimeter 0.50 depth -0.25; 8-15 Slit depth 0.50; 16-99 None"
+  },
+  "V-NOTCH-ALL CUSTOMERS": {
+   "source": "markers/2303-CP150-JULY",
+   "count": 25,
+   "rows": "1-25 V perimeter 0.30 depth -0.20"
+  },
+  "P-NOTCH (scratch, 160 bytes)": {
+   "source": "markers-live/CLAUDE-UNP-D4-CURVE/CLAUDE-D4.zip",
+   "count": 6,
+   "rows": "1 Slit depth 0.40; 6 Slit depth 0.00; the rest None"
+  }
+ },
+ "real_tables_hex": {
+  "P-NOTCH": "000000000000000026060000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000050000000100000000000000000000002606000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000",
+  "NEED-P-NOTCH": "0000000000000000b00700000000000000000000b00700000000000000000000b00700000000000000000000b00700000000000000000000b00700000f000000010000000000000000000000b0070000010000000000000000000000b0070000010000000000000000000000b0070000010000000000000000000000b0070000010000000000000000000000b007000003000000b00700000000000028fcffff03000000b00700000000000028fcffff010000000000000000000000b0070000010000000000000000000000b0070000010000000000000000000000b0070000010000000000000000000000b0070000010000000000000000000000b0070000010000000000000000000000b0070000010000000000000000000000b0070000010000000000000000000000b0070000"
+ }
+}

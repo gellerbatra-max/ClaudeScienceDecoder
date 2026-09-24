@@ -561,3 +561,24 @@ The slots' declared areas include the block, hence the header's placed-area sum 
 `_explain_block_areas` (called by `parse_marker`) tries this for every slot whose area exceeds its record's and whose piece has a rule with non-zero totals: when the growth explains it, `binding['area_ok']` is true and `binding['block_added']` holds the growth
 (also `unplaced_inventory` `slots[].block_added`) - so the two old failed check rows / warnings of ZZC-M3 and ZZN-F1 are gone; a slot whose area is neither the record's nor the block's still fails. `rect_growth(points, wx, wy)` is the pure-Python scanline routine (error under 0.005 sq in).
 [?] percentage amounts (a share of the plaid / stripe repeat) and the Segment amount were not placed on a marker; a block on an unplaced slot (its area stays the record's until it is laid).
+
+## 26. More of section 1 [V / ?, v4.20]
+
+Section 1 is 372 bytes (file offsets 304-675). Twelve of its words vary from marker to marker beyond the width, length and area scalars; before v4.20 four counters and the spread were known (sections 22 and 23). Found by correlating every word with the counts the decoder can compute over the 98 markers of the corpus and the fixture folders
+(offline; no live round):
+
+| word (file offset) | meaning | status |
+|---|---|---|
+| @486 | the number of pieces (section 10) **+ 1** | [V] 97 of 97 markers with a section 1 of this size |
+| @496 | the rows of the marker's own Lay Limits table (section 4; 0 when the marker has none) | [V] 97 of 97 |
+| @498 | the entries of the block-buffer table (section 6) | [V] 97 of 97 |
+| @568 | 128 on every marker **AccuNest** nested (8 of 8 fixtures, and the corpus's AccuNest markers), 0 on an unmade or AutoMark-made marker (8 of 8); 64 on the July CP 150 marker | [V] correlation, `mk['nested_by']` |
+| @674 | 3 after AccuNest (8 of 8), 19 on an unmade or AutoMark-made marker (8 of 8); 6 / 9 / 12 on the corpus markers nested more than once (`ZZN-1`, `ZZN-B1`, `ZZN-C1`) - a count of engine passes? | [V] for 3 / 19, [?] for the rest |
+| @472 | the **attribute points** of the laid slots' streams: notch points (type 1-5) plus the turn points that carry a number 1, summed over the slots. Per slot on the LADIES-BLOUSE set: back 5, collar 1, cuff 0, front 1, sleeve 4; on the CLAUDE-CURVE piece the number of its notches (2, or 9 on the notch fixture) | [V] 29 of 29 fixture markers and about 45 of the 51 distinct real ones; exceptions: the 2303 markers (0 / 6 against 186 / 216 notch points: older vintage), `LADIES-BLOUSE TEST-2` / `ZZN-*` (204 against 90), `CLAUDE-D2-E7B` (27 against 61) and the tubular `ZZQ-T` (38 against 62: the sleeve, 24 points, is not in the count - the one marker whose Process ended "with warnings") |
+| @476 | another per-slot count, exact per piece on the 19 LADIES-BLOUSE fixtures (back 10, collar 8, cuff 4, front 8, sleeve 4; the CLAUDE-CURVE piece 10; the same tubular shortfall of 24); the sharp corners of the outline give 8 / 4 / 4 / 8 / 4, the stream's turn points do not | [?] rule unknown |
+| @484 | = slots - c: it falls with a two-ply merge exactly as the slot count does (54 -> 38 slots: 40 -> 24) but c (5 on ZZC-M1, 14 on ZZR-S / ZZR-B, 0 on the single-piece markers) is not explained | [?] |
+| @488 | 103 on an as-generated marker and 112 once it has been laid (the same order, ZZR-K -> ZZR-KA), other values on other markers | [?] |
+| @530 | grows with the notches (20 -> 41 per slot for +7 notches on the curve piece: 3 per notch) and the points; no fit | [?] |
+| @168.. / @202 / @264 / @672 | see MARKER_FORMAT_SPEC.md section 13 (byte map); not reduced | [?] |
+
+`mk['header_counts2']` (pieces + 1, lay rows, block entries), `mk['engine_words']` and `mk['nested_by']` (`accunest` / `automark or none` / `other (n)`), a check row (the three counters equal what the sections hold), and the byte map marks the five words as identified.

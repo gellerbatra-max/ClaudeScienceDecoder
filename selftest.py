@@ -2485,6 +2485,63 @@ if not m2_['slots'][0]['binding']['area_ok'] or m2_['slots'][0]['binding'].get('
 print(f"   {'ok ' if not bad else 'FAIL'} block growth explains {n_b} placed slots of 5 pieces under an unequal block (to 0.01 sq in), the home box pads follow the totals turned with the piece ({n_pad} slots), the two earlier 1 cm blocks (ZZC-M3, ZZN-F1), swapped totals / a square / no block do not; a slot 1% off is still noticed  {'; '.join(bad[:3])}")
 if bad: fails.append('block area: ' + '; '.join(bad[:5]))
 
+print('-- more of section 1 (v4.20, MARKER_FORMAT_SPEC.md section 26): pieces + 1, lay-limit rows, block-buffer entries; attribute points')
+# u16 @486 = pieces + 1, @496 = the rows of the marker's own Lay Limits table, @498 = its block-buffer entries [V: every marker of the corpus and of the fixture folders];
+# u16 @472 = the attribute points (notch points and turn points carrying a number) of the laid slots' streams [V on the fixture folders, one documented exception].
+bad = []; n_c = n_c_ok = 0; seen_c = set()
+def _c_markers():
+    for zp_ in zips_all:
+        try: L_ = am.list_zip(zp_)
+        except Exception: continue
+        for o_ in L_.get('marker', []): yield o_['name'], o_['data']
+    for dn_ in ('twoply', 'flipcount', 'spread', 'rotation', 'notchnum', 'blockarea'):
+        for fp_ in sorted(glob.glob(os.path.join(HERE, dn_, '*.GT_mark'))):
+            yield os.path.basename(fp_), am.read_storage_marker(fp_)
+for nm_, d_ in _c_markers():
+    k_ = (nm_, len(d_), hash(d_))
+    if k_ in seen_c: continue
+    seen_c.add(k_)
+    try: mk_ = am.parse_marker(d_)
+    except Exception: continue
+    h2_ = mk_.get('header_counts2')
+    if not h2_: continue
+    sl_ = ((mk_.get('snapshots') or {}).get('lay_limits') or {}).get('rows') or []
+    n_c += 1; ok_ = h2_ == dict(pieces_plus_1=len(mk_['pieces']) + 1, lay_rows=len(sl_), block_entries=len(mk_.get('block_buffers') or []))
+    n_c_ok += ok_
+    if not ok_: bad.append(f'{nm_}: {h2_}')
+if n_c < 90 or n_c_ok != n_c: bad.append(f'{n_c_ok} of {n_c} markers agree')
+# the attribute points (fixture folders; the tubular ZZQ-T is the one marker whose sleeve is missing from the count: its Process ended "with warnings")
+n_a = n_a_ok = 0
+for dn_ in ('twoply', 'flipcount', 'spread', 'rotation', 'notchnum', 'blockarea'):
+    for fp_ in sorted(glob.glob(os.path.join(HERE, dn_, '*.GT_mark'))):
+        d_ = am.read_storage_marker(fp_); mk_ = am.parse_marker(d_); sec_ = mk_['sections'][1]; f472_ = struct.unpack_from('<H', d_, sec_[0] + 168)[0]; cache_ = {}; tot_ = 0
+        for s_ in mk_['slots']:
+            rid_ = s_['record']['offset']
+            if rid_ not in cache_: cache_[rid_] = sum(1 for k2_ in am.record_outline(d_, s_['record'])['kinds'] if k2_[1] is not None)
+            tot_ += cache_[rid_]
+        n_a += 1
+        if os.path.basename(fp_) == 'ZZQ-T.GT_mark':
+            if f472_ != tot_ - 24: bad.append(f'ZZQ-T: @472 {f472_}, attribute points {tot_} (the tubular exception is 24 short)')
+            continue
+        n_a_ok += (f472_ == tot_)
+        if f472_ != tot_: bad.append(f'{os.path.basename(fp_)}: @472 {f472_} vs {tot_} attribute points')
+if n_a < 30 or n_a_ok != n_a - 1: bad.append(f'attribute points: {n_a_ok} of {n_a - 1}')
+# a broken counter is noticed
+d0_ = bytearray(am.read_storage_marker(os.path.join(HERE, 'flipcount', 'ZZR-S.GT_mark'))); mk0_ = am.parse_marker(bytes(d0_)); a_ = mk0_['sections'][1][0]
+for off_ in (486, 496, 498):
+    d1_ = bytearray(d0_); struct.pack_into('<H', d1_, a_ + (off_ - 304), struct.unpack_from('<H', d1_, a_ + (off_ - 304))[0] + 1)
+    if all(ok2_ for n2_, ok2_, dd2_ in am.check_marker(am.parse_marker(bytes(d1_))) if 'pieces + 1' in n2_): bad.append(f'a counter word at {off_} was not noticed')
+# the engine words: AccuNest-nested fixtures 128 / 3, unmade and AutoMark-made ones 0 / 19
+ENG_ = {'accunest': ('twoply/ZZQ-W-MADE', 'twoply/ZZQ-A-MADE', 'flipcount/ZZR-S-MADE', 'rotation/ZZLL-EXP1', 'rotation/ZZROT-45', 'rotation/ZZROT-90', 'rotation/ZZROT-B', 'rotation/ZZROT-T'),
+        'automark or none': ('twoply/ZZQ-SA-MADE', 'twoply/ZZQ-FA-MADE', 'blockarea/ZZR-KA', 'blockarea/ZZR-K', 'flipcount/ZZR-S', 'flipcount/ZZR-F', 'twoply/ZZQ-S', 'twoply/ZZQ-B')}
+n_e = 0
+for who_, fl_ in ENG_.items():
+    for f_ in fl_:
+        mk_ = am.parse_marker(am.read_storage_marker(os.path.join(HERE, f_ + '.GT_mark'))); n_e += 1
+        if mk_['nested_by'] != who_ or mk_['engine_words'] != (dict(w568=128, w674=3) if who_ == 'accunest' else dict(w568=0, w674=19)): bad.append(f'{f_}: {mk_["nested_by"]} {mk_["engine_words"]}')
+print(f"   {'ok ' if not bad else 'FAIL'} {n_c_ok} of {n_c} markers: @486 = pieces + 1, @496 = lay-limit rows, @498 = block-buffer entries; @472 = the attribute points on {n_a_ok} of {n_a - 1} fixture markers (+ the tubular exception); a broken counter is noticed; @568 / @674 name the engine on {n_e} fixtures  {'; '.join(bad[:3])}")
+if bad: fails.append('section 1 counters: ' + '; '.join(bad[:5]))
+
 print('-- marker byte map (v4.4, see accumark_marker.marker_coverage)')
 # Every byte owned by a section a parser reads must be classified (identified /
 # raw / zero_pad / opaque) - only the envelope, the header scalars, sections 2-5,

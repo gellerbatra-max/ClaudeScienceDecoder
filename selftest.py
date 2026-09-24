@@ -1076,9 +1076,7 @@ LIVE = os.path.join(HERE, 'markers-live', 'ZZ-SCRATCH-ALL-20260921', 'ZZ-SCRATCH
 LIVE_ANOMALIES = {   # marker -> (laid state, slots, failing check rows, warnings)
  'LADIES-BLOUSE TEST-2': ('partial', 54, ('header @430 == sum of placed slot areas', 'sum(slot areas) == W*L*U'), 0),   # 52 of 54 placed; header stale
  'ZZC-BIGM': ('laid', 1080, ('header @430 == sum of placed slot areas', 'sum(slot areas) == W*L*U'), 0),   # @430 = true area - 2**32/1e4: AccuMark's own 32-bit fixed-point wrap
- 'ZZC-M3': ('partial', 10, ('slot declared area == bound record area',), 1),    # 2 placed slots 7.2% larger than their record [?]
  'ZZN-B7': ('laid', 54, ('header @430 == sum of placed slot areas',), 0),       # @430 drifted 1191 sq in above the placed sum; util is right
- 'ZZN-F1': ('laid', 10, ('slot declared area == bound record area',), 1),
 }
 if os.path.isfile(LIVE):
     lobjs = am.list_zip(LIVE); found = {}; bad = []; states = Counter(); leaks = 0
@@ -1094,7 +1092,7 @@ if os.path.isfile(LIVE):
     if len(lobjs['marker']) != 41 or dict(states) != {'unlaid': 17, 'laid': 22, 'partial': 2}: bad.append(f'{len(lobjs["marker"])} markers, states {dict(states)}')
     if found != LIVE_ANOMALIES: bad.append(f'anomalies changed: {found}')
     if leaks: bad.append(f'{leaks} unknown-byte runs inside parsed sections')
-    print(f"   {'ok ' if not bad else 'FAIL'} 41 real markers decode with no exception; 36 clean, exactly 5 documented anomalies; byte map has no leak  {'; '.join(bad)}")
+    print(f"   {'ok ' if not bad else 'FAIL'} 41 real markers decode with no exception; 38 clean, exactly 3 documented anomalies (v4.19: ZZC-M3 / ZZN-F1's 7.2% BACK slots are the 1 cm block's growth, not anomalies); byte map has no leak  {'; '.join(bad)}")
     if bad: fails.append('live corpus: ' + '; '.join(bad))
     # block buffers: a TABLE of definitions, pieces point into it (0-based) or at none
     zc = next(am.parse_marker(o['data']) for o in lobjs['marker'] if o['name'] == 'ZZC-M1')
@@ -2448,6 +2446,44 @@ for s_ in mk_['slots']:
 if n_fr != 16 or set(combos_.values()) != {2} or len(combos_) != 8: bad.append(f'front slots: {n_fr}, combinations {dict(combos_)}')
 print(f"   {'ok ' if not bad else 'FAIL'} counts up to 4: {n_ms} (bundle, piece) flip multisets equal the model's (single ply) or its two-ply merge on 3 spreads; AccuNest keeps the retrieval direction on {n_fr} of 16 front slots (all 8 bundle x flip combinations, Y in the alternating bundle included)  {'; '.join(bad[:3])}")
 if bad: fails.append('flip counts: ' + '; '.join(bad[:5]))
+
+print('-- the area a Block adds (v4.19, MARKER_FORMAT_SPEC.md section 25): slot area = record area + the outline grown by (left + right) x (top + bottom)')
+# A placed slot of a piece whose buffer entry is a BLOCK stores its record's area plus the growth of the outline by the entry's totals, in the piece's own frame (turned with the piece).
+# blockarea/: five pieces under rule 9 of ZZBB-X1 (unequal sides), AutoMark; plus the equal 1 cm block of the BACK piece in the earlier markers (ZZC-M3, ZZN-F1).
+BLD = os.path.join(HERE, 'blockarea'); bgt = _json.load(open(os.path.join(BLD, 'GROUND_TRUTH.json'))); bad = []
+mkb = am.parse_marker(am.read_storage_marker(os.path.join(BLD, 'ZZR-KA.GT_mark')))
+n_b = n_pad = 0; wxb, wyb = bgt['totals_in']['x (left + right)'], bgt['totals_in']['y (top + bottom)']
+for s_ in mkb['slots']:
+    b_ = s_['binding']; n_b += 1
+    want_ = bgt['added_area_sq_in'][s_['piece']]
+    if not b_['area_ok'] or abs(b_.get('block_added', -9) - want_) > 0.01 or abs(s_['area'] - s_['record']['area'] - want_) > 0.01: bad.append(f"{s_['piece'][-5:]}: area_ok {b_['area_ok']}, growth {b_.get('block_added')}, measured {want_}")
+    ol_ = am.record_outline(mkb['object']['data'], s_['record'])['points']; fr_ = am.frame_offsets([(s_, s_['piece'], ol_)]).get(s_['piece'], 0)
+    pl_ = am._orient(ol_, s_, fr_); bw_ = max(p_[0] for p_ in pl_) - min(p_[0] for p_ in pl_); bh_ = max(p_[1] for p_ in pl_) - min(p_[1] for p_ in pl_)
+    px_, py_ = (wxb, wyb) if (s_['placed_rot'] + fr_) % 180 == 0 else (wyb, wxb)      # the block turns with the piece's stream frame (the collar's is a quarter turn from the orientation frame)
+    if abs(s_['home_x'] * 2 - bw_ - px_) > 0.005 or abs(s_['home_y'] * 2 - bh_ - py_) > 0.005: bad.append(f"{s_['piece'][-5:]} slot {s_['index']}: home box pad {s_['home_x'] * 2 - bw_:.3f} x {s_['home_y'] * 2 - bh_:.3f}, expected {px_} x {py_}")
+    n_pad += 1
+if n_b != 18 or [n_ for n_, ok_, dd_ in am.check_marker(mkb) if not ok_] or am.marker_warnings(mkb): bad.append(f"ZZR-KA: {n_b} slots, failing rows {[n_ for n_, ok_, dd_ in am.check_marker(mkb) if not ok_]}, warnings {am.marker_warnings(mkb)[:1]}")
+# the growth is what explains it: the swapped totals, a uniform offset of the smaller / larger total or nothing do not (BACK piece)
+bk_ = next(s_ for s_ in mkb['slots'] if s_['piece'].endswith('-BK')); ol_ = am.record_outline(mkb['object']['data'], bk_['record'])['points']; d_ = bk_['area'] - bk_['record']['area']
+for nm_, val_ in (('swapped totals', am.rect_growth(ol_, wyb, wxb)), ('a square of the larger total', am.rect_growth(ol_, wyb, wyb)), ('no block', 0.0)):
+    if abs(val_ - d_) < 0.3: bad.append(f'{nm_} would also explain the BACK slot ({val_:.3f} vs {d_:.3f})')
+# rect_growth on shapes with a closed form: a rectangle w x h grown by R = wx x wy gains w*wy + h*wx + wx*wy
+if abs(am.rect_growth([(0, 0), (10, 0), (10, 4), (0, 4)], 1.0, 2.0) - 26.0) > 0.02: bad.append('rect_growth of a rectangle')
+# the two earlier blocked markers (equal 1 cm sides, rule 2): 2 slots each are explained, growth 44.09 against the stored +44.095
+LIVE_B = os.path.join(HERE, 'markers-live', 'ZZ-SCRATCH-ALL-20260921', 'ZZ-SCRATCH-ALL-20260921.zip')
+if os.path.isfile(LIVE_B):
+    for o_ in am.list_zip(LIVE_B)['marker']:
+        if o_['name'] in ('ZZC-M3', 'ZZN-F1'):
+            m_ = am.parse_marker(o_['data']); bl_ = [s_ for s_ in m_['slots'] if s_['binding'].get('block_added')]
+            if len(bl_) != 2 or any(abs(s_['binding']['block_added'] - (s_['area'] - s_['record']['area'])) > 0.02 for s_ in bl_) or [n_ for n_, ok_, dd_ in am.check_marker(m_) if not ok_ and 'declared area' in n_]: bad.append(f"{o_['name']}: {len(bl_)} block slots")
+# a slot whose area is neither the record's nor the block's is still a failed check; one equal to the record's (a buffer, not a block) passes
+b0_ = bytearray(am.read_storage_marker(os.path.join(BLD, 'ZZR-KA.GT_mark'))); sl_ = mkb['slots'][0]
+struct.pack_into('<d', b0_, sl_['slot'] + 42, sl_['area'] * 1.01); m1_ = am.parse_marker(bytes(b0_))
+if m1_['slots'][0]['binding']['area_ok'] or not any('declared area' in w_ for w_ in am.marker_warnings(m1_)): bad.append('a slot area 1% off the block was not noticed')
+struct.pack_into('<d', b0_, sl_['slot'] + 42, sl_['record']['area']); m2_ = am.parse_marker(bytes(b0_))
+if not m2_['slots'][0]['binding']['area_ok'] or m2_['slots'][0]['binding'].get('block_added'): bad.append('a slot area equal to its record (a buffer) was not accepted as such')
+print(f"   {'ok ' if not bad else 'FAIL'} block growth explains {n_b} placed slots of 5 pieces under an unequal block (to 0.01 sq in), the home box pads follow the totals turned with the piece ({n_pad} slots), the two earlier 1 cm blocks (ZZC-M3, ZZN-F1), swapped totals / a square / no block do not; a slot 1% off is still noticed  {'; '.join(bad[:3])}")
+if bad: fails.append('block area: ' + '; '.join(bad[:5]))
 
 print('-- marker byte map (v4.4, see accumark_marker.marker_coverage)')
 # Every byte owned by a section a parser reads must be classified (identified /

@@ -2763,6 +2763,34 @@ if n_fz != 240 or n_fl < 120: bad.append(f'fuzz: {n_fz} read, {n_fl} flagged')
 print(f"   {'ok ' if not bad else 'FAIL'} {okfx} plaid markers: every rule (kind, role, X / Y type, offset) of {tot_[1]} instances equals the engine's, and {tot_[3]} rule points sit on the engine's vertex (worst {worst_m:.5f} in); the ZZ-PLAID rules read back; 4 byte patches caught, {n_fz} damaged reads never raise ({n_fl} flagged); the nest spec lists rules + per-shape points  {'; '.join(bad[:3])}")
 if bad: fails.append('plaid matching: ' + '; '.join(bad[:5]))
 
+print("-- what the engine does with the block buffer and the frame (v4.26, MARKER_FORMAT_SPEC.md section 32): its outline against the marker's own")
+# the engine's outline of every piece = the marker's stream outline grown by the section-6 rectangle (all sizes seen: 0.15 mm .. 1 cm, unequal sides, none), about the middle of the box, in the frame of the engine (one piece is turned +90)
+EJ2 = (('twoply', 'ZZQ-W', 'engine/ZZQ-W.frommed.mra'), ('twoply', 'ZZQ-A', 'engine/ZZQ-A.frommed.mra'), ('deg45', 'ZZR-45', 'engine/ZZR-45.frommed.mra'),
+       ('engine', 'ZZPV-M', 'engine/ZZPV-M.frommed.mra'), ('engine', 'ZZPS-M', 'engine/ZZPS-M.frommed.mra'), ('plaid', 'ZZP1-M', 'plaid/ZZP1-M-frommed.mra'))
+bad = []; n_pc = n_grow = n_box = n_frame = 0; sides_seen = set(); worst_c = None
+def _rot_(pts_, deg_, c_):
+    a_ = math.radians(deg_); ca_, sa_ = math.cos(a_), math.sin(a_)
+    return [((x_ - c_[0]) * ca_ - (y_ - c_[1]) * sa_, (x_ - c_[0]) * sa_ + (y_ - c_[1]) * ca_) for x_, y_ in pts_]
+for dn_, nm_, ep_ in EJ2:
+    d_ = am.read_storage_marker(os.path.join(HERE, dn_, nm_ + '.GT_mark')); mk_ = am.parse_marker(d_); ef_ = ae.read_engine_file(os.path.join(HERE, ep_)); seen_ = set()
+    for s_, p_ in zip(mk_['slots'], ef_['pieces']):
+        if s_['piece'] in seen_: continue
+        seen_.add(s_['piece']); ro_ = am.record_outline(d_, s_['record']); pts_ = ro_['points']; xs_ = [q_[0] for q_ in pts_]; ys_ = [q_[1] for q_ in pts_]; c_ = ((min(xs_) + max(xs_)) / 2, (min(ys_) + max(ys_)) / 2)
+        sd_ = am._buffer_sides(mk_, s_['piece']); wx_, wy_ = sd_[0] + sd_[1], sd_[2] + sd_[3]; sides_seen.add(tuple(round(v_, 4) for v_ in sd_)); n_pc += 1
+        ge_ = _pa(p_['points_in']) - _pa(pts_); g_ = am.rect_growth(pts_, wx_, wy_) if (wx_ or wy_) else 0.0
+        n_grow += abs(ge_ - g_) <= (0.05 if len(pts_) <= 8 else max(0.25, 0.015 * ge_))
+        ex_ = [q_[0] for q_ in p_['points_in']]; ey_ = [q_[1] for q_ in p_['points_in']]
+        def _miss_(t_):
+            r_ = _rot_(pts_, t_, c_); rx_ = [q_[0] for q_ in r_]; ry_ = [q_[1] for q_ in r_]
+            gx_, gy_ = (wx_, wy_) if t_ in (0, 180) else (wy_, wx_)
+            return max(abs(min(ex_) - (min(rx_) - gx_ / 2)), abs(max(ex_) - (max(rx_) + gx_ / 2)), abs(min(ey_) - (min(ry_) - gy_ / 2)), abs(max(ey_) - (max(ry_) + gy_ / 2)))
+        best_ = min((0, 90), key=_miss_); n_box += _miss_(best_) < 0.003; want_ = 90 if s_['piece'].endswith('-COL') else 0; n_frame += best_ == want_
+        if best_ == 90 and nm_ == 'ZZQ-A':
+            worst_c = (max(_vm._pt_poly(q_, _rot_(pts_, 90, c_)) for q_ in p_['points_in']), max(_vm._pt_poly(q_, _rot_(pts_, 270, c_)) for q_ in p_['points_in']))
+if n_pc != 27 or n_grow != n_pc or n_box != n_pc or n_frame != n_pc or len(sides_seen) < 5 or not worst_c or worst_c[1] < 2 * worst_c[0]: bad.append(f'{n_pc} pieces: growth {n_grow}, box {n_box}, frame {n_frame}, sides {sorted(sides_seen)}, collar {worst_c}')
+print(f"   {'ok ' if not bad else 'FAIL'} {n_pc} pieces of 6 jobs, {len(sides_seen)} buffer patterns (0 .. 1 cm, one unequal): the engine's outline = the stream outline grown by the rectangle (area within 1.5%, box within 0.003 in, symmetric about the middle of the box); only the COLLAR is turned, +90 (its outline is {worst_c and round(worst_c[0], 2)} in from the +90 turn, {worst_c and round(worst_c[1], 2)} from 270)  {'; '.join(bad[:3])}")
+if bad: fails.append('engine outline: ' + '; '.join(bad[:5]))
+
 print('-- marker byte map (v4.4, see accumark_marker.marker_coverage)')
 # Every byte owned by a section a parser reads must be classified (identified /
 # raw / zero_pad / opaque) - only the envelope, the header scalars, sections 2-5,

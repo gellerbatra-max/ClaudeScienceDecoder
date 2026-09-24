@@ -1,0 +1,42 @@
+{
+ "what": "v4.15: a notch keeps its NUMBER (the row of the Notch Parameter Table) only on the PIECE - as the last byte of the 45-byte tag-0x07 child of its point in the line table (Region D). The perimeter point and the marker's stream store the notch CODE = min(number, 5).",
+ "how": [
+  "PDS (own process, sil2000.exe /DC: /AZZ-CLAUDE-SCRATCH /N), the scratch piece CLAUDE-CURVE (a rectangle with a rounded corner, 2 notches from a DCU import, both number 6); the scratch P-NOTCH temporarily replaced by the 25-notch V-NOTCH-ALL CUSTOMERS copy so the Type list offers numbers; Create > Notch > Standard, the Type box set with the keyboard (Down / Up + Enter; a mouse click on the list item did not take), one click per notch on an edge; View > Notch > Types showed the numbers; save (Ctrl+S, click the piece).",
+  "Order Editor (own process) on a copy of the order CLAUDE-D4 (marker name ZZNN-MK, notch table ZZNT-VNOT): Process -> the unmade marker. The marker file is read straight from storage."
+ ],
+ "placed_numbers": {
+  "3": 1,
+  "6": 2,
+  "7": 1,
+  "12": 1,
+  "16": 1,
+  "25": 1,
+  "30": 2
+ },
+ "piece_codes": {
+  "3": 1,
+  "5": 8
+ },
+ "marker_codes_per_size": {
+  "3": 1,
+  "5": 8
+ },
+ "number_to_code_seen": {
+  "1": 1,
+  "2": 2,
+  "3": 3,
+  "4": 4,
+  "5": 5,
+  "6": 5,
+  "7": 5,
+  "12": 5,
+  "16": 5,
+  "25": 5,
+  "30": 5
+ },
+ "files": {
+  "NN-PIECE.GT_piece": "the piece as PDS saved it (two blocks: the edited piece and PDS's 'original' copy)",
+  "NN-MARKER.GT_mark": "the unmade marker Process made from it (S / M / L, 9 notches each)"
+ },
+ "not_understood": "Editing the number / code bytes of a piece FILE by hand (the perimeter point, its line-table twin, the child TLV; numbers 16 / 25 and 15 / 14) made the order's Process fail with 'Error processing, missing components'; rewriting the identical bytes, and the PDS route, work. Use PDS to make test pieces."
+}

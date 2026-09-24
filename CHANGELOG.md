@@ -1,5 +1,20 @@
 # Changelog
 
+## v4.15 (2026-09-24) - notch numbers: a piece keeps the number, a marker only min(number, 5)
+
+`__version__` stays `'3.0'`. New fixtures `notchnum/` (a PDS-made piece and its marker + `GROUND_TRUTH.json`). Request: "proceed to the next step" (open item: notch numbers above 15).
+
+* **The finding** (MARKER_FORMAT_SPEC.md section 18). A notch's NUMBER (row of the Notch Parameter Table, 1-99) lives on the piece only - the last byte of the 45-byte tag-0x07 child of its point in the line table. The perimeter point and a
+  marker's stream keep the CODE `min(number, 5)`. Live: in PDS (own process; scratch `P-NOTCH` temporarily the 25-notch table so the Type list offers numbers; the Type box set with the keyboard) notches numbered 3, 7, 12, 16, 25, 30, 30 were added to
+  a piece whose two imported notches are number 6; Order Editor (own process, a copy of an order) made the marker: the piece stores codes 3 + 8 x 5, and so does the marker's stream at all three sizes. The corpus agrees: 134 notches of the bundled pieces (numbers 5, 6) and the real styles of the scratch area (numbers 1, 2, 4). **Corrects v4.10's "the marker's notch code is the notch number"** - true for 1-4; a code 5 is "5 or higher" (NEED-P-NOTCH: 5 = slit, 6-7 = V, 8-15 = slit).
+* **Code.** `accumark_pds.notch_numbers(block)` (+ `summarize()['notch_numbers']`); `accumark_marker.read_storage_piece` (a `.GT_piece` file as the export-shaped object; shares `_wrap_storage` with `read_storage_marker`); nest spec: `notch_table.by_code`
+  (candidate numbers per code, `same_geometry`), `notches[].numbers` / `number`, a warning when a used code stands for notches of different shape, `code_note`; `notches_mirrored` carries them.
+* **Checks.** `selftest` (new section): the fixture piece and marker, the corpus rule, a byte patch (a number changed to 9 next to code 3 is noticed), the spec's candidates for the PDS marker and for the real 2591A (`NEED-P-NOTCH`, code 5 = numbers 5-15, slit and V).
+* **Not understood (recorded).** Editing the notch bytes of a piece FILE by hand - the perimeter point, its line-table twin, the child TLV; numbers 16 / 25, then 15 / 14 - made the order's Process fail with "Error processing, missing components";
+  rewriting the identical bytes and the PDS route work. Test pieces must come from PDS.
+* **Scratch state restored** (the original `P-NOTCH`, the pristine `CLAUDE-CURVE` piece; my `ZZNN-*` order / model / marker removed); the user's windows were not touched.
+* **Open.** What a notch on a corner (turn) point stores for a number above 5; whether the cutter draws different shapes for numbers that read the same code (a marker plot would show it).
+
 ## v4.14 (2026-09-24) - the marker carries its own tables: notch table, lay-limits rows, each piece's row
 
 `__version__` stays `'3.0'`. Request: "you can pick and continue" (the open byte-map items; `ALL GMT WAY` left out).
@@ -91,7 +106,7 @@
 * **Format** (MARKER_FORMAT_SPEC.md section 18): five legacy (perimeter, inside, depth) triplets, `u32 N` at +60, then `N` 16-byte records `(type, perimeter, inside, depth)` from +64 - record k is notch number k;
   lengths x 10000 in inches; types 0 None, 1 Slit, 2 T, 3 V, 4 Castle, 5 Left Check, 6 Right Check, 7 U, 8 No Lift Slit; an optional zero dword at the end. Strict: any other length, a triplet that differs from
   its record or an unknown type is refused.
-* **Notch number = the marker's notch code.** A piece's Notch Type N is looked up in this table (FORMAT_SPEC: depth is not stored on the piece), and the code in a marker's stream is that number. Confirmed on the
+* **Notch number = the marker's notch code (for 1-4 only: corrected in v4.15 - the code is min(number, 5)).** A piece's Notch Type N is looked up in this table (FORMAT_SPEC: depth is not stored on the piece), and the code in a marker's stream is that number. Confirmed on the
   geometry: the 30 notch spikes of the real AccuNest plot of `ZZC-M1` are all exactly 0.40 cm = notch 1 of the default `P-NOTCH`; the real 1825D / 5683D notches (number 1) are 0.50 cm slits (`NEED-P-NOTCH`).
 * **Nest spec.** `notch_table` (bundled / supplied / named only) with `entries` per notch number (kind, perimeter width, inside width, depth, direction), `numbers_used`, two checks, `--notch-table`.
 * **Not done / open.** Notch numbers above 15 (the marker stream keeps the number in a nibble), `No Lift Slit` depth semantics (the editor stored depth 0), how the cutter draws a Castle / U in a plot.

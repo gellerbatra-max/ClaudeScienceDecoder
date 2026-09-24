@@ -1,0 +1,249 @@
+{
+ "_about": "Block Buffer tables as the Block Buffer editor (BlockBuff.exe, V17, own process, 2026-09-24) SHOWED them - written by hand from screenshots, not by the decoder. Amounts in cm as displayed (the file stores inches x 10000: 0.30 cm = 1181; a percentage of the repeat is stored x 10000 with unit 2: 50% = 500000). ZZBB-USER was an existing scratch table; ZZBB-X1 = ZZBB-USER plus rule 9 (Block, nine distinct amounts) and rule 10 (percentages; the editor demands typed rule numbers); ZZBB-X2 = X1 plus a dynamic percentage and a two-line comment, each saved under a new name. The editor greys out the Segment cells, so segment amounts are 0. Real 3MM (older layout, AccuMark 9) and 3MM-N come from the user's support files with the author comment blanked.",
+ "rules_format": "rule: [number, kind, static [L,T,R,B], dynamic [L,T,R,B] or null]; an amount is cm, '50%' a percentage of the repeat, null = blank",
+ "tables": {
+  "ZZBB-USER": {
+   "file": "ZZBB-USER.GT_block",
+   "comment": "ZZ scratch: 1 buf 1",
+   "rules": [
+    [
+     1,
+     "buffer",
+     [
+      0.3,
+      0.3,
+      0.3,
+      0.3
+     ],
+     null
+    ],
+    [
+     2,
+     "block",
+     [
+      1.0,
+      1.0,
+      1.0,
+      1.0
+     ],
+     null
+    ],
+    [
+     3,
+     "buffer",
+     [
+      0.5,
+      0.5,
+      0.5,
+      0.5
+     ],
+     [
+      1.0,
+      1.0,
+      1.0,
+      1.0
+     ]
+    ],
+    [
+     4,
+     "buffer",
+     [
+      2.0,
+      0.0,
+      0.5,
+      0.0
+     ],
+     null
+    ],
+    [
+     5,
+     "buffer",
+     [
+      0.15,
+      0.15,
+      0.15,
+      0.15
+     ],
+     null
+    ],
+    [
+     6,
+     "buffer",
+     [
+      0.03,
+      0.03,
+      0.03,
+      0.03
+     ],
+     null
+    ],
+    [
+     7,
+     "buffer",
+     [
+      0.01,
+      0.01,
+      0.01,
+      0.01
+     ],
+     null
+    ],
+    [
+     8,
+     "buffer",
+     [
+      0.1,
+      0.1,
+      0.1,
+      0.1
+     ],
+     null
+    ]
+   ]
+  },
+  "ZZBB-X1": {
+   "file": "ZZBB-X1.GT_block",
+   "comment": "ZZ scratch: 1 buf 1",
+   "rules_from": "ZZBB-USER",
+   "extra": [
+    [
+     9,
+     "block",
+     [
+      0.11,
+      0.22,
+      0.33,
+      0.44
+     ],
+     [
+      0.66,
+      0.77,
+      0.88,
+      0.99
+     ]
+    ],
+    [
+     10,
+     "buffer",
+     [
+      "50%",
+      1.5,
+      null,
+      null
+     ],
+     null
+    ]
+   ]
+  },
+  "ZZBB-X2": {
+   "file": "ZZBB-X2.GT_block",
+   "comment": "ZZ scratch: 1 buf LILINE TWO",
+   "rules_from": "ZZBB-USER",
+   "extra": [
+    [
+     9,
+     "block",
+     [
+      0.11,
+      0.22,
+      0.33,
+      0.44
+     ],
+     [
+      0.66,
+      0.77,
+      0.88,
+      0.99
+     ]
+    ],
+    [
+     10,
+     "buffer",
+     [
+      "50%",
+      1.5,
+      null,
+      null
+     ],
+     [
+      "12.5%",
+      null,
+      null,
+      null
+     ]
+    ]
+   ]
+  }
+ },
+ "real_tables_hex": {
+  "3MM-N": "0300080002002020202020202020202020010000004e02000000004e02000000004e02000000004e020000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000002000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000",
+  "3MM": "202020202020202020202020202020202020202020202020202020202020202020202020202020200100010000004f02000000004f02000000004f020000003f4f0200000055000000000020000000000020000000000030000000000035000000000020000000000020000000000000"
+ },
+ "real_tables": {
+  "3MM": {
+   "vintage": "v4",
+   "rules": [
+    [
+     1,
+     "buffer",
+     [
+      0.15,
+      0.15,
+      0.15,
+      0.15
+     ],
+     null
+    ]
+   ]
+  },
+  "3MM-N": {
+   "vintage": "v5",
+   "rules": [
+    [
+     1,
+     "buffer",
+     [
+      0.15,
+      0.15,
+      0.15,
+      0.15
+     ],
+     null
+    ],
+    [
+     2,
+     "buffer",
+     [
+      null,
+      null,
+      null,
+      null
+     ],
+     null
+    ]
+   ]
+  }
+ },
+ "marker_side_order": "the marker's section-6 entry of a piece is its rule's static amounts as four doubles in inches ordered Left, Right, Top, Bottom (see marker_entry_experiment)",
+ "marker_entry_experiment": {
+  "what": "ZZLL-BB9 (a copy of ZZLL-1 with the FRONT row's buffer rule 9), order ZZBB-M9 (a copy of ZZC-M1's order with lay limits ZZLL-BB9, block buffer ZZBB-X1, Mode Layrule Search), Process -> marker ZZBB-M9 (as generated). Rule 9 of ZZBB-X1 is Block, static Left 0.11, Top 0.22, Right 0.33, Bottom 0.44 cm. The four doubles of the FRONT piece's section-6 entry, read from the marker file, in file order:",
+  "rule_9_static_cm": {
+   "left": 0.11,
+   "top": 0.22,
+   "right": 0.33,
+   "bottom": 0.44
+  },
+  "marker_entry_doubles_inches": [
+   0.0433,
+   0.1299,
+   0.0866,
+   0.1732
+  ],
+  "reads_as": [
+   "left",
+   "right",
+   "top",
+   "bottom"
+  ]
+ }
+}

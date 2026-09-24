@@ -78,8 +78,10 @@ at none (`0xffff`) [V]. Where every piece has its own definition the table has
 `ZZC-M1..M3` / `ZZN-F1` have 4 entries for 5 pieces - `[0.3937 x4]`, `[0.1968 x4]`,
 `[0.3937 x4]`, `[0.7874, 0.1968, 0, 0]` inches - with BK -> 0, COL -> 1, CUFF ->
 none, FR -> 2, SL -> 3. (An earlier reading, "entry k is piece k's, entry 0 the
-marker default", was an over-fit to the small corpus and is retracted.) Side order
-of the four doubles is [?].
+marker default", was an over-fit to the small corpus and is retracted.) **An entry is the static
+amounts of the block-buffer rule the piece's Lay Limits row names [V, v4.12: 81 entries on 5 markers]**, and its four doubles are ordered **Left, Right, Top, Bottom** - the sleeve's rule 4
+(Left 2.00 cm, Top 0, Right 0.50 cm, Bottom 0 in the table, section 19) is `[0.7874, 0.1968, 0, 0]`, and a live run with a rule of four different amounts (Left .11, Top .22, Right .33, Bottom .44 cm; lay limits
+`ZZLL-BB9` pointing FRONT at rule 9, a copy of ZZC-M1's order with block buffer `ZZBB-X1`, Process, then the four doubles read from the marker file) gave `[0.0433, 0.1299, 0.0866, 0.1732]`.
 
 **The home box does NOT follow this table.** The same five pieces in ZZC-M1 (buffers
 0.5 cm / 1 cm / none / unequal) and ZZC-BIG (1 cm everywhere) have byte-identical
@@ -294,7 +296,7 @@ stream that verifies against its record's area + perimeter is identified up to i
 
 | open | evidence so far | method |
 |---|---|---|
-| side order of the four block-buffer doubles; what the table is for | home box ignores it (ZZC-M1 vs ZZC-BIG) | live: unequal buffers on a piece with real geometry |
+| what the buffer is for in the home box (the marker's entry order Left, Right, Top, Bottom is proved) | home box ignores it (ZZC-M1 vs ZZC-BIG) | live: unequal buffers on a piece with real geometry |
 | the laid `LADIES-BLOUSE TEST-2` shows its 4 COLLAR outlines turned 90 degrees against their stored home boxes (other pieces agree; unlaid markers never do) - does a laid marker's stream carry the piece as placed? | 4 shapes flagged by the box check with `--as-job`; `ZZC-M1` (unlaid) has no such case | a laid marker with a piece deliberately turned 90 degrees in Easy Marking |
 | notch numbers above 15 in a marker stream (the low nibble of the extra byte holds `type`; the table allows 99 numbers) | only numbers 1 and 5 occur in the corpus | a piece with notch number 20+ (PDS Add Standard Notch, Type 20) in a marker |
 | what order / model option sets the piece-row flag @+14 (= the slot 0x0040 bit); the pre-set rot180 alternation | 0x0040 == flag @+14 on 9,122 / 9,122 slots [V]; alternates per bundle | live: flip one order / model option per run (DATASET_DESIGN F5) |
@@ -395,3 +397,22 @@ numbers. The editor greys out the widths a type does not use (Slit / T / No Lift
 piece, depth < 0 sticks out (Castle, the external V of the 2303 and 1825D tables). A piece's `Notch Type N` (FORMAT_SPEC.md: "Notch Depth is not stored in the piece file: looked up from a system-wide table") and the
 notch code in a marker's section-14 stream are this notch number. Confirmed geometrically: the 30 notch spikes of a real AccuNest plot are all 0.40 cm = notch 1 of the default `P-NOTCH`. A table whose
 length is not 64 + 16 N (+ 4 zero bytes), whose triplets differ from records 1-5 or with a type above 8 is refused.
+
+## 19. Block / Buffer tables (object type 3) [V]
+
+`accumark_blockbuffer.py`. In an export ZIP the table starts at object offset 0x8a and is `payload_len` long; a `.GT_block` file has the same bytes from 0x90. Verified in the Block Buffer editor (`BlockBuff.exe`)
+on `ZZBB-USER` (8 rules, unequal sides, a Block rule, static and dynamic amounts) and on `ZZBB-X1` / `-X2` (a rule with nine distinct amounts, percentages, a two-line comment; saved under new names and diffed),
+and on the real `3MM` / `3MM-N`:
+
+```
+V17 layout:    u16 line1_len, u16 line2_len, u16 n_rules, comment text, n_rules x entry, [ u32 0 ]
+older layout:  40 comment characters, u16 n_rules, n_rules x entry                          (AccuMark 9 `3MM`; stray bytes in the units' high bytes)
+entry (70 bytes):  u16 rule number, u16 type (0 buffer, 1 block), 11 x slot
+slot (6 bytes):    i32 amount x 10000, u16 unit          static Left, Top, Right, Bottom, Segment, dynamic Left, Top, Right, Bottom, Segment, and one slot that is always 0
+```
+
+An amount is a length in inches (0.30 cm = 1181) or a percentage of the plaid / stripe repeat (unit 2: 50% = 500000, 12.5% = 125000); typing a unit suffix (`1.5in`) is ignored by the editor (read as 1.5 cm in a
+metric table). The editor requires a rule number for every used rule and greys out the Segment cells, so segment amounts read 0. The header count is the highest rule kept. A Lay Limits row names a rule by number
+(`buffer_rule`, 0 = none); the real `3MM` rule 1 is a Buffer of 0.15 cm on every side (0.0591 in): two pieces end 3 mm apart. Blocking is a visible zone added to the piece (die-cut / matched pieces); buffering
+is invisible space that keeps the cutter blade off the neighbour; static amounts apply when the order is processed, dynamic ones during marker making. A table whose length does not add up, with an unknown
+type or a repeated rule number is refused.

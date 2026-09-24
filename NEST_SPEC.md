@@ -1,7 +1,7 @@
 # Nest spec - an unplaced AccuMark marker as a nesting job
 
 ```
-python nest_spec.py "<marker>.zip" --json job.json [--dxf pieces.dxf] [--svg pieces.svg] [--units cm|mm|in] [--marker NAME] [--lay-limits NAME.GT_lay|other.zip] [--notch-table NAME.GT_notpt|other.zip] [--as-job]
+python nest_spec.py "<marker>.zip" --json job.json [--dxf pieces.dxf] [--svg pieces.svg] [--units cm|mm|in] [--marker NAME] [--lay-limits NAME.GT_lay|other.zip] [--notch-table NAME.GT_notpt|other.zip] [--block-buffer NAME.GT_block|other.zip] [--as-job]
 python accumark_marker.py "<marker>.zip" --nest-spec --json job.json          # same thing
 ```
 
@@ -18,7 +18,7 @@ Verified on the four real marker-only styles (1825D x2 markers, 5683D, 2591A, 41
 |---|---|
 | `units` | `cm` (default), `mm` or `in` - every length and area below (area = units squared) |
 | `source` | ZIP name, marker name, models, `laid_state` (`unlaid` / `partial`), `lay_history`, decoder version, `job_of_laid_marker` (`--as-job`: a LAID marker read as the whole job, positions ignored), `tables` (the names the marker stores: `lay_limits`, `annotation`, `block_buffer`, `notch_table`) |
-| `fabric` | `width`; `fabric_types`; `block_buffer_in` (the buffer definitions in inches, side order unverified) ; `min_length` = total area / width (a 100%-efficient lay, **not** a nesting result) |
+| `fabric` | `width`; `fabric_types`; `block_buffer_in` (the marker's own buffer entries in inches, ordered Left, Right, Top, Bottom) ; `min_length` = total area / width (a 100%-efficient lay, **not** a nesting result) |
 | `rotation` | the DEFAULT row of the Lay Limits table (`allowed_deg`, `flip_x_axis_allowed`, `locked`, `initial_orientation`, `tilt_limit`, `weft_skew_deg`, `buffer_rule`, `group`, `options`, `flags`) with `basis: verified: table NAME, row DEFAULT`; without the table `allowed_deg: [0, 180]`, `basis: assumed: ...` and a warning naming the missing table. Every shape of another category carries its own `rotation` |
 | `lay_limits` | `name`, `source` (`bundled` / `supplied` / `named only` / `none`), `parsed`, `vintage`, `spread` (`single_ply` / `face_to_face` / `book_fold` / `tubular`), `bundling` (`all_bundle_same_direction` / `alternate_bundle_alternate_direction` / `same_size_same_direction`), `per_model`, `comment`, `rows[]` (one per category, each with the same fields as `rotation`), `bundle_pattern` (do the marker's stored bundle directions follow `bundling`?), `order_names` (what the bundled order says, when there is one) |
 | `order_lines` | `model`, `size`, `quantity` as the marker's own order copy states them |
@@ -37,6 +37,7 @@ A **shape** has its own frame: the lower-left corner of its cut outline's boundi
 | `seam_outline` | the stitch line, only when the marker holds one (a fold piece with seam allowance); it lies inside the cut line |
 | `area`, `declared_area`, `perimeter`, `width`, `height` | `area` is computed from `outline`; `declared_area` is the number AccuMark stored - they agree to 1% (checked) |
 | `stored_box`, `padding` | the box AccuMark stored for the piece and `stored_box - (width, height)`. `0` on every marker-only ZIP of the corpus; about 0.12 x 0.19 in on the July CP 150 markers (block buffer + curve allowance): **reserve that much around the piece** |
+| `buffer` | only when the Lay Limits and the Block Buffer table are known: the rule this shape's row names - `rule`, `kind` (`buffer` / `block`), `static` and `dynamic` amounts per side (`left`, `top`, `right`, `bottom`, `segment`: `{value, unit}` in the spec units, or percent of the repeat) |
 | `notches[]` | `x`, `y`, `type` = the NOTCH NUMBER: the row of the Notch Parameter Table the marker names - what it looks like is in `notch_table.entries[type]` |
 | `grain` | `points` (2), `angle_deg` 0, `basis`: `stream` (read from a stream layout verified against piece objects) or `inferred` (the older 1825D / 5683D / 2591A / 418T vintage: a horizontal 2-point segment, 89 of 89 records - not a verified read) |
 | `rotation` | only when the Lay Limits table is known: the row of this shape's `category` (else DEFAULT): `row`, `matched` (`category` / `default`), `allowed_deg`, `flip_x_axis_allowed`, ... and `basis` |
@@ -119,3 +120,11 @@ not to compete with AccuNest - and its lay is checked independently with shapely
 The proof that matters is validity, not length: every job comes out `VALID` - the rotations follow the Lay Limits (the real `MWS` tables fix each 1825D / 5683D / 418T instance in its preset direction), mirrored
 instances use `outline_mirrored`, nothing overlaps. And the other direction: AccuMark's own 2303 lay, rebuilt from the *spec's* shapes with the placed marker's positions and flags, has no overlap (worst 0.0003 in2),
 stays inside the 137 cm fabric and reproduces the marker's utilisation (71.51%) - so the shapes, mirror convention and areas in the spec are the ones AccuMark laid.
+
+## Block / buffer - the space around a piece
+
+The marker names a Block Buffer table (`source.tables.block_buffer`, e.g. `3MM`); a Lay Limits row names a rule of it by number (`buffer_rule`). With both tables (bundled, or `--lay-limits` / `--block-buffer`)
+the spec's `block_buffer.rules` gives every rule its kind and its amounts (Left / Top / Right / Bottom / Segment, static and dynamic) and each shape's `buffer` is the rule of its category. The real `3MM`
+rule 1 is a Buffer of 0.15 cm per side: two pieces end 0.3 cm apart. Static amounts apply when the order is processed; dynamic ones may be added or removed while marking. A buffer is invisible space around the
+piece (keeps the cutter blade off the neighbour), a block a visible zone. `block_buffer.marker_entries` compares the marker's own section-6 entries with the table (`equal` / `different`); a nester that wants one
+number for the gap between pieces can use `fabric.block_buffer_in` (what `reference_nester.py` does: twice the largest side), one that wants per-shape space uses `shapes[].buffer`.

@@ -59,6 +59,8 @@ Ranked by value to a nesting consumer and by cost. "Live" means an AccuMark roun
 | 8 | Notch numbers above 5 on a corner point; whether the cutter draws different shapes for numbers that read the same code | Notch fidelity | Live in PDS plus a marker plot | GUI-heavy |
 | 9 | **DONE v4.19** (exact to 0.004 sq in on 18 slots, unequal block): the exact area a Block buffer adds (the 7.2% BACK-piece excess) | Area checks on blocked markers | Offline from the block-buffer fixtures | offline |
 | 10 | Why the collar needs +90 (+90 and +270 look identical), older-vintage multi-row lay limits | Robustness on older markers | Needs an asymmetric collar-like piece; older markers from the user | low priority |
+| 11 | **Added v4.23**: plaid / stripe MATCHING rules (directory slots 9, 23, 24): named and bounded, not decoded; the plaid / stripe values (section 1) done | Nesting a plaid job | Decode against the match tables and the engine's `frommed.mra` (both on this machine) | one offline round + maybe live |
+| 12 | **Added v4.23**: use the engine's `frommed.mra` (100+ jobs) as an independent check of the nest spec (flags, gaps, tilt, outlines) | The best ground truth for the job spec | Offline: parse it, compare per job | offline |
 
 Recommended order: ~~2 and 3 together in one live round (v4.18)~~ done; next 7 and 9 offline while nothing else is waiting, then 4 and 6, then 5, then 8 and 10.
 

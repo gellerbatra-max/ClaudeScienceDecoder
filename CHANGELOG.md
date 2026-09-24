@@ -1,5 +1,16 @@
 # Changelog
 
+## v4.23 (2026-09-25) - every marker on this machine read; the plaid / stripe values; the matching sections named
+
+`__version__` stays `'3.0'`. New fixtures `plaid/` (two plaid markers, the matching table, the engine's input file of job 117, `GROUND_TRUTH.json`). Not a plan item: a read-only scan of all 219 marker files in every storage area of this machine (the corpus of "whatever AccuMark produces" is much larger than the repo).
+
+* **Result** (MARKER_FORMAT_SPEC.md section 29): no exception on any of 211 unique markers, 176 fully clean. Three things fixed or decoded: (1) the order copy of the `OLDFiles` production vintage lists sizes ordered 0 times - the order-copy check failed on 64 of the 80 real markers; fixed, and the nest spec's `order_lines` drops them; (2) the plaid / stripe repeats and
+  offsets are twelve doubles of section 1 (`mk['plaid_stripe']`, nest spec `fabric.plaid_stripe`), which explains the "directory word 41 is 0x32617c1b" seen on 27 markers (the first double overlaps the directory state words); (3) the slot `@88` rule accepts a per-piece spread of 2 (a real production piece).
+* **Named, not decoded:** plaid / stripe MATCHING rules (directory slots 9, 23, 24, 25 markers): `MATCHING_SECTIONS`, a warning, `opaque` in the byte map. The ground truth for decoding them exists on this machine (match tables, orders, and the engine's `frommed.mra` text of every AccuNest job).
+* **Code.** `mk['plaid_stripe']`, `mk['has_plaid_stripe']`, `MATCHING_SECTIONS`, the matching warning, the byte map (twelve doubles identified, sections 9 / 23 / 24 opaque), `_sig88_model` tolerance, the order-copy check, `nest_spec`. **Checks.** `selftest` (new section): the plaid values, the matching warning, coverage, the nest spec, a stray word 41, the `@88` tolerance;
+  `LIVE` corpus numbers unchanged.
+* **Not changed / for the record:** the real markers of `OLDFiles`, `CLD`, `Dataset` were only read; none was copied into the repo. **Open:** the matching rules (sections 9, 23, 24) - decode against `frommed.mra`; sections 16 (one old sample); using `frommed.mra` as a check of the nest spec (shapes, flags, gaps).
+
 ## v4.22 (2026-09-25) - a 45-degree placement is a tilt of exactly 45 degrees; two more words of section 1
 
 `__version__` stays `'3.0'`. New fixtures `deg45/` (unmade + AccuNest-made marker, the plot DXF, the table copy, `GROUND_TRUTH.json`). Plan item 5, solved without Easy Marking (the last attempt stalled at its Override / Select Piece dialog): a `W` row with the 45-degree flip codes 9-12.

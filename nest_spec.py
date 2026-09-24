@@ -378,11 +378,12 @@ def build_nest_spec(path, units='cm', marker=None, lay_limits=None, notch_table=
                         tables={k: (mk.get('tables') or {}).get(k) or None for k in ('lay_limits', 'annotation', 'block_buffer', 'notch_table')}),
             fabric=dict(width=W, spread=lay.get('spread'), plies=(2 if lay.get('spread') in ('face_to_face', 'book_fold', 'tubular') else (1 if lay.get('spread') == 'single_ply' else None)),
                         plies_note=('a two-ply marker lists each stack position ONCE: an as-is instance and a flipped one of the same piece share a slot (the second ply is the partner), so it has fewer slots than a single-ply marker of the same order' if lay.get('spread') in ('face_to_face', 'book_fold', 'tubular') else None),
+                        plaid_stripe=({kk: [v * k for v in vv] for kk, vv in mk['plaid_stripe'].items()} if mk.get('has_plaid_stripe') else None),      # v4.23: the order's plaid / stripe repeats and offsets, in the spec's units
                         fabric_types=inv['marker']['fabric_types'],
                         block_buffer_in=[list(b) for b in inv['marker']['block_buffers']] or None,
                         min_length=(area_all / W) if W else None, min_length_note='total piece area / width: a 100%-efficient lay; not a nesting result'),
             rotation=dflt, lay_limits=lay, notch_table=notch, block_buffer=buf,
-            order_lines=[dict(model=o['model'], size=o['size'], quantity=o['quantity']) for o in inv['order_lines']],
+            order_lines=[dict(model=o['model'], size=o['size'], quantity=o['quantity']) for o in inv['order_lines'] if o['quantity']],      # v4.23: not the sizes the order lists at 0
             shapes=[_public(s) for s in sorted(shapes.values(), key=lambda s: s['id'])], demand=demand,
             totals=dict(instances=n_inst, shapes=len(shapes), mirrored_instances=sum(d['quantity'] for d in demand if d['mirrored']),
                         area=area_all, already_placed=inv['totals']['placed'], outline_source=inv['marker'].get('outline_source')),

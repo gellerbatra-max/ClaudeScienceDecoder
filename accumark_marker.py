@@ -597,6 +597,13 @@ def parse_marker(d, size_vocab=None, binding='structural'):
     mk['laid'] = mk['length'] > 0 and mk['util'] > 0
     # v4.14: four counters of section 1 (file offsets 480 / 482 / 490 / 492): records, slots, models, size-table rows [V: 73 of 73 markers]
     mk['header_counts'] = dict(records=u16(d, 480), slots=u16(d, 482), models=u16(d, 490), size_rows=u16(d, 492)) if len(d) > 494 else None
+    # v4.23: the plaid / stripe parameters of the order, twelve f64 (inches) in section 1 just before the width: stripe offsets @300 / 308 / 316, stripe repeats @324 / 332 / 340, plaid offsets @348 / 356 / 364, plaid repeats @372 / 380 / 388
+    # [V: the ZZP* plaid markers - stripe repeat 10 cm / offset 1 cm, plaid repeat 12 cm / offset 2 cm read back as 3.937 / 0.3937 / 4.7244 / 0.7874]. The first double overlaps the two directory 'state' words (the 0xda51.... / 0x32617c1b of a plaid marker)
+    if len(d) > 396:
+        pl_ = [f64(d, o) for o in range(300, 396, 8)]
+        mk['plaid_stripe'] = dict(stripe_offset=pl_[0:3], stripe_repeat=pl_[3:6], plaid_offset=pl_[6:9], plaid_repeat=pl_[9:12]) if all(math.isfinite(v) and abs(v) < 1e4 for v in pl_) else None
+    else: mk['plaid_stripe'] = None
+    mk['has_plaid_stripe'] = bool(mk['plaid_stripe'] and any(abs(v) > 1e-9 for lst in mk['plaid_stripe'].values() for v in lst))
     # v4.20: three more counters [V: 98 of 98 markers]: @486 = pieces + 1, @496 = the rows of the marker's own Lay Limits table (section 4; 0 without), @498 = the block-buffer entries (section 6)
     mk['header_counts2'] = dict(pieces_plus_1=u16(d, 486), lay_rows=u16(d, 496), block_entries=u16(d, 498)) if len(d) > 500 else None
     # v4.20: two words that say which ENGINE laid the marker: @568 = 128 and @674 = 3 after AccuNest, 0 and 19 on an unmade or AutoMark-made marker (fixtures; @674 is 6 / 9 / 12 on the corpus markers nested more than once [?])
@@ -788,10 +795,13 @@ def _sig88_model(mk):
         rc = s.get('record')
         if s['sig88'] and rc:
             per.setdefault(s.get('piece') or ('record %d' % s['record_index']), set()).add(s['sig88'] - rc['prefix'][1])
-    return dict(applicable=bool(per), ok=all(len(v) == 1 for v in per.values()),
-                constant={p: (next(iter(v)) if len(v) == 1 else None) for p, v in per.items()})
+    # v4.23: a real production piece (4787S SIDE of the OLDFiles set: 8 sizes, C = 94 on XS and 96 on the others) varies by 2 - @88 follows the graded size, prefix[1] does not do so exactly.
+    # A spread of up to 2 is accepted (`constant` keeps the smallest); a wider spread is still a failure.
+    return dict(applicable=bool(per), ok=all(max(v) - min(v) <= 2 for v in per.values()),
+                constant={p: (min(v) if max(v) - min(v) <= 2 else None) for p, v in per.items()})
 
 KNOWN_SECTIONS = frozenset({1, 2, 3, 4, 5, 6, 10, 11, 12, 13, 14, 15, 21, 30})    # every directory slot ever seen used
+MATCHING_SECTIONS = frozenset({9, 23, 24})      # v4.23: present on every marker made with a Matching table (plaid / stripe point matching); not decoded, named in a warning
 KNOWN_ORIENT_BITS = ROT180_BIT | MIRROR_BIT | FLIP_Y_BIT | 0x0040                     # what a NEVER-LAID slot's word can carry
 
 def marker_warnings(mk):
@@ -815,10 +825,12 @@ def marker_warnings(mk):
     consumer reads without running them, and unplaced_inventory folds it in."""
     w = []
     for k, v in enumerate(mk['directory'][:DIR_OFFSETS]):
-        if v not in (0, 0xffffffff) and k not in KNOWN_SECTIONS:
+        if v not in (0, 0xffffffff) and k not in KNOWN_SECTIONS and k not in MATCHING_SECTIONS:
             w.append('directory slot %d is in use but this reader has never seen that section' % k)
     if mk['placed_word'] not in (0, 1, 2): w.append('directory word 40 is %d, expected 0 / 1 / 2' % mk['placed_word'])
-    if mk['directory'][41] != 0: w.append('directory word 41 is %#x, expected 0' % mk['directory'][41])
+    if mk['directory'][41] != 0 and not mk.get('has_plaid_stripe'): w.append('directory word 41 is %#x, expected 0' % mk['directory'][41])      # v4.23: with plaid / stripe parameters it is part of the first double
+    if mk['directory'][9] not in (0, 0xffffffff) and (mk['directory'][23] not in (0, 0xffffffff) or mk['directory'][24] not in (0, 0xffffffff)):
+        w.append('the marker carries plaid / stripe MATCHING data (sections 9, 23, 24: piece-to-piece and fabric rules): not decoded and not in the nest spec' + ('; plaid / stripe repeats and offsets are in mk["plaid_stripe"]' if mk.get('has_plaid_stripe') else ''))
     odd = [s['index'] for s in mk['slots'] if s['orient_code'] & ~KNOWN_ORIENT_BITS] if mk['lay_history'] == 'as_generated' else []
     if odd: w.append('%d slots of an as-generated marker carry orientation bits outside rot180 / mirror / pair (first: slot %d, word %#06x)'
                      % (len(odd), odd[0], mk['slots'][odd[0]]['orient_code']))
@@ -1269,7 +1281,7 @@ def check_marker(mk):
     if oc:
         end, stop = mk['order_copy_end']
         rows = Counter((r['model'], r['size']) for r in mk['sizes'])
-        seen = Counter((m['name'], s['size']) for m in oc for s in m['sizes'])
+        seen = Counter((m['name'], s['size']) for m in oc for s in m['sizes'] if s['quantity'])          # v4.23: a size ordered 0 times (the order lists every size of the model) has no size-table row
         qty_ok = all(rows[(m['name'], s['size'])] == s['quantity'] for m in oc for s in m['sizes'])
         out.append(('order copy tiles section 15; quantity == size-row count',
                     end == stop and [m['name'] for m in oc] == mk['models'] and qty_ok and set(seen) == set(rows),
@@ -1378,6 +1390,8 @@ def marker_coverage(d, mk=None):
     # -- section 1: the header scalars (width, length, area, placed area, util, @454)
     if sec[SEC_SCALARS]:
         for o in (396, 412, 422, 430, 446, 454): mark(o, o+8, 'identified')
+        if mk.get('plaid_stripe') is not None:
+            for o in range(308, 396, 8): mark(o, o+8, 'identified')      # v4.23: stripe offsets / repeats, plaid offsets / repeats (@300 overlaps the directory state words)
         if mk.get('header_counts'):
             for o in (480, 482, 490, 492): mark(o, o+2, 'identified')                                # v4.14: record / slot / model / size-row counters
         if mk.get('header_counts2'):
@@ -1468,6 +1482,8 @@ def marker_coverage(d, mk=None):
         if mk['slots']: mark(mk['slots'][-1]['slot'] + SLOT - SLOT_HEAD, mk['slots'][-1]['slot'] + SLOT, 'raw')
     # -- section 30: the embedded type-10 object (topology-only scratch): bounded, not chased
     if sec[SEC_GEOMETRY]: mark(sec[SEC_GEOMETRY][0] - _LEAD, tr0, 'opaque')
+    for k_ in MATCHING_SECTIONS:                                       # v4.23: the plaid / stripe matching rules - bounded here, not decoded
+        if k_ < len(sec) and sec[k_]: mark(sec[k_][0], sec[k_][1], 'opaque')
     # -- trailer: the object's name, created / modified stamps, the two user names
     mark(tr0 + 0x8a, tr0 + 0x8a + len(mk['name']) + 1, 'identified')
     mark(tr0 + TRAILER_CREATED, tr0 + TRAILER_CREATED + 8, 'identified')

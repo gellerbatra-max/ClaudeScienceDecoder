@@ -1,0 +1,40 @@
+{
+ "what": "v4.23: plaid / stripe markers made in an earlier session (2026-09-22, the assumed style ZZPLD, plaid-matching.md): ZZP1-M (Matching table ZZ-PLAID: 4 rules; AccuNest Draft), ZZPH-M (plaid / stripe parameters on the order, no matching sections). `ZZP1-M-frommed.mra` is the text the AccuNest front end wrote from ZZP1-M for the engine (job 117): a rendering of everything the marker + order + tables say, in 1e-4 inch.",
+ "order_settings": {
+  "plaid_repeat_cm": 12,
+  "plaid_offset_cm": 2,
+  "stripe_repeat_cm": 10,
+  "stripe_offset_cm": 1,
+  "fabric_width_cm": 152
+ },
+ "section1_doubles_in": {
+  "stripe_offset": [
+   0.3937,
+   0.0,
+   0.0
+  ],
+  "stripe_repeat": [
+   3.937,
+   3.937,
+   3.937
+  ],
+  "plaid_offset": [
+   0.7874,
+   0.0,
+   0.0
+  ],
+  "plaid_repeat": [
+   4.7244,
+   4.7244,
+   4.7244
+  ]
+ },
+ "engine_file": {
+  "STRIPE (offset, repeat)": "(3937,39370)",
+  "PLAID (offset, repeat)": "(7874,47244)",
+  "MATCHING_TYPE": 1,
+  "matching_rules_of_ZZ-PLAID": "fabric (Marker pt 2 <-> PFRONT 2, Same, Same); piece PFRONT 3 <-> PBACK 3 (Same, None); PFRONT 5 <-> PSLEEVE 2 (Relative 3 cm, None); PFRONT 4 <-> PPOCKET 1 (Same, Same); type codes 0 Relative, 1 None, 2 Same"
+ },
+ "matching_sections": "directory slots 9 (168 bytes), 23 (14 bytes: u16 18, 24, 30, 36, 1, 0, 2) and 24 (504 bytes = 42 records of 12: u16 a, i32 -1, u16 1, u16 b, u16 c) - present on every marker made with a Matching table; not decoded",
+ "directory_words": "the first stripe-offset double (file offset 300) overlaps directory words 40 / 41: 0xda51xxxx / 0x32617c1b on a plaid marker"
+}

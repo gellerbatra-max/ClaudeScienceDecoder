@@ -224,5 +224,26 @@
    ]
   }
  },
- "marker_side_order": "the marker's section-6 entry of a piece is its rule's static amounts as four doubles in inches ordered Left, Right, Top / Bottom: ZZC-M1's sleeve (rule 4: Left 2.00, Right 0.50 cm, Top = Bottom = 0) is [0.7874, 0.1968, 0, 0]; Top vs Bottom is not yet separated"
+ "marker_side_order": "the marker's section-6 entry of a piece is its rule's static amounts as four doubles in inches ordered Left, Right, Top, Bottom (see marker_entry_experiment)",
+ "marker_entry_experiment": {
+  "what": "ZZLL-BB9 (a copy of ZZLL-1 with the FRONT row's buffer rule 9), order ZZBB-M9 (a copy of ZZC-M1's order with lay limits ZZLL-BB9, block buffer ZZBB-X1, Mode Layrule Search), Process -> marker ZZBB-M9 (as generated). Rule 9 of ZZBB-X1 is Block, static Left 0.11, Top 0.22, Right 0.33, Bottom 0.44 cm. The four doubles of the FRONT piece's section-6 entry, read from the marker file, in file order:",
+  "rule_9_static_cm": {
+   "left": 0.11,
+   "top": 0.22,
+   "right": 0.33,
+   "bottom": 0.44
+  },
+  "marker_entry_doubles_inches": [
+   0.0433,
+   0.1299,
+   0.0866,
+   0.1732
+  ],
+  "reads_as": [
+   "left",
+   "right",
+   "top",
+   "bottom"
+  ]
+ }
 }

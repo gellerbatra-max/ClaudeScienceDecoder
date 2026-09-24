@@ -106,7 +106,7 @@ def _amount(a, k):
 def _buffer_block(mk, rows, shapes, ltab, bundled, supplied, k):
     """-> (block, warnings): the Block / Buffer table the marker names; `rules` = amounts per rule number (static and dynamic, Left / Top / Right / Bottom / Segment, spec units or percent
     of the repeat); each shape gets `buffer` = the rule its Lay Limits row names, when both tables are known. The marker's own section-6 entries (its pieces' rules, ordered Left, Right,
-    Top / Bottom) are compared with them."""
+    Top, Bottom) are compared with them."""
     name = (mk.get('tables') or {}).get('block_buffer') or None; table = None; source = None; warns = []
     if supplied:
         table = supplied.get(name) or (next(iter(supplied.values())) if len(supplied) == 1 else None); source = 'supplied' if table is not None else None
@@ -140,7 +140,7 @@ def _buffer_block(mk, rows, shapes, ltab, bundled, supplied, k):
         L_, T_, R_, B_ = bb.rule_sides_in(r)
         if None in (L_, T_, R_, B_): skipped += 1; continue
         m = mk['block_buffers'][idx]['sides']
-        if abs(m[0] - L_) < 2e-3 and abs(m[1] - R_) < 2e-3 and sorted(round(v, 3) for v in m[2:]) == sorted((round(T_, 3), round(B_, 3))): ok += 1
+        if abs(m[0] - L_) < 2e-3 and abs(m[1] - R_) < 2e-3 and abs(m[2] - T_) < 2e-3 and abs(m[3] - B_) < 2e-3: ok += 1
         else:
             bad += 1; warns.append(f"{shp['piece']}: the marker's buffer entry {m} differs from rule {rn} of '{table.get('name')}' (Left {L_}, Top {T_}, Right {R_}, Bottom {B_} in)")
     return dict(name=table.get('name') or name, source=source, parsed=True, vintage=table['vintage'], comment=table['comment'], rules=rules, rules_used=used, undefined_rules=undefined,
@@ -360,7 +360,7 @@ def validate_nest_spec(spec, _private=None, marker_checks=(), inv=None, k=1.0):
     if bf.get('parsed'):
         rows.append(('block-buffer table read to its last byte (structure closes exactly)', True, f"{bf['name']} [{bf['vintage']}], {len(bf['rules'])} rule(s), {bf['source']}"))
         me = bf['marker_entries']
-        rows.append(("the marker's own buffer entries equal the table rules its Lay Limits name (Left, Right, Top / Bottom; informational when there is nothing to compare)", me['different'] == 0, f"{me['equal']} equal, {me['different']} different, {me['skipped']} skipped (percent)"))
+        rows.append(("the marker's own buffer entries equal the table rules its Lay Limits name (Left, Right, Top, Bottom; informational when there is nothing to compare)", me['different'] == 0, f"{me['equal']} equal, {me['different']} different, {me['skipped']} skipped (percent)"))
     lay = spec.get('lay_limits') or {}
     if lay.get('parsed'):
         rows.append(('lay-limits table read to its last byte (structure closes exactly)', True, f"{lay['name']} [{lay['vintage']}], {len(lay['rows'])} row(s), {lay['source']}"))

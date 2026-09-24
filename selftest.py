@@ -2011,7 +2011,10 @@ for lab_, zp_, mk_, kw_ in (('ZZC-M1', zsa, 'ZZC-M1', {}), ('ZZC-M3', zsa, 'ZZC-
     else: tot_eq += bf_['marker_entries']['equal']; cases.append(lab_)
     if not any(s_.get('buffer', {}).get('rule') for s_ in sp_['shapes']): bad.append(f'{lab_}: no shape carries its buffer rule')
     if _json.loads(_json.dumps(sp_)) != sp_: bad.append(f'{lab_}: not JSON round-trippable')
-# the unequal rule: ZZC-M1's sleeve is rule 4 (Left 2.00 cm, Right 0.50 cm) and its marker entry is [0.7874, 0.1968, 0, 0] - Left, Right, Top / Bottom
+# the unequal rule: ZZC-M1's sleeve is rule 4 (Left 2.00 cm, Right 0.50 cm) and its marker entry is [0.7874, 0.1968, 0, 0] - Left, Right, Top / Bottom; and a rule with four different
+# amounts (ZZBB-X1 rule 9: Left .11, Top .22, Right .33, Bottom .44 cm, made into a marker in a live run) has the entry [0.0433, 0.1299, 0.0866, 0.1732] - Left, Right, Top, Bottom
+ex_ = bgt['marker_entry_experiment']; L9, T9, R9, B9 = bbf.rule_sides_in(bbf.parse_block_buffer(os.path.join(BDIR, 'ZZBB-X1.GT_block'))['by_number'][9])
+if [round(v_, 4) for v_ in (L9, R9, T9, B9)] != ex_['marker_entry_doubles_inches'] or ex_['reads_as'] != ['left', 'right', 'top', 'bottom']: bad.append(f'the recorded marker entry does not read as Left, Right, Top, Bottom of rule 9: {(L9, R9, T9, B9)}')
 sm1 = ns.build_nest_spec(zsa, marker='ZZC-M1')[0]; sl = next(s_ for s_ in sm1['shapes'] if s_['piece'] == 'LADIES-BLOUSE-SL')
 if sl['buffer']['rule'] != 4 or [round(sl['buffer']['static'][x]['value'], 2) for x in ('left', 'top', 'right', 'bottom')] != [2.0, 0.0, 0.5, 0.0]: bad.append(f"ZZC-M1 sleeve buffer {sl['buffer']}")
 mkm = am.place_marker(zsa)['markers']; mk1 = next(m_['marker'] for m_ in mkm if m_['marker']['name'] == 'ZZC-M1')
@@ -2021,7 +2024,7 @@ wrong = ns.build_nest_spec(zsa, marker='ZZC-M1', block_buffer=os.path.join(BDIR,
 if wrong['marker_entries']['different'] < 1: bad.append('the wrong table was not contradicted by the marker')
 z18b = os.path.join(HERE, 'markers', '1825D-SS21-UNLAID', '1825D-BD 180 SS21.zip'); nb_ = ns.build_nest_spec(z18b, lay_limits=real_t['NEED- TWO WAY'])[0]['block_buffer']
 if nb_['parsed'] or nb_['source'] != 'named only' or nb_['name'] != '3MM' or nb_['rules_used'] != [1]: bad.append(f'1825D marker-only block buffer {nb_}')
-print(f"   {'ok ' if not bad else 'FAIL'} buffer rules: {tot_eq} marker entries ({', '.join(cases)}) equal the table rule their Lay Limits row names; the unequal rule 4 (Left 2.00, Right 0.50 cm) is [0.7874, 0.1968, 0, 0] in the marker - Left, Right, Top / Bottom; the wrong table is contradicted  {'; '.join(bad[:3])}")
+print(f"   {'ok ' if not bad else 'FAIL'} buffer rules: {tot_eq} marker entries ({', '.join(cases)}) equal the table rule their Lay Limits row names; the unequal rule 4 (Left 2.00, Right 0.50 cm) is [0.7874, 0.1968, 0, 0] and rule 9 (.11 / .22 / .33 / .44 cm) is [0.0433, 0.1299, 0.0866, 0.1732] in the marker - Left, Right, Top, Bottom; the wrong table is contradicted  {'; '.join(bad[:3])}")
 if bad: fails.append('buffer rules: ' + '; '.join(bad[:5]))
 
 print('-- marker byte map (v4.4, see accumark_marker.marker_coverage)')

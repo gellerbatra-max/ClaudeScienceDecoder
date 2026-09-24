@@ -10,7 +10,8 @@ One command from the ZIP AccuMark exports (marker-only is enough: no piece objec
                 notches (position + type), the grain line, internal lines, drill holes, area, perimeter, bounding box
     demand      how many of each shape to lay, and how many of those mirrored - with the mirrored outline written out, so the
                 nester needs no mirror convention (`mirror_binding` 'kept' = the row has S, AccuMark lays each instance as its flip says; 'free' = it may lay them either way). Per slot (v4.17): `flip_by_slot` = the model's flip of that instance (`--`, X, Y, X,Y;
-                X and Y are mirror images, X,Y a half turn) and `preset_turn_deg_by_slot` = the direction it is retrieved in
+                X and Y are mirror images, X,Y a half turn) and `preset_turn_deg_by_slot` = the model's own turn; `mirrored` is the engine's FLIP_FLAG and `retrieval_deg_by_slot` its
+                ANGLE for the instance (v4.24: the row's flip code composed onto the model flip and the bundle direction), `allowed_deg_by_slot` turns from there
     checks      every number a nester will trust, verified against numbers AccuMark itself stored (declared area, stored home box)
 
 Only what is still to be laid is listed: an unlaid marker gives every piece; a part-laid marker gives the unplaced ones (the placed count
@@ -308,7 +309,9 @@ def build_nest_spec(path, units='cm', marker=None, lay_limits=None, notch_table=
         for e in inv['slots']:
             slot = next(s for s in mk['slots'] if s['index'] == e['ordinal'])
             rec_i = slot['record_index']
-            mirrored = bool(e['preset']['mirrored'])       # v4.17: the flip X or Y (a mirror image); X,Y is a half turn
+            # v4.24: the orientation the engine retrieves the instance in = the row's flip code composed onto the model flip and the bundle direction (`retrieval_orientation`: its FLIP_FLAG / ANGLE, 3,460 instances of 73 jobs)
+            retr_m, retr_a = ll.retrieval_orientation(e['preset']['flip'], e['preset']['rot180'], (rows.get(e['piece']) or {}).get('flip_code') or 1)
+            mirrored = retr_m
             if rec_i not in shapes:
                 ol = e.get('outline')
                 shp = dict(id='S%03d' % (len(shapes) + 1), piece=e['piece'], model=e['model'], size=e['size'], cut=e['cut'], category=e['category'],
@@ -334,9 +337,9 @@ def build_nest_spec(path, units='cm', marker=None, lay_limits=None, notch_table=
                     shp['padding'] = None if hb is None else [shp['stored_box'][0] - w, shp['stored_box'][1] - h]
                 else: problems.append(f"{e['piece']} {e['size']}: no outline")
                 shapes[rec_i] = shp
-            g = groups.setdefault((rec_i, mirrored), dict(shape=shapes[rec_i]['id'], quantity=0, mirrored=mirrored, slots=[], bundles=set(), preset_rot180=0, presets=[], flips=[], turns=[]))
+            g = groups.setdefault((rec_i, mirrored), dict(shape=shapes[rec_i]['id'], quantity=0, mirrored=mirrored, slots=[], bundles=set(), preset_rot180=0, presets=[], flips=[], turns=[], retr=[]))
             g['quantity'] += 1; g['slots'].append(e['ordinal']); g['bundles'].add(e['bundle']); g['preset_rot180'] += int(e['preset']['rot180']); g['presets'].append(int(e['preset']['rot180']))
-            g['flips'].append(e['preset']['flip']); g['turns'].append(e['preset']['turn_deg'])
+            g['flips'].append(e['preset']['flip']); g['turns'].append(e['preset']['turn_deg']); g['retr'].append(retr_a)
         lay, ltab, lwarn = _lay_limits_block(mk, inv, bundled, supplied, orders)
         notch, nwarn = _notch_block(mk, shapes, bundled_n, supplied_n, k)
         buf, bwarn = _buffer_block(mk, rows, shapes, ltab, bundled_b, supplied_b, k)
@@ -364,9 +367,9 @@ def build_nest_spec(path, units='cm', marker=None, lay_limits=None, notch_table=
         def _binding(shape_id):
             rot_ = shapes_by(shapes, shape_id).get('rotation') or dflt
             return 'kept' if not rot_.get('flip_x_axis_allowed', True) else ('free' if shapes_by(shapes, shape_id).get('rotation') else 'free (assumed: the table is not known)')
-        demand = [dict(shape=g['shape'], quantity=g['quantity'], mirrored=g['mirrored'], mirror_binding=_binding(g['shape']), slots=g['slots'], bundles=sorted(g['bundles']), preset_rot180=g['preset_rot180'], preset_rot180_by_slot=g['presets'],
+        demand = [dict(shape=g['shape'], quantity=g['quantity'], mirrored=g['mirrored'], mirror_binding=_binding(g['shape']), retrieval_deg_by_slot=g['retr'], slots=g['slots'], bundles=sorted(g['bundles']), preset_rot180=g['preset_rot180'], preset_rot180_by_slot=g['presets'],
                        flip_by_slot=g['flips'], preset_turn_deg_by_slot=g['turns'],
-                       allowed_deg_by_slot=[sorted({(t + a) % 360 for a in (shapes_by(shapes, g['shape']).get('rotation') or dflt)['allowed_deg']}) for t in g['turns']])
+                       allowed_deg_by_slot=[sorted({(t + a) % 360 for a in (shapes_by(shapes, g['shape']).get('rotation') or dflt)['allowed_deg']}) for t in g['retr']])
                   for g in sorted(groups.values(), key=lambda g: (g['shape'], g['mirrored']))]
         W = inv['marker']['width_cm'] / 2.54 * k
         n_inst = sum(d['quantity'] for d in demand)

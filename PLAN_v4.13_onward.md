@@ -38,6 +38,13 @@ Every claim carries a status tag in the specs: **[V]** proved (live experiment o
 | v4.15 | Notch number versus notch code? | A piece keeps the NUMBER (1-99), the marker only the CODE = min(number, 5). Corrects the v4.10 reading | `notchnum/` | main `56c0921`, pushed |
 | v4.16 | Does the marker carry the table's spread? What sets the piece flag at +14? | Spread = section 1 u16 at file offset 520 (0 single, 1 face to face, 2 book fold, 3 tubular); the flag = the row's M (major piece) option; Bundling inferred from the stored presets. Corrects the v4.14 "no spread" statement | `spread/` | main `a97ef95`, pushed |
 | v4.17 | How does a two-ply marker treat a piece cut once? | Slot bits 0x0080 = X flip, 0x0100 = Y flip (both = X,Y half turn); single ply lists the model's flips exactly, a two-ply marker lets each as-is instance absorb one flipped one (Y, then X,Y, then X); a piece cut once keeps a slot per garment; a no-rotation row keeps the retrieval direction (turn = 180 x (0x2000 XOR flip in {Y, X,Y})); chirality is not kept per slot on `MW` rows | `twoply/` | main `2267406` (branch commit `d39e2f1`), pushed |
+| v4.18 | Flip counts above 2; the half turn of Y with the bundle direction | 30 of 30 counts up to 4 in every spread; direction composes with 0x2000 | `flipcount/` | main `e0d6f6a`, pushed |
+| v4.19 | The area a Block buffer adds | Rectangle dilation by (L+R) x (T+B), side order Left, Right, Top, Bottom; exact to 0.004 sq in | `blockarea/` | main `fe1f7b7`, pushed |
+| v4.20 | More of section 1 | @472 / @476 sums, @486 pieces + 1, @496 lay rows, @498 block entries, the engine words | (fixtures above) | main `408b8f9`, pushed |
+| v4.21 | Tilt limits and the `S` option | The marker keeps min(cw, ccw) in the table's unit; S pins each slot's chirality (905 of 922 vs 188 of 314) | `tilt/` | main `2b6136b`, pushed |
+| v4.22 | A 45-degree placement | Tilt +-45.0 on top of the code (flip codes 9-12); the collar's frame is ambiguous when thin and tilted | `deg45/` | main `064ce2d`, pushed |
+| v4.23 | Every marker on this machine (211 unique) | No exception; plaid / stripe values = 12 doubles of section 1; matching sections 9 / 23 / 24 named; @88 tolerance 2 | `plaid/` | main `5fc30f9`, pushed |
+| v4.24 | Can the nest engine's own input file check the spec? | `frommed.mra`: orientation = `retrieval_orientation` (136 of 136), flags = Piece Options, outline = piece + block rectangle; nest spec `mirrored` / `retrieval_deg_by_slot` corrected | `engine/` | branch `v4.24-engine-input-check` |
 
 Unknown bytes per marker fell from 1,111-1,753 to about 1,031-1,280 (roughly 1.06%) over v4.13-v4.16.
 
@@ -60,12 +67,12 @@ Ranked by value to a nesting consumer and by cost. "Live" means an AccuMark roun
 | 9 | **DONE v4.19** (exact to 0.004 sq in on 18 slots, unequal block): the exact area a Block buffer adds (the 7.2% BACK-piece excess) | Area checks on blocked markers | Offline from the block-buffer fixtures | offline |
 | 10 | Why the collar needs +90 (+90 and +270 look identical), older-vintage multi-row lay limits | Robustness on older markers | Needs an asymmetric collar-like piece; older markers from the user | low priority |
 | 11 | **Added v4.23**: plaid / stripe MATCHING rules (directory slots 9, 23, 24): named and bounded, not decoded; the plaid / stripe values (section 1) done | Nesting a plaid job | Decode against the match tables and the engine's `frommed.mra` (both on this machine) | one offline round + maybe live |
-| 12 | **Added v4.23**: use the engine's `frommed.mra` (100+ jobs) as an independent check of the nest spec (flags, gaps, tilt, outlines) | The best ground truth for the job spec | Offline: parse it, compare per job | offline |
+| 12 | **PARTLY DONE v4.24** (`accumark_engine.py`, `engine/`): the engine's `frommed.mra` as an independent check: orientation 136 of 136 (3,460 of 3,508 over 73 jobs), flags 20 of 20, outline = piece + block rectangle 20 of 20; open: tilt length-to-angle, `S` rows with `FLIP_GROUP` 0 (7 jobs), matching rules (item 11) | The best ground truth for the job spec | Offline: parse it, compare per job | offline |
 
 Recommended order: ~~2 and 3 together in one live round (v4.18)~~ done; next 7 and 9 offline while nothing else is waiting, then 4 and 6, then 5, then 8 and 10.
 
 ## 6. Where things stand
 
-* Everything up to and including v4.17 is on `main` and pushed to `origin/main` (v4.17 merge commit `2267406`). The three suites passed on the v4.17 branch (selftest PASS, dataset_test 36/36, robustness 730/730). Nothing is pending except the next version.
+* Everything up to and including v4.23 is on `main` and pushed to `origin/main` (v4.23 merge commit `5fc30f9`). v4.24 is on its branch until merged. The three suites pass on every version (selftest PASS, dataset_test 36/36, robustness 730/730). Standing order of 2026-09-25: follow the ranked list, commit and push as suitable, keep issues for the end.
 * The scratch objects from v4.17 (`ZZQ-*`) are deleted; the byte evidence is in `twoply/`. The older `ZZQB-*` / `ZZQL-S` objects belong to earlier work and were left alone.
-* Next step: one live round for items 2 and 3 of section 5 (v4.18), unless the user picks another.
+* Next step: the rest of item 12 / item 11 (matching rules against `frommed.mra`), then 7, 8, 10; item 1 waits for the user's `ALL GMT WAY` table.

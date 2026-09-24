@@ -1868,6 +1868,81 @@ if os.path.isfile(fxp):
 print(f"   {'ok ' if not bad else 'FAIL'} notch numbers: {checked} corpus specs read their table (numbers used {dict(used)}); 1825D notch 1 = slit 0.50 cm (NEED-P-NOTCH); the real plot's 30 notch spikes are all 0.40 cm = the table's depth  {'; '.join(bad[:3])}")
 if bad: fails.append('notch numbers: ' + '; '.join(bad[:5]))
 
+print('-- reference nester (v4.11, see reference_nester.py): the spec alone is enough to nest')
+# The spec is the contract with a nesting engine. Two independent proofs: (1) the lay AccuMark itself made of the real 2303 job, rebuilt from the SPEC's shapes and the placed marker's
+# positions and flags, is a valid lay (no overlaps, inside the fabric, the marker's own utilisation); (2) a nester that reads only the spec JSON (numpy + shapely, no decoder) lays
+# every instance of the real jobs validly - inside the fabric, no overlap, every rotation inside the instance's allowed set.
+import copy
+try:
+    import reference_nester as rn
+    from shapely.geometry import Polygon as _PG
+    from shapely.strtree import STRtree as _ST
+    _have_rn = True
+except ImportError:
+    _have_rn = False; print('   skip reference nester (needs numpy, Pillow and shapely)')
+bad = []
+zpl = os.path.join(HERE, 'markers', '2303-BD137-PLACED', '2303-BD 137 PLACED.zip'); zun = os.path.join(HERE, 'markers', '2303-BD137-UNLAID', '2303-BD 137.zip')
+if _have_rn and os.path.isfile(zpl) and os.path.isfile(zun):
+    su = ns.build_nest_spec(zun, units='in')[0]; rp = am.place_marker(zpl)['markers'][0]; mkp = rp['marker']
+    shp_ = {s_['id']: s_ for s_ in su['shapes']}; by_slot = {}
+    for d in su['demand']:
+        for o_ in d['slots']: by_slot[o_] = (shp_[d['shape']], d['mirrored'])
+    polys_ = []
+    for s_ in mkp['slots']:
+        sh, mir = by_slot[s_['index']]
+        if (sh['piece'], sh['size']) != (s_['piece'], s_['size']) or mir != bool(s_['flip_v'] or s_['flip_h']): bad.append(f"slot {s_['index']}: spec shape / mirror does not match the placed marker"); break
+        polys_.append(_PG(am.transform([tuple(p) for p in sh['outline']], s_)).buffer(0))
+    Wp, Lp = mkp['width'], mkp['length']; tree_ = _ST(polys_); n_ov = 0; worst = 0.0
+    for i_, p_ in enumerate(polys_):
+        for j_ in tree_.query(p_):
+            if j_ > i_:
+                a_ = p_.intersection(polys_[j_]).area
+                if a_ > 1e-3: n_ov += 1
+                worst = max(worst, a_)
+    xs_ = [b_ for p_ in polys_ for b_ in (p_.bounds[0], p_.bounds[2])]; ys_ = [b_ for p_ in polys_ for b_ in (p_.bounds[1], p_.bounds[3])]
+    util_ = 100 * sum(p_.area for p_ in polys_) / (Wp * Lp)
+    if len(polys_) != 97 or n_ov or worst > 5e-3: bad.append(f'real lay from the spec shapes: {len(polys_)} pieces, {n_ov} overlapping pairs, worst {worst:.4f} in2')
+    if min(xs_) < -1e-3 or max(xs_) > Lp + 1e-3 or min(ys_) < -1e-3 or max(ys_) > Wp + 1e-3: bad.append('real lay from the spec shapes leaves the fabric')
+    if abs(util_ - mkp['util']) > 0.02: bad.append(f'utilisation {util_:.2f} vs the marker\'s {mkp["util"]:.2f}')
+    ok_real = not bad
+    # the whole job of a laid marker as a spec: the same shapes, positions ignored
+    sj = ns.build_nest_spec(zpl, units='in', as_job=True)[0]
+    if sj['totals']['instances'] != 97 or abs(sj['totals']['area'] - su['totals']['area']) > 1e-6 or not sj['source']['job_of_laid_marker'] or sj['source']['laid_state'] != 'laid': bad.append(f"as_job spec: {sj['totals']['instances']} instances, area {sj['totals']['area']:.3f} vs {su['totals']['area']:.3f}")
+    print(f"   {'ok ' if not bad else 'FAIL'} AccuMark's own lay of 2303 (97 pieces, {Lp * 2.54:.1f} cm, {mkp['util']:.2f}%) rebuilt from the spec's shapes: {n_ov} overlapping pairs (worst {worst:.4f} in2), inside the {Wp:.2f} in fabric, utilisation {util_:.2f}%; the same job as a spec from the laid marker  {'; '.join(bad[:3])}")
+    if bad: fails.append('reference lay: ' + '; '.join(bad[:5]))
+
+bad = []; res_rows = []
+jobs_ = [('2303', zun, None, {}), ('ZZC-M1', zsa, 'ZZC-M1', {}), ('1825D', os.path.join(HERE, 'markers', '1825D-SS21-UNLAID', '1825D-BD 180 SS21.zip'), '1825D-BD 180 SS21', dict(lay_limits=real_t['NEED- TWO WAY'])),
+         ('5683D', os.path.join(HERE, 'markers', '5683D-SS21-UNLAID', '5683D-BD 168 SS21.zip'), None, dict(lay_limits=real_t['NEED- TWO WAY']))]
+for lab_, zp_, mk_, kw_ in jobs_:
+    if not _have_rn or not os.path.isfile(zp_): continue
+    sp_ = ns.build_nest_spec(zp_, marker=mk_, **kw_)[0]
+    # only the JSON crosses over: the nester gets no marker, no ZIP, no decoder objects
+    sp_ = _json.loads(_json.dumps(sp_))
+    pl_, un_, _ = rn.nest(sp_, res=0.3); rep_ = rn.validate(sp_, pl_, un_); res_rows.append((lab_, rep_))
+    if not rep_['valid'] or rep_['pieces'] != sp_['totals']['instances']: bad.append(f"{lab_}: {rep_['pieces']}/{sp_['totals']['instances']} pieces, overlaps {rep_['overlapping_pairs']}, inside {rep_['inside_fabric']}, rotations {rep_['rotations_allowed']}")
+    if rep_['utilisation'] < 40: bad.append(f"{lab_}: utilisation {rep_['utilisation']:.1f}%")
+    if lab_ == '2303' and rep_['length'] > mkp['length'] * 2.54 * 1.10: bad.append(f"2303: the nester's {rep_['length']:.1f} cm is more than 10% longer than AccuMark's {mkp['length'] * 2.54:.1f} cm")
+    if lab_ == '1825D' and any(p_['angle'] not in p_['allowed'] or len(p_['allowed']) != 1 for p_ in pl_): bad.append('1825D: MWS locks every instance in its preset direction')
+# it can fail: the validator catches an overlap, a piece outside the fabric and a forbidden rotation
+if res_rows:
+    sp_ = _json.loads(_json.dumps(ns.build_nest_spec(zsa, marker='ZZC-M1')[0])); pl_, un_, _ = rn.nest(sp_, res=0.3)
+    pl2 = [dict(p_) for p_ in pl_]; from shapely import affinity as _af
+    pl2[1]['poly'] = _af.translate(pl2[0]['poly'], 0.5, 0.5)
+    r1 = rn.validate(sp_, pl2, un_)
+    pl3 = [dict(p_) for p_ in pl_]; pl3[0]['poly'] = _af.translate(pl3[0]['poly'], 0, sp_['fabric']['width'])
+    r2 = rn.validate(sp_, pl3, un_)
+    pl4 = [dict(p_) for p_ in pl_]; pl4[0]['angle'] = 90 if 90 not in pl4[0]['allowed'] else 45
+    r3 = rn.validate(sp_, pl4, un_); r4 = rn.validate(sp_, pl_[:-1], un_)
+    if r1['valid'] or r1['overlapping_pairs'] < 1 or r2['valid'] or r2['inside_fabric'] or r3['valid'] or r3['rotations_allowed'] or r4['valid']: bad.append(f"validator mutations: overlap {r1['overlapping_pairs']}, outside {r2['inside_fabric']}, rotation {r3['rotations_allowed']}, missing piece {r4['valid']}")
+    # the spec drives the nester: forbid every rotation and no piece is turned
+    sp0 = copy.deepcopy(sp_)
+    for d in sp0['demand']: d['allowed_deg_by_slot'] = [[0] for _ in d['slots']]
+    pl0, un0, _ = rn.nest(sp0, res=0.3)
+    if any(p_['angle'] != 0 for p_ in pl0) or not rn.validate(sp0, pl0, un0)['valid']: bad.append('a spec with only 0 degrees did not keep every piece at 0')
+if _have_rn: print(f"   {'ok ' if not bad else 'FAIL'} reference nester (spec JSON only): " + '; '.join(f"{l_} {r_['pieces']}/{r_['instances']} pieces {r_['length']:.0f} cm {r_['utilisation']:.0f}% valid" for l_, r_ in res_rows) + f"; mutations caught  {'; '.join(bad[:3])}")
+if bad: fails.append('reference nester: ' + '; '.join(bad[:5]))
+
 print('-- marker byte map (v4.4, see accumark_marker.marker_coverage)')
 # Every byte owned by a section a parser reads must be classified (identified /
 # raw / zero_pad / opaque) - only the envelope, the header scalars, sections 2-5,

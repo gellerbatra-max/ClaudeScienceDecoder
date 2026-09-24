@@ -1731,7 +1731,7 @@ def unplaced_inventory(mk, pieces=None, piece_errors=None, use_grading=True, geo
                     by_size=dict(by_size), by_piece=dict(by_piece)),
         warnings=warnings)
 
-def place_marker(path, use_grading=True):
+def place_marker(path, use_grading=True, as_unlaid=False):
     """Decode a marker ZIP: -> dict(marker, pieces, piece_errors, placed=[(slot,
     piece, size, outline_in_marker_frame or None, note)]).
 
@@ -1739,7 +1739,10 @@ def place_marker(path, use_grading=True):
     slots nothing is laid for, outline in the piece's own frame) and
     `inventory` (see unplaced_inventory); the result carries
     `geometry_available` - 'none' when the ZIP holds no decodable piece for the
-    markers' slots, so a marker-only ZIP no longer reads like "all fine"."""
+    markers' slots, so a marker-only ZIP no longer reads like "all fine".
+
+    v4.11 `as_unlaid`: treat every slot of a LAID marker as still to be laid - its positions are ignored, `unplaced` / `inventory` then describe the whole job
+    (used to benchmark a nesting engine against the lay AccuMark itself made of the same job; `check_marker` is taken before the change)."""
     objs = list_zip(path)
     if 'marker' not in objs: raise NoSuchObject('no marker object in zip', source=str(path))
     pieces, piece_errors = load_pieces(objs)
@@ -1758,8 +1761,11 @@ def place_marker(path, use_grading=True):
                 placed.append((s, s['piece'], s['size'], None, note)); continue
             outline, note = piece_outline(piece, s['size'] if use_grading else None)
             placed.append((s, s['piece'], s['size'], transform(outline, s), note))
+        checks = check_marker(mk)
+        if as_unlaid:
+            for s in mk['slots']: s['empty'] = True
         unplaced = unplaced_slots(mk, pieces, piece_errors, use_grading)
-        out.append(dict(marker=mk, placed=placed, unplaced=unplaced, checks=check_marker(mk),
+        out.append(dict(marker=mk, placed=placed, unplaced=unplaced, checks=checks,
                         inventory=unplaced_inventory(mk, pieces, piece_errors, use_grading, geometry=unplaced)))
     have = sum(1 for p in pieces.values() if p)
     geo = 'none' if not have else ('all' if all(s.get('piece') in pieces and pieces[s['piece']] for m in out for s in m['marker']['slots']) else 'some')

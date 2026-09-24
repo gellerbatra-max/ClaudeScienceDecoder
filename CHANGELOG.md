@@ -1,5 +1,13 @@
 # Changelog
 
+## v4.26 (2026-09-25) - the engine's outline: the buffer rectangle on every rule size, the collar's quarter turn
+
+`__version__` stays `'3.0'`. New fixtures `engine/ZZPV-M`, `engine/ZZPS-M` (marker + `frommed.mra`: buffers of 0.0059 and 0.0118 in). Plan items 12 (outline) and 10 (collar frame), offline.
+
+* **Result** (MARKER_FORMAT_SPEC.md section 32): the engine's outline of a piece = the marker's stream outline grown by the section-6 rectangle `(L+R) x (T+B)`, symmetrically about the middle of the box, **for every amount seen** (nine amounts on 223 pieces of 73 jobs, the real 3MM Buffer of 0.15 cm among them: growth equals `rect_growth` within 2%, box within 0.0001 in) - so the v4.24 statement
+  "every block-buffer entry is applied as a rectangle" now rests on Buffer and Block amounts alike; the piece gap `GLOBAL_GAP` is a separate job setting. **The LADIES-BLOUSE collar is turned +90 (counter-clockwise) in the engine's frame, not 270** (0.28 in from the +90 turn, 0.98 from 270): the sign v4.13 could not decide. Every other piece of the corpus is in the stream frame; what decides the turn is still open.
+* **Code.** None (a measurement release); `selftest` (new section): 27 pieces of 6 jobs, growth / box / frame, the collar +90 against 270. **Open:** the rule that turns the collar; the engine's `FOLD_LINE`; the length-to-angle conversion of a table tilt.
+
 ## v4.25 (2026-09-25) - the plaid / stripe matching rules (sections 9, 23, 24)
 
 `__version__` stays `'3.0'`. New fixtures in `plaid/` (four more markers made with Matching tables, `ZZPU-M`, `ZZPY-M`, `ZZP2-M`, `ZZC20-STD`, and the engine's `frommed.mra` of each job). Plan item 11, offline: the engine's own per-piece rules (v4.24) were the ground truth.

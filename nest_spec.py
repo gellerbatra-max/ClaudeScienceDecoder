@@ -9,7 +9,8 @@ One command from the ZIP AccuMark exports (marker-only is enough: no piece objec
     shapes      one per (piece, size, cut) the marker lists: the CUT outline, the seam (stitch) line when the marker holds one,
                 notches (position + type), the grain line, internal lines, drill holes, area, perimeter, bounding box
     demand      how many of each shape to lay, and how many of those mirrored - with the mirrored outline written out, so the
-                nester needs no mirror convention
+                nester needs no mirror convention. Per slot (v4.17): `flip_by_slot` = the model's flip of that instance (`--`, X, Y, X,Y;
+                X and Y are mirror images, X,Y a half turn) and `preset_turn_deg_by_slot` = the direction it is retrieved in
     checks      every number a nester will trust, verified against numbers AccuMark itself stored (declared area, stored home box)
 
 Only what is still to be laid is listed: an unlaid marker gives every piece; a part-laid marker gives the unplaced ones (the placed count
@@ -307,7 +308,7 @@ def build_nest_spec(path, units='cm', marker=None, lay_limits=None, notch_table=
         for e in inv['slots']:
             slot = next(s for s in mk['slots'] if s['index'] == e['ordinal'])
             rec_i = slot['record_index']
-            mirrored = bool(e['preset']['mirror'])
+            mirrored = bool(e['preset']['mirrored'])       # v4.17: the flip X or Y (a mirror image); X,Y is a half turn
             if rec_i not in shapes:
                 ol = e.get('outline')
                 shp = dict(id='S%03d' % (len(shapes) + 1), piece=e['piece'], model=e['model'], size=e['size'], cut=e['cut'], category=e['category'],
@@ -333,8 +334,9 @@ def build_nest_spec(path, units='cm', marker=None, lay_limits=None, notch_table=
                     shp['padding'] = None if hb is None else [shp['stored_box'][0] - w, shp['stored_box'][1] - h]
                 else: problems.append(f"{e['piece']} {e['size']}: no outline")
                 shapes[rec_i] = shp
-            g = groups.setdefault((rec_i, mirrored), dict(shape=shapes[rec_i]['id'], quantity=0, mirrored=mirrored, slots=[], bundles=set(), preset_rot180=0, presets=[]))
+            g = groups.setdefault((rec_i, mirrored), dict(shape=shapes[rec_i]['id'], quantity=0, mirrored=mirrored, slots=[], bundles=set(), preset_rot180=0, presets=[], flips=[], turns=[]))
             g['quantity'] += 1; g['slots'].append(e['ordinal']); g['bundles'].add(e['bundle']); g['preset_rot180'] += int(e['preset']['rot180']); g['presets'].append(int(e['preset']['rot180']))
+            g['flips'].append(e['preset']['flip']); g['turns'].append(e['preset']['turn_deg'])
         lay, ltab, lwarn = _lay_limits_block(mk, inv, bundled, supplied, orders)
         notch, nwarn = _notch_block(mk, shapes, bundled_n, supplied_n, k)
         buf, bwarn = _buffer_block(mk, rows, shapes, ltab, bundled_b, supplied_b, k)
@@ -356,8 +358,10 @@ def build_nest_spec(path, units='cm', marker=None, lay_limits=None, notch_table=
         dflt = _default_rotation(lay, ltab)
         # an instance is retrieved in its bundle's preset direction (0 or 180) and may be turned by `allowed_deg` from there: a `W` row (no rotation) therefore fixes it in its preset
         # direction [measured, AccuNest: laylimits/EXPERIMENT_W_ALTERNATE.md]; a row that allows 180 leaves both directions open
+        # v4.17: the direction an instance is retrieved in also carries the 180 of a Y / X,Y flip (`turn_deg`: the bundle's 0x2000 direction turned by it); `flip_by_slot` names the model flip (`--`, X, Y, X,Y)
         demand = [dict(shape=g['shape'], quantity=g['quantity'], mirrored=g['mirrored'], slots=g['slots'], bundles=sorted(g['bundles']), preset_rot180=g['preset_rot180'], preset_rot180_by_slot=g['presets'],
-                       allowed_deg_by_slot=[sorted({(180 * pr + a) % 360 for a in (shapes_by(shapes, g['shape']).get('rotation') or dflt)['allowed_deg']}) for pr in g['presets']])
+                       flip_by_slot=g['flips'], preset_turn_deg_by_slot=g['turns'],
+                       allowed_deg_by_slot=[sorted({(t + a) % 360 for a in (shapes_by(shapes, g['shape']).get('rotation') or dflt)['allowed_deg']}) for t in g['turns']])
                   for g in sorted(groups.values(), key=lambda g: (g['shape'], g['mirrored']))]
         W = inv['marker']['width_cm'] / 2.54 * k
         n_inst = sum(d['quantity'] for d in demand)
@@ -368,6 +372,7 @@ def build_nest_spec(path, units='cm', marker=None, lay_limits=None, notch_table=
                         lay_history=inv['marker']['lay_history'], decoder_version=am.__version__, job_of_laid_marker=bool(as_job),
                         tables={k: (mk.get('tables') or {}).get(k) or None for k in ('lay_limits', 'annotation', 'block_buffer', 'notch_table')}),
             fabric=dict(width=W, spread=lay.get('spread'), plies=(2 if lay.get('spread') in ('face_to_face', 'book_fold', 'tubular') else (1 if lay.get('spread') == 'single_ply' else None)),
+                        plies_note=('a two-ply marker lists each stack position ONCE: an as-is instance and a flipped one of the same piece share a slot (the second ply is the partner), so it has fewer slots than a single-ply marker of the same order' if lay.get('spread') in ('face_to_face', 'book_fold', 'tubular') else None),
                         fabric_types=inv['marker']['fabric_types'],
                         block_buffer_in=[list(b) for b in inv['marker']['block_buffers']] or None,
                         min_length=(area_all / W) if W else None, min_length_note='total piece area / width: a 100%-efficient lay; not a nesting result'),

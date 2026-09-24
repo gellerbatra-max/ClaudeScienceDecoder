@@ -1,0 +1,213 @@
+{
+ "what": "v4.17: ONE model (ZZQ-BLOUSE, a copy of LADIES-BLOUSE with the Model Editor FLIPS columns edited) laid as two garments (quantity 2, size 10) in three flip configurations, made with a Lay Limits table of each spread - and AutoMark / AccuNest placements of some of them.",
+ "flips_columns": "[--, X, Y, X,Y] = how many of the piece are cut as is / flipped X / flipped Y / flipped X and Y (Model Editor, Pieces tab, FLIPS)",
+ "pieces": {
+  "BK": "LADIES-BLOUSE-BK",
+  "COL": "LADIES-BLOUSE-COL",
+  "CUFF": "LADIES-BLOUSE-CUFF",
+  "FR": "LADIES-BLOUSE-FR",
+  "SL": "LADIES-BLOUSE-SL"
+ },
+ "model_flips": {
+  "round1": {
+   "BK": [
+    3,
+    0,
+    0,
+    0
+   ],
+   "COL": [
+    2,
+    2,
+    0,
+    0
+   ],
+   "CUFF": [
+    0,
+    1,
+    0,
+    0
+   ],
+   "FR": [
+    2,
+    0,
+    0,
+    0
+   ],
+   "SL": [
+    1,
+    1,
+    1,
+    1
+   ]
+  },
+  "round2": {
+   "BK": [
+    0,
+    0,
+    1,
+    0
+   ],
+   "COL": [
+    0,
+    0,
+    0,
+    1
+   ],
+   "CUFF": [
+    1,
+    0,
+    1,
+    0
+   ],
+   "FR": [
+    0,
+    1,
+    1,
+    0
+   ],
+   "SL": [
+    1,
+    0,
+    0,
+    1
+   ]
+  },
+  "round3": {
+   "BK": [
+    1,
+    1,
+    0,
+    1
+   ],
+   "COL": [
+    1,
+    1,
+    1,
+    0
+   ],
+   "CUFF": [
+    1,
+    0,
+    1,
+    1
+   ],
+   "FR": [
+    2,
+    1,
+    0,
+    1
+   ],
+   "SL": [
+    1,
+    2,
+    0,
+    0
+   ]
+  }
+ },
+ "markers": {
+  "ZZQ-S": {
+   "round": "round1",
+   "table": "ZZLL-1",
+   "spread": 0,
+   "alternates": true,
+   "slots": 28,
+   "state": "unmade"
+  },
+  "ZZQ-F": {
+   "round": "round1",
+   "table": "ZZLL-3",
+   "spread": 1,
+   "alternates": true,
+   "slots": 22,
+   "state": "unmade"
+  },
+  "ZZQ-B": {
+   "round": "round1",
+   "table": "ZZLL-BOOKFOLD",
+   "spread": 2,
+   "alternates": false,
+   "slots": 22,
+   "state": "unmade"
+  },
+  "ZZQ-T": {
+   "round": "round1",
+   "table": "ZZLL-X2",
+   "spread": 3,
+   "alternates": false,
+   "slots": 22,
+   "state": "unmade"
+  },
+  "ZZQ-S2": {
+   "round": "round2",
+   "table": "ZZLL-1",
+   "spread": 0,
+   "alternates": true,
+   "slots": 16,
+   "state": "unmade"
+  },
+  "ZZQ-F2": {
+   "round": "round2",
+   "table": "ZZLL-3",
+   "spread": 1,
+   "alternates": true,
+   "slots": 12,
+   "state": "unmade"
+  },
+  "ZZQ-W": {
+   "round": "round3",
+   "table": "ZZLL-1WAY",
+   "spread": 0,
+   "alternates": false,
+   "slots": 32,
+   "state": "unmade"
+  },
+  "ZZQ-F3": {
+   "round": "round3",
+   "table": "ZZLL-3",
+   "spread": 1,
+   "alternates": true,
+   "slots": 20,
+   "state": "unmade"
+  },
+  "ZZQ-A": {
+   "round": "round3",
+   "table": "ZZLL-1",
+   "spread": 0,
+   "alternates": true,
+   "slots": 32,
+   "state": "unmade"
+  }
+ },
+ "made": {
+  "ZZQ-SA-MADE": {
+   "round": "round1",
+   "by": "AutoMark (Piece Options Apply, effort 10) of ZZQ-S",
+   "slots": 28
+  },
+  "ZZQ-FA-MADE": {
+   "round": "round1",
+   "by": "AutoMark of ZZQ-F",
+   "slots": 22
+  },
+  "ZZQ-W-MADE": {
+   "round": "round3",
+   "by": "AccuNest Draft (Queue Submit, no overrides) of ZZQ-W",
+   "slots": 32
+  },
+  "ZZQ-A-MADE": {
+   "round": "round3",
+   "by": "AccuNest Draft of ZZQ-A",
+   "slots": 32
+  }
+ },
+ "slot_flip_bits": {
+  "0x0000": "--",
+  "0x0080": "X",
+  "0x0100": "Y",
+  "0x0180": "X,Y"
+ },
+ "two_ply_rule": "slots of a piece in a bundle = pieces - min(#--, #X + #Y + #X,Y): each as-is instance absorbs ONE flipped instance, taking Y first, then X,Y, then X (rounds 1-3, 3 x 5 configurations, face to face; book fold and tubular gave the same slots on round 1)",
+ "placed_direction": "on a no-rotation (W) row AccuNest keeps the retrieval direction: the rotation part of the placed orientation = 180 x (bundle 0x2000 bit XOR flip in {Y, X,Y}): ZZQ-W-MADE 32 of 32 slots, ZZQ-A-MADE 8 of 8 front-piece slots (MW row)"
+}

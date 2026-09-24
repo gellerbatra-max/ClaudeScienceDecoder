@@ -2355,6 +2355,69 @@ if os.path.isfile(z25b_) and os.path.isfile(z18b_):
 print(f"   {'ok ' if not bad else 'FAIL'} four markers from one order, one table of each spread (word {[m_['spread_word'] for m_ in sgt['markers'].values()]}, slots {[m_['slots'] for m_ in sgt['markers'].values()]}, plies 1 / 2 / 2 / 2); {n_ok} of {n_mk} corpus markers carry their table's spread; {n_prok} of {n_pr} piece flags @+14 = the row's M; ALL GMT WAY's Bundling inferred (All Bundle, Same Direction)  {'; '.join(bad[:3])}")
 if bad: fails.append('spread / major: ' + '; '.join(bad[:5]))
 
+print('-- flips and two-ply slots (v4.17, MARKER_FORMAT_SPEC.md section 24): the slot flip bits, the two-ply merge rule, the placed direction')
+# One model (a copy of LADIES-BLOUSE, Model Editor FLIPS columns edited: how many of a piece are cut as is / flipped X / Y / X,Y) laid as two garments in three flip configurations, made with a table of each spread,
+# then placed by AutoMark and AccuNest (twoply/). Slot word bits 0x0080 = X, 0x0100 = Y, both = X,Y. A two-ply marker merges each as-is instance with one flipped instance.
+TPD = os.path.join(HERE, 'twoply'); tgt = _json.load(open(os.path.join(TPD, 'GROUND_TRUTH.json'))); bad = []
+def tp_load(nm): return am.parse_marker(am.read_storage_marker(os.path.join(TPD, nm + '.GT_mark')))
+def tp_two_ply(c):
+    c = dict(c); m = min(c['--'], c['X'] + c['Y'] + c['X,Y'])
+    for f_ in ('Y', 'X,Y', 'X'):
+        k_ = min(m, c[f_]); c[f_] -= k_; m -= k_
+    return c
+FLN = ('--', 'X', 'Y', 'X,Y'); n_cfg = 0; n_slot = 0
+for nm_, want_ in tgt['markers'].items():
+    mk_ = tp_load(nm_); fl_ = tgt['model_flips'][want_['round']]
+    if mk_['spread'] != want_['spread'] or len(mk_['slots']) != want_['slots'] or mk_['laid_state'] != 'unlaid': bad.append(f"{nm_}: spread {mk_['spread']}, {len(mk_['slots'])} slots, {mk_['laid_state']}")
+    if any('orientation bits' in w_ for w_ in am.marker_warnings(mk_)): bad.append(f'{nm_}: a flip bit was reported as unknown')
+    for bn_ in (0, 1):
+        for sfx_, cnt_ in fl_.items():
+            c0_ = dict(zip(FLN, cnt_)); ex_ = tp_two_ply(c0_) if want_['spread'] else c0_
+            got_ = Counter(s_['flip'] for s_ in mk_['slots'] if s_['bundle'] == bn_ and s_['piece'].endswith('-' + sfx_))
+            n_cfg += 1
+            if any(got_.get(f_, 0) != ex_[f_] for f_ in FLN): bad.append(f'{nm_} bundle {bn_} {sfx_}: flips {dict(got_)}, expected {ex_}')
+        alt_ = {bool(s_['orient_code'] & 0x2000) for s_ in mk_['slots'] if s_['bundle'] == bn_}
+        if alt_ != {bool(want_['alternates'] and bn_)}: bad.append(f'{nm_} bundle {bn_}: the 0x2000 direction bit is {alt_}')
+    n_slot += len(mk_['slots'])
+    # the nest spec: mirrored = X or Y, the flip and the retrieval direction per slot
+    sp_ = ns.build_nest_spec(os.path.join(TPD, nm_ + '.GT_mark'))[0]; dm_ = sp_['demand']
+    mir_ = sum(d_['quantity'] for d_ in dm_ if d_['mirrored']); mir_want_ = sum(1 for s_ in mk_['slots'] if s_['flip'] in ('X', 'Y'))
+    if not sp_['complete'] or mir_ != mir_want_ or sum(d_['quantity'] for d_ in dm_) != len(mk_['slots']): bad.append(f"{nm_}: nest spec complete {sp_['complete']}, {mir_} mirrored of {mir_want_}")
+    by_ord_ = {s_['index']: s_ for s_ in mk_['slots']}
+    for d_ in dm_:
+        for o_, fl2_, tn_ in zip(d_['slots'], d_['flip_by_slot'], d_['preset_turn_deg_by_slot']):
+            s_ = by_ord_[o_]
+            if fl2_ != s_['flip'] or tn_ != (180 if bool(s_['orient_code'] & 0x2000) != (s_['flip'] in ('Y', 'X,Y')) else 0) or d_['mirrored'] != (s_['flip'] in ('X', 'Y')): bad.append(f'{nm_} slot {o_}: {fl2_} / {tn_} / {d_["mirrored"]}')
+    if want_['spread'] and not sp_['fabric']['plies_note']: bad.append(f'{nm_}: no two-ply note')
+if n_cfg != 2 * 5 * len(tgt['markers']): bad.append(f'{n_cfg} configurations checked')
+# AutoMark keeps the chirality of the sleeve (the one asymmetric piece with every flip): X and Y mirrored, as is and X,Y not
+n_ch = 0
+for nm_ in ('ZZQ-SA-MADE', 'ZZQ-FA-MADE'):
+    mk_ = tp_load(nm_)
+    if mk_['laid_state'] != 'laid' or len(mk_['slots']) != tgt['made'][nm_]['slots']: bad.append(f"{nm_}: {mk_['laid_state']}, {len(mk_['slots'])} slots")
+    for s_ in mk_['slots']:
+        if s_['piece'].endswith('-SL'):
+            n_ch += 1
+            if s_['placed_flip'] != s_['preset_mirrored']: bad.append(f"{nm_} slot {s_['index']}: flip {s_['flip']} placed mirrored {s_['placed_flip']}")
+# AccuNest, no-rotation rows: the rotation part of the placed orientation = the retrieval direction (bundle direction x the half turn of Y / X,Y)
+n_dir = 0
+for nm_, only_ in (('ZZQ-W-MADE', None), ('ZZQ-A-MADE', '-FR')):
+    mk_ = tp_load(nm_)
+    if mk_['laid_state'] != 'laid': bad.append(f'{nm_}: {mk_["laid_state"]}')
+    for s_ in mk_['slots']:
+        if only_ and not s_['piece'].endswith(only_): continue
+        n_dir += 1
+        if s_['placed_rot'] != s_['preset_turn_deg']: bad.append(f"{nm_} slot {s_['index']} ({s_['flip']}, word {s_['orient_code']:#06x}): placed rotation {s_['placed_rot']}, retrieval direction {s_['preset_turn_deg']}")
+# a broken word is noticed: an unknown bit is reported, a flip bit is read
+b0_ = bytearray(am.read_storage_marker(os.path.join(TPD, 'ZZQ-S2.GT_mark'))); m0_ = tp_load('ZZQ-S2'); sl_ = m0_['slots'][0]
+w0_ = struct.unpack_from('<H', b0_, sl_['slot'] + 32)[0]
+struct.pack_into('<H', b0_, sl_['slot'] + 32, w0_ ^ 0x0100); m1_ = am.parse_marker(bytes(b0_))
+if m1_['slots'][0]['flip'] == sl_['flip'] or any('orientation bits' in w_ for w_ in am.marker_warnings(m1_)): bad.append('a toggled Y bit was not read as a flip change')
+struct.pack_into('<H', b0_, sl_['slot'] + 32, w0_ | 0x0400); m2_ = am.parse_marker(bytes(b0_))
+if not any('orientation bits' in w_ for w_ in am.marker_warnings(m2_)): bad.append('an unknown orientation bit (0x0400) was not reported')
+print(f"   {'ok ' if not bad else 'FAIL'} {len(tgt['markers'])} unmade markers of one model in 3 flip configurations: {n_cfg} (bundle, piece) flip multisets equal the model's (single ply) or its two-ply merge; nest spec mirrored = X / Y; AutoMark keeps the sleeve's chirality on {n_ch} slots; AccuNest keeps the retrieval direction on {n_dir} no-rotation slots; a toggled / unknown bit is noticed  {'; '.join(bad[:3])}")
+if bad: fails.append('flips / two-ply: ' + '; '.join(bad[:5]))
+
 print('-- marker byte map (v4.4, see accumark_marker.marker_coverage)')
 # Every byte owned by a section a parser reads must be classified (identified /
 # raw / zero_pad / opaque) - only the envelope, the header scalars, sections 2-5,

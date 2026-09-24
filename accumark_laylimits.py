@@ -58,6 +58,22 @@ FLIP_CODES = {1: ('Original Digitized Position', 0, None), 2: ('Rotate 180 Degre
               7: ('Rotate 90 degrees, CW', -90, None), 8: ('Rotate 90 degrees, CW, Flip X-axis', -90, 'x_axis'),
               9: ('Rotate 45 degrees, CCW, Flip X-axis', 45, 'x_axis'), 10: ('Rotate 45 degrees, CCW', 45, None),
               11: ('Rotate 45 degrees, CW', -45, None), 12: ('Rotate 45 degrees, CW, Flip X-axis', -45, 'x_axis')}
+def code_transform(code):
+    """v4.24: a lay-table flip code as a transform in the convention of the marker and of the nest engine: MIRROR top-to-bottom first, then TURN counter-clockwise -> (mirrored, turn_deg).
+    A code that both rotates and flips (5, 8, 9, 12) rotates first and flips after, so its turn changes sign in this form; 'flip about Y' is the mirror followed by a half turn.
+    [V: the engine's ANGLE / FLIP_FLAG of 156 piece instances of four jobs, codes 1, 7, 9, 10, 11, 12 and every flip / bundle combination]"""
+    label, rot, flip = FLIP_CODES[code]
+    if flip == 'y_axis': return True, (180 - rot) % 360
+    if flip == 'x_axis': return True, (-rot) % 360
+    return False, rot % 360
+
+def retrieval_orientation(flip_label, alt, code):
+    """v4.24: the orientation a piece instance is RETRIEVED in, the engine's `FLIP_FLAG` / `ANGLE` (frommed.mra): the row's flip code composed onto the instance's preset - the model flip
+    (`--`, X, Y, X,Y: X and Y mirror, Y and X,Y add a half turn) and the bundle's 0x2000 direction (`alt`, another half turn). -> (mirrored, angle_deg 0-359, mirror first, then turn ccw)"""
+    mp = flip_label in ('X', 'Y'); tp = 180 if (bool(alt) != (flip_label in ('Y', 'X,Y'))) else 0
+    mc, tc = code_transform(code or 1)
+    return (mp != mc), (tc + (-tp if mc else tp)) % 360
+
 _MAGIC_OFF = 0x90       # a storage-area `.GT_lay` file = 0x90 bytes of envelope + the table
 _EXPORT_OFF = 0x8a      # in an export ZIP object the table starts 10 bytes into the payload region (after `00 00 90 00 00 00 00 00 00 00`) and is `payload_len` long
 

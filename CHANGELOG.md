@@ -1,5 +1,15 @@
 # Changelog
 
+## v4.24 (2026-09-25) - the nest engine's own input file as a check; retrieval orientation
+
+`__version__` stays `'3.0'`. New module `accumark_engine.py` (reads `frommed.mra`), new fixtures `engine/` (the `frommed.mra` of jobs 266 / 269 / 272 / 275, made from `twoply/ZZQ-W`, `twoply/ZZQ-A`, `flipcount/ZZR-S`, `deg45/ZZR-45`). Plan item 12, offline only.
+
+* **Result** (MARKER_FORMAT_SPEC.md section 30): the engine's per-instance `ANGLE` / `FLIP_FLAG` equal `retrieval_orientation(model flip, bundle direction, row flip code)` on 136 of 136 instances of the four jobs and on 3,460 of 3,508 over 73 jobs (the 48 exceptions = one LAID marker, whose `ANGLE` is the placed angle). The per-category flags follow the Piece Options
+  (`NAP_GROUP` = W, `FLIP_GROUP` = S, `ROTATE_INCR` 0 / 45 / 90 / 180 = W / 4 / 9 / else): 20 of 20. The engine's outline = the piece + the block rectangle: `rect_growth` reproduces its area growth within 1.5% on 20 of 20 kinds - an independent proof of the v4.19 block model. `AM_AREA` = the slot area on 353 of 360 piece kinds.
+* **Behaviour change (nest spec):** `demand[].mirrored` is now the engine's `FLIP_FLAG` (the row's flip code composed onto the model flip: a `MW` row with code 9 makes the model's as-is instances mirrored), `retrieval_deg_by_slot` is new (the engine's `ANGLE`), and `allowed_deg_by_slot` turns from the retrieval angle, not from the model's own turn (code 7 = 270). Earlier versions ignored the row's code here.
+* **Code.** `accumark_laylimits.code_transform`, `retrieval_orientation`; `accumark_engine.parse_frommed`, `parse_pieces`, `read_engine_file`, `engine_flags`; `nest_spec` (`mirrored`, `retrieval_deg_by_slot`, `allowed_deg_by_slot`, `mirror_binding` unchanged). **Checks.** `selftest` (new section): 136 instances vs `retrieval_orientation` and vs the nest spec, a wrong 0x2000 reading is caught on all 136, 20 style pieces vs `engine_flags`, 20 outlines vs `rect_growth`, `AM_AREA`.
+* **Open:** the length-to-angle conversion of a table tilt (`0.1574 in` -> +-0.2 degree: one data point); the 7 of 37 jobs with an `S` row whose `FLIP_GROUP` is 0 (a Nest Markers override?); the matching rules of each piece (plan item 11); `BUNDLE_ID`, `FOLD_LINE`, `RIGHT_FLAG`.
+
 ## v4.23 (2026-09-25) - every marker on this machine read; the plaid / stripe values; the matching sections named
 
 `__version__` stays `'3.0'`. New fixtures `plaid/` (two plaid markers, the matching table, the engine's input file of job 117, `GROUND_TRUTH.json`). Not a plan item: a read-only scan of all 219 marker files in every storage area of this machine (the corpus of "whatever AccuMark produces" is much larger than the repo).

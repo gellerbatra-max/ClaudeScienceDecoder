@@ -2665,6 +2665,45 @@ if not _s88_([94, 96, 96])['ok'] or _s88_([94, 96, 96])['constant'] != {'P': 94}
 print(f"   {'ok ' if not bad else 'FAIL'} plaid / stripe repeats and offsets read from section 1 (12 / 2 cm and 10 / 1 cm), the matching sections named, bounded and not decoded, the nest spec carries the plaid values; none of {n_np} fixture markers is plaid; a stray directory word 41 is still reported; the @88 rule takes a spread of 2  {'; '.join(bad[:3])}")
 if bad: fails.append('plaid / real scan: ' + '; '.join(bad[:5]))
 
+print("-- the nest engine's own input file (v4.24, MARKER_FORMAT_SPEC.md section 30): frommed.mra of four AccuNest jobs as an independent check of the job spec")
+# engine/: `frommed.mra` of the Queue jobs made from twoply/ZZQ-W, twoply/ZZQ-A, flipcount/ZZR-S, deg45/ZZR-45 = what AccuMark itself handed AccuNest (one BEGIN_PIECE per slot, in slot order).
+import accumark_engine as ae
+ENG = os.path.join(HERE, 'engine'); bad = []; EJ = (('ZZQ-W', 'twoply'), ('ZZQ-A', 'twoply'), ('ZZR-S', 'flipcount'), ('ZZR-45', 'deg45'))
+tot_i = n_flip = n_ang = n_spec = n_mut = n_sty = n_am = n_grow = 0; worst_g = 0.0; am_other = []
+def _pa(pts): return abs(sum(pts[i][0] * pts[(i + 1) % len(pts)][1] - pts[(i + 1) % len(pts)][0] * pts[i][1] for i in range(len(pts)))) / 2
+for nm_, dn_ in EJ:
+    ef_ = ae.read_engine_file(os.path.join(ENG, nm_ + '.frommed.mra')); fp_ = os.path.join(HERE, dn_, nm_ + '.GT_mark')
+    mk_ = am.parse_marker(am.read_storage_marker(fp_)); sp_ = ns.build_nest_spec(fp_)[0]; h_ = ef_['header']
+    rows_ = mk_['snapshots']['lay_limits']['rows']; prow_ = {p_['name']: p_ for p_ in mk_['pieces']}; cat_ = {}
+    for p_ in mk_['pieces']: cat_.setdefault(p_['fabric'], rows_[p_['lay_row']])
+    if h_['MARKER_NAME'] != nm_ or len(ef_['pieces']) != len(mk_['slots']) or h_['PIECE_COUNT'] != len(mk_['slots']) or h_['SPREAD'] != mk_['spread'] or abs(h_['MARKER_WIDTH'] / 1e4 - mk_['width']) > 1e-3:
+        bad.append(f"{nm_}: header {h_['MARKER_NAME']} {h_['PIECE_COUNT']} {h_['SPREAD']} {h_['MARKER_WIDTH']} vs {len(mk_['slots'])} slots, spread {mk_['spread']}, width {mk_['width']}")
+    by_ = {}
+    for de_ in sp_['demand']:
+        for k_, sl_ in enumerate(de_['slots']): by_[sl_] = (de_, k_)
+    for i_, (s_, p_) in enumerate(zip(mk_['slots'], ef_['pieces'])):
+        code_ = prow_[s_['piece']]['flip_code']; alt_ = s_['orient_code'] & 0x2000; want_ = (p_['flip'], round(p_['angle_deg']) % 360); tot_i += 1
+        got_ = _ll.retrieval_orientation(s_['flip'], alt_, code_); n_flip += got_[0] == want_[0]; n_ang += got_[1] == want_[1]
+        de_, k_ = by_[s_['index']]; n_spec += de_['mirrored'] == p_['flip'] and round(de_['retrieval_deg_by_slot'][k_]) % 360 == want_[1]
+        n_mut += _ll.retrieval_orientation(s_['flip'], 0 if alt_ else 1, code_) != want_          # a wrong 0x2000 reading must be caught
+    for sp1_ in ef_['style_pieces']:
+        r_ = cat_[sp1_['PIECE_NAME']]; want_ = ae.engine_flags(r_['options']); n_sty += all(sp1_[k_] == v_ for k_, v_ in want_.items())
+        if bool(sp1_['CW_TILT_LIMIT']) != bool(r_['tilt_cw']) or sp1_['CW_TILT_LIMIT'] != -sp1_['CCW_TILT_LIMIT']: bad.append(f"{nm_} {sp1_['PIECE_NAME']}: tilt limits {sp1_['CW_TILT_LIMIT']} / {sp1_['CCW_TILT_LIMIT']} for a table tilt of {r_['tilt_cw']}")
+    shp_ = {sh_['piece']: sh_ for sh_ in sp_['shapes']}; seen_ = set()
+    for s_, p_ in zip(mk_['slots'], ef_['pieces']):
+        if s_['piece'] in seen_: continue
+        seen_.add(s_['piece']); a_am = p_['am_area'] / 1e3; ap_ = _pa(p_['points_in']); out_ = [(x_ / 2.54, y_ / 2.54) for x_, y_ in shp_[s_['piece']]['outline']]
+        sd_ = am._buffer_sides(mk_, s_['piece']); g_ = am.rect_growth(out_, sd_[0] + sd_[1], sd_[2] + sd_[3]) if any(sd_) else 0.0; ge_ = ap_ - _pa(out_)
+        n_am += abs(a_am - s_['area']) < 0.002
+        if abs(a_am - s_['area']) >= 0.002: am_other.append((nm_, s_['piece'][-2:], abs(a_am - ap_) < 0.02))
+        worst_g = max(worst_g, abs(ge_ - g_) / max(1.0, ge_ / 30.0)); n_grow += abs(ge_ - g_) <= max(0.25, 0.015 * ge_)
+n_kinds = 20
+if tot_i != 136 or n_flip != 136 or n_ang != 136 or n_spec != 136 or n_mut < 100: bad.append(f'instances {tot_i}: flip {n_flip}, angle {n_ang}, nest spec {n_spec}, wrong-0x2000 misses {n_mut}')
+if n_sty != n_kinds: bad.append(f'engine_flags agree for {n_sty} of {n_kinds} style pieces')
+if n_am != 17 or am_other != [('ZZQ-A', 'BK', True), ('ZZR-S', 'BK', True), ('ZZR-45', 'BK', True)] or n_grow != n_kinds: bad.append(f'AM_AREA equals the slot area on {n_am} of {n_kinds} piece kinds (others {am_other}); buffer growth {n_grow} of {n_kinds} (worst {worst_g:.2f})')
+print(f"   {'ok ' if not bad else 'FAIL'} frommed.mra of 4 jobs: {tot_i} instances agree with the decoded flip / turn (retrieval_orientation) and with the nest spec ({n_flip} / {n_ang} / {n_spec}; a wrong 0x2000 reading misses {n_mut}); {n_sty} of {n_kinds} style-piece flags follow the Piece Options; the engine outline = the piece + the block rectangle ({n_grow} of {n_kinds} within 1.5%)")
+if bad: fails.append('engine input file: ' + '; '.join(bad[:5]))
+
 print('-- marker byte map (v4.4, see accumark_marker.marker_coverage)')
 # Every byte owned by a section a parser reads must be classified (identified /
 # raw / zero_pad / opaque) - only the envelope, the header scalars, sections 2-5,

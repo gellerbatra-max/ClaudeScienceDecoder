@@ -76,6 +76,6 @@ Recommended order: ~~2 and 3 together in one live round (v4.18)~~ done; next 7 a
 
 ## 6. Where things stand
 
-* Everything up to and including v4.23 is on `main` and pushed to `origin/main` (v4.23 merge commit `5fc30f9`). v4.24 is on its branch until merged. The three suites pass on every version (selftest PASS, dataset_test 36/36, robustness 730/730). Standing order of 2026-09-25: follow the ranked list, commit and push as suitable, keep issues for the end.
+* Everything up to and including v4.28 is on `main` and pushed to `origin/main` (v4.28 merge commit `026c8df`). The three suites pass on every version (selftest PASS, dataset_test 36/36, robustness 730/730). Standing order of 2026-09-25 (follow the ranked list, commit and push as suitable, keep issues for the end): everything that could be done offline or with the engine's own files is done.
 * The scratch objects from v4.17 (`ZZQ-*`) are deleted; the byte evidence is in `twoply/`. The older `ZZQB-*` / `ZZQL-S` objects belong to earlier work and were left alone.
-* Next step: the rest of item 12 / item 11 (matching rules against `frommed.mra`), then 7, 8, 10; item 1 waits for the user's `ALL GMT WAY` table.
+* What is left (needs a live round, older samples, or the user): item 1 (`ALL GMT WAY` table, the user's); the rule that turns the collar +90 in the engine frame (item 10, needs a second collar-like piece in PDS); the table-tilt to engine-limit conversion and the `S` rows whose FLIP_GROUP is 0 (item 12, one live round); item 8 (notch numbers above 5, PDS); section 5 and a few section 1 words (item 7, low value); older multi-row lay-limit vintages (item 10, older markers). A readable version of this plan: the Artifact page.

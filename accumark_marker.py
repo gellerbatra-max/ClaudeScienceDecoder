@@ -335,7 +335,8 @@ def _walk_piece_list(d, lo, hi):
         <u16 length><text>>
 
     Flag byte 4 (u16) is a 1-based index into section 6's block-buffer table,
-    0xffff for none [V: 18 of 18]; the other flag bytes stay raw."""
+    0xffff for none [V: 18 of 18]. v4.14: flag u16 @+2 = the piece's ROW of the Lay Limits table (0 = DEFAULT; the row its category names, else DEFAULT), @+6 = the buffer rule number
+    that row names, @+8 = the row's flip code, @+10 (i32, x 10000 in) = the row's tilt limit [V: 287 of 287 piece rows on the 56 markers that bundle their table]; the rest stays raw."""
     rows = []; stop = min(hi - 6, len(d))
     head_ok = d[lo+22:lo+PIECE_LIST_HEAD] == b'MARKER'
     pos = lo + PIECE_LIST_HEAD
@@ -355,7 +356,9 @@ def _walk_piece_list(d, lo, hi):
         rows.append(dict(offset=pos+28, name=name.decode('latin1'), fabric=cat.decode('latin1'),
                          flag=fabric_types[0] if fabric_types else '', fabric_types=fabric_types,
                          buffer_index=None if buf == 0xffff else buf, raw=d[pos+4:pos+28].hex(),
-                         flag14=u16(d, pos+18)))
+                         flag14=u16(d, pos+18),
+                         # v4.14: the piece's Lay Limits row and what it gave the piece, as they were when the marker was made [V: 287 of 287 rows, 56 markers]
+                         lay_row=u16(d, pos+6), buffer_rule=u16(d, pos+10), flip_code=u16(d, pos+12), tilt_raw=struct.unpack_from('<i', d, pos+14)[0]))
         pos = p
     return rows, pos, stop, head_ok
 
@@ -576,6 +579,8 @@ def parse_marker(d, size_vocab=None, binding='structural'):
               width=f64(d, 396), length=f64(d, 412), total_area=f64(d, 422),
               util=f64(d, 446), unknown_454=f64(d, 454))
     mk['laid'] = mk['length'] > 0 and mk['util'] > 0
+    # v4.14: four counters of section 1 (file offsets 480 / 482 / 490 / 492): records, slots, models, size-table rows [V: 73 of 73 markers]
+    mk['header_counts'] = dict(records=u16(d, 480), slots=u16(d, 482), models=u16(d, 490), size_rows=u16(d, 492)) if len(d) > 494 else None
     mk['piece_names'] = declared_piece_names(d)
     mk['pieces'] = parse_pieces_section(d, *sec[SEC_PIECES]) if sec[SEC_PIECES] else []
     # v4: sections 11 and 12 are one length-prefixed chain - see
@@ -643,7 +648,35 @@ def parse_marker(d, size_vocab=None, binding='structural'):
     mk['sum_slot_areas'] = sum(p['area'] for p in placements)
     _add_order_and_state(d, mk, sec)
     mk['tables'] = parse_marker_tables(d, sec, mk['name'])
+    mk['snapshots'] = parse_marker_snapshots(d, sec, mk['pieces'])
     return mk
+
+def parse_marker_snapshots(d, sec, pieces):
+    """v4.14: the marker carries COPIES of the tables it was made with, as they were then.
+      section 3 = the Notch Parameter Table's payload byte for byte (36 of 58 markers; +6 without the optional zero dword; 16 scratch-set markers (written by another path) hold only its first 60 bytes:
+                  the five older-layout triplets of notches 1-5) - read by accumark_notch.parse_notch_snapshot
+      section 4 = the Lay Limits ROWS, 12 bytes each `u16 flip code, f64 tilt, b2, b3` - see accumark_laylimits.parse_snapshot_rows [V: 76 of 76 rows of the 56 markers that bundle the table]
+    and each piece row names its row (`lay_row`). So a marker-only ZIP states its own notch sizes and every piece's rotation rule; what it does not carry is the table's names, spread and bundling.
+    -> dict(notch, lay_limits, warnings): `notch` = a parsed table / snapshot (or dict(error)), `lay_limits` = dict(rows, piece_rows [{piece, row, flip_ok}], ok) (or dict(error))."""
+    import accumark_notch as nt, accumark_laylimits as ll
+    out = dict(notch=None, lay_limits=None, warnings=[])
+    if sec[3]:
+        raw = bytes(d[sec[3][0] - _LEAD:sec[3][1] - _LEAD])
+        try: out['notch'] = nt.parse_notch_snapshot(raw)
+        except nt.NotchTableError as e: out['notch'] = dict(error=str(e), bytes=len(raw)); out['warnings'].append('section 3 (the marker\'s copy of its notch table) is not a notch table: %s' % e)
+    if sec[4]:
+        raw = bytes(d[sec[4][0] - _LEAD:sec[4][1] - _LEAD])
+        rules = {}
+        for p in pieces:
+            if 'lay_row' in p: rules.setdefault(p['lay_row'], set()).add(p['buffer_rule'])
+        try:
+            rows = ll.parse_snapshot_rows(raw, {i: next(iter(v)) for i, v in rules.items() if len(v) == 1})
+            pr = [dict(piece=p['name'], row=p['lay_row'], flip_ok=p['lay_row'] < len(rows) and rows[p['lay_row']]['flip_code'] == p['flip_code']) for p in pieces if 'lay_row' in p]
+            ok = all(x['flip_ok'] for x in pr)
+            out['lay_limits'] = dict(rows=rows, piece_rows=pr, ok=ok)
+            if not ok: out['warnings'].append('section 4 (the marker\'s Lay Limits rows) disagrees with its piece rows: ' + ', '.join(x['piece'] for x in pr if not x['flip_ok'])[:120])
+        except ll.LayLimitsError as e: out['lay_limits'] = dict(error=str(e), bytes=len(raw)); out['warnings'].append('section 4 (the marker\'s Lay Limits rows) does not read: %s' % e)
+    return out
 
 TABLE_LENS = (('marker_name', -4), ('customer', -2), ('order_name', 0), ('reference', 2), ('lay_limits', 4), ('annotation', 6), ('block_buffer', 8),
               ('reserved_10', 10), ('notch_table', 12), ('reserved_14', 14), ('extra', 18))
@@ -787,6 +820,7 @@ def marker_warnings(mk):
     sm = mk.get('sig88_model')
     if sm and sm['applicable'] and not sm['ok']:
         w.append('slot @88 is not (record head count + one constant per piece) for: ' + ', '.join(p for p, c in sm['constant'].items() if c is None))
+    w += (mk.get('snapshots') or {}).get('warnings', [])
     n_tilt = [s['index'] for s in mk['slots'] if not s['empty'] and s['tilt_deg'] is None]
     if n_tilt: w.append('%d placed slots carry a tilt word that is not an angle in radians (first: slot %d): their orientation is read without it' % (len(n_tilt), n_tilt[0]))
     return w
@@ -1178,6 +1212,19 @@ def check_marker(mk):
         out.append(('piece buffer indices resolve into the block-buffer table',
                     all(p.get('buffer_ok') for p in mk['pieces']),
                     f'{len(mk["block_buffers"])} entries; indices {[p.get("buffer_index") for p in mk["pieces"]]}'))
+    hc = mk.get('header_counts')
+    if hc:
+        got = dict(records=len(mk['records']), slots=len(mk['slots']), models=len(mk['models']), size_rows=len(mk['sizes']))
+        out.append(('section 1 counters (records, slots, models, size rows) equal what the sections hold', hc == got, f'{hc}' if hc == got else f'header {hc}, sections {got}'))
+    sn = mk.get('snapshots') or {}
+    if sn.get('notch') is not None:
+        n_ = sn['notch']
+        out.append(("section 3 reads as the marker's notch table (or its 60-byte older copy)", 'error' not in n_,
+                    n_['error'] if 'error' in n_ else f"{n_['vintage']}, {len(n_['notches'])} defined notch(es)"))
+    if sn.get('lay_limits') is not None:
+        l_ = sn['lay_limits']
+        out.append(("section 4 = whole Lay Limits rows, and every piece row's row index and flip code agree with them", 'error' not in l_ and l_['ok'],
+                    l_['error'] if 'error' in l_ else f"{len(l_['rows'])} row(s), {sum(1 for x in l_['piece_rows'] if x['flip_ok'])} of {len(l_['piece_rows'])} pieces agree"))
     return out
 
 # ------------------------------------------------------------ byte map
@@ -1226,6 +1273,8 @@ def marker_coverage(d, mk=None):
     # -- section 1: the header scalars (width, length, area, placed area, util, @454)
     if sec[SEC_SCALARS]:
         for o in (396, 412, 422, 430, 446, 454): mark(o, o+8, 'identified')
+        if mk.get('header_counts'):
+            for o in (480, 482, 490, 492): mark(o, o+2, 'identified')                                # v4.14: record / slot / model / size-row counters
     # -- section 2 carries the marker's own name; section 5 the -PDSTEXT- label table
     if sec[2]:
         i = d.find(mk['name'].encode('latin1'), sec[2][0], sec[2][1])
@@ -1240,6 +1289,9 @@ def marker_coverage(d, mk=None):
             name = re.split(rb'[^\x20-\x7e]', d[a+12:a+140])[0]
             mark(a + 12, a + 12 + len(name) + 1, 'identified')
     # -- section 6: the block-buffer table, (pieces + 1) x 102 bytes
+    sn = mk.get('snapshots') or {}                              # v4.14: sections 3 and 4 are the marker's copies of its notch table and its lay-limits rows
+    if sec[3] and sn.get('notch') is not None and 'error' not in sn['notch']: mark(sec[3][0] - _LEAD, sec[3][1] - _LEAD, 'identified')
+    if sec[4] and sn.get('lay_limits') is not None and 'error' not in sn['lay_limits']: mark(sec[4][0] - _LEAD, sec[4][1] - _LEAD, 'identified')
     if sec[SEC_BUFFERS]:
         for e in range(len(mk['block_buffers'])):
             p = sec[SEC_BUFFERS][0] - _LEAD + e * BUFFER_ENTRY
@@ -1254,6 +1306,7 @@ def marker_coverage(d, mk=None):
             mark(r, r + 4, 'identified'); mark(r + 4, r + 28, 'raw')
             mark(r + 18, r + 20, 'identified')                                                       # flag u16 @+14 == slot bit 0x0040 [V v4.7]
             mark(r + 8, r + 10, 'identified'); mark(r + 22, r + 24, 'identified')                    # buffer index, fabric-type count
+            mark(r + 6, r + 8, 'identified'); mark(r + 10, r + 18, 'identified')                     # v4.14: lay-limits row, buffer rule, flip code, tilt
             q = p['offset'] + len(p['name']) + len(p['fabric']); mark(p['offset'], q, 'identified')
             for ft in p['fabric_types']: mark(q, q + 2 + len(ft), 'identified'); q += 2 + len(ft)
     # -- section 11 (models), 12 (size table), 13 (record index)
@@ -1326,7 +1379,7 @@ def marker_coverage(d, mk=None):
         else: i += 1
     return dict(size=n, counts={c: counts.get(c, 0) for c in COVERAGE_CLASSES}, pct=pct, sections=sections, unknown_runs=runs)
 
-PARSED_SECTIONS = frozenset({6, 11, 12, 13, 14, 15, 21, 30})    # every byte they own is classified on all 18 fixture markers
+PARSED_SECTIONS = frozenset({3, 4, 6, 11, 12, 13, 14, 15, 21, 30})    # every byte they own is classified on all 18 fixture markers
 
 def coverage_warnings(mk, cv=None):
     """v4.6: bytes inside a section this reader parses that no parser explains.

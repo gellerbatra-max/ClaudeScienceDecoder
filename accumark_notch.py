@@ -74,6 +74,20 @@ def parse_notch_table(source, name=None):
                 basis='decoded: every field verified against the Notch editor')
 
 
+def parse_notch_snapshot(t, name=None):
+    """v4.14: the notch table a MARKER carries as its own section 3 (a copy taken when the marker was made). Byte for byte the table object's payload (36 of 58 markers, +6 with the optional
+    zero dword), or - on 16 scratch-set markers (written by another path) - only its first 60 bytes, the five older-layout triplets (perimeter, inside, depth) of notches 1-5 with no type code and no count.
+    -> the dict of parse_notch_table plus `vintage` ('table' | 'legacy-5-triplets'); a legacy notch has `type` None. Raises NotchTableError for any other length that does not close."""
+    t = bytes(t)
+    if len(t) != 60:
+        r = parse_notch_table(t, name=name); r['vintage'] = 'table'; return r
+    legacy = [struct.unpack_from('<iii', t, 12 * i) for i in range(5)]
+    notches = [dict(number=i + 1, type=None, type_name=None, label=None, perimeter_in=p / 1e4, inside_in=s / 1e4, depth_in=d / 1e4, direction=None if d == 0 else ('external' if d < 0 else 'internal'))
+               for i, (p, s, d) in enumerate(legacy) if (p, s, d) != (0, 0, 0)]
+    return dict(name=name, count=5, notches=notches, by_number={x['number']: x for x in notches}, trailer=False, vintage='legacy-5-triplets',
+                basis='partial: only the five older-layout triplets of notches 1-5 (no type codes, no count) - what the older engine copied into the marker')
+
+
 def load_zip_notch_tables(path, listing=None):
     """{name: parsed table} for every notch-table object of an export ZIP (unreadable ones listed in `_errors`)."""
     import accumark_marker as am

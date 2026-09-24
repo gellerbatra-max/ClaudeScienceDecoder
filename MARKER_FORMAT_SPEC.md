@@ -50,7 +50,7 @@ Six f64 are read [V]: **@396 fabric width**, **@412 length** (0 on a never-laid
 marker), **@422 total area**, **@430 placed area** (= sum of the PLACED slots'
 declared areas = W x L x U / 100; 0 when nothing is placed) [V: 18/18], **@446
 utilisation %**, **@454** (a perimeter sum). The section is about 370 bytes and
-only these 48 are read. Of the 316 unread byte positions `marker_coverage`
+only these 48 are read (v4.14: plus four u16 counters at 480 / 482 / 490 / 492 = records, slots, models, size rows - section 22). Of the 316 unread byte positions `marker_coverage`
 attributes to it, 271 are byte-identical across all 18 markers and 45 vary; their
 meaning is open [?].
 
@@ -62,8 +62,8 @@ on the unlaid 2303-BD 137 both are `last_model`; on its laid twin `@422` is `all
 
 ## 4. Sections 2, 3, 4, 5 [?]
 
-Section 2's tail is decoded (section 15 below: the names of the four tables the marker was made with); the rest is not. 2 = options + those names (grows with them); 3 = repeating
-`00 00 b0 07` groups; 4 = a 12-byte label-config header; 5 = the `-PDSTEXT-` label
+Section 2's tail is decoded (section 15 below: the names of the four tables the marker was made with); the rest is not. 2 = options + those names (grows with them); **3 = the marker's copy of its Notch Parameter
+Table and 4 = its Lay Limits rows (v4.14, section 22 - the earlier readings "repeating `00 00 b0 07` groups" and "a 12-byte label-config header" are retracted)**; 5 = the Annotation table's copy, then the `-PDSTEXT-` label
 table (`-PDSTEXT-`, then a 3-byte gap and the piece's label text: what
 `declared_piece_names` scans). They hold most of the marker's unexplained bytes.
 
@@ -97,8 +97,8 @@ closing at `dir[11] - 6`:
     <fabric types: u16 count at flag byte 18, then that many <u16 len><text>>
 
 Flag bytes 4..5 (u16) = 0-based index into section 6's table of buffer definitions (0xffff = none). The 'Fabric
-Type' role (A/B/C/D/G/M/F ...) is the fabric-type text. The other flag bytes stay
-raw [?].
+Type' role (A/B/C/D/G/M/F ...) is the fabric-type text. v4.14: flag u16 @+2 = the piece's Lay Limits row, @+6 = its buffer rule,
+@+8 = its flip code, @+10 (i32) = its tilt limit - section 22. The other flag bytes stay raw [?].
 
 ## 7. Sections 11 and 12 - models and size table [V: 18 of 18]
 
@@ -308,9 +308,10 @@ stream that verifies against its record's area + perimeter is identified up to i
 | placed slots 7.2% larger than their record (ZZC-M3, ZZN-F1) | 2 slots each | live: repeat with a plain piece |
 | why `@422` / `@454` are last-model sums; LADIES-BLOUSE 2x | modes observed exactly; a FRESH two-model as-generated marker (`CLAUDE-D2-E7B`) shows `last_model` on both [V], so it is generation-time behaviour, not a laid-state artefact; the LADIES-BLOUSE `2x_all` case is still unexplained [?] | one more two-model order laid in Easy Marking |
 | size-row `flags` (0xffff vs 0) | 12 vs 6 markers | live |
-| sections 2 (its bytes before the name strings), 3, 4, 5; section 1's 45 varying bytes; the trailer | mostly constant | twin diffs |
+| section 2 (its 211 constant bytes before the name strings), section 5 (the Annotation copy's packed format), section 1's other counters (+168, +172, +180, +182, +184, +190 ... : equal no sum tried), the trailer's filler and state words | constant across 73 markers / varying with content | twin diffs; Annotation editor ground truth |
+| the two tilt directions of a Lay Limits row (a marker keeps ONE value: cw or ccw?) and its unit when the table is in DEGREES | the only corpus rows with a tilt have cw == ccw == 0.1574 | a table with cw 1 / ccw 2 (or degrees), a marker made from it, read section 4 |
 | Lay Limits: the low three bits of a row's byte b2 (0x07), the eight constant bytes `01 00 .. 00` before the skew array and `7f 00 ..` after it, what the Group column does; older-vintage multi-row tables and their tilt / skew bytes | b2 & 0x07 varies (06 / 05 / 01 / 00) with no visible setting behind it; every other byte is constant across 15 tables | a fresh table from File > New, one row edited at a time; a real multi-row table of the older vintage |
-| `ALL GMT WAY` (2591A): its presets are all 0 over 7 sizes, so it should be All Bundle, Same Direction - unconfirmed until the file arrives | 2591A marker, bundle presets | the table from Explorer `OldFiles` |
+| `ALL GMT WAY` (2591A): the marker's own row says DEFAULT = MWS, flip 1 (section 22); its Bundling rests on the presets (all 0 over 7 sizes = All Bundle, Same Direction) - unconfirmed until the file arrives | 2591A marker, bundle presets | the table from Explorer `OldFiles` |
 | does a row that allows 180 let the nest engine turn a piece against its preset? | presets follow the table's Bundling on 29 markers [V]; a `W` piece keeps its preset in a real AccuNest nest [V, `laylimits/EXPERIMENT_W_ALTERNATE.md`]; no piece in that small draft nest was turned | live: a blank-options table with alternating bundles, a marker with room to gain, read the placed orientations |
 
 Marker-only ZIPs (no piece objects) can never yield outlines, and an unplaced marker
@@ -459,3 +460,36 @@ top of `L`, since `L` has room for the eight orientations above and nothing else
 `<area>\mark\<Made | UnMade | Partial | NeedsApproval>\NAME.GT_mark` is 0x90 bytes of its own header (created / modified stamps at 0x6a / 0x6e, user names at 0x86) followed by the payload an export object
 carries from 0x8a: slots, records, tables, stream outlines read identically (`ZZC-M1`: 18 slots, all records and tables equal to its export). `read_storage_marker(path)` rebuilds the export envelope around it and
 `place_marker(path)` takes such a file. The state folder is the marker's own: a nest that ends "needs approval" (e.g. an angled marker border) leaves a partial marker there (`rotation/ZZROT-B.GT_mark`: 17 placed, 1 not).
+
+## 22. The marker carries its own tables: sections 3 and 4, and the words of a piece row [V, v4.14]
+
+A marker is made from an order, a Lay Limits table, a Notch Parameter Table, a Block Buffer table and an Annotation table, and it keeps COPIES of them as they were that day. Two of the copies are decoded:
+
+**Section 3 = the Notch Parameter Table** (`accumark_notch.parse_notch_snapshot`). The bytes of the table object's payload, one for one (section 3's length is the table's: 144 for a table with one notch, 160, 304 for the real
+`NEED-P-NOTCH`, 464 for the 25-notch `V-NOTCH-ALL CUSTOMERS`); 40 markers equal their bundled table byte for byte (the optional trailing zero dword is left out on 6 more). 16 markers of the scratch set (`ZZ-AM-*`,
+`ZZN-*` ... - written by another path; why is not known) hold only its first 60 bytes: the five older-layout triplets (perimeter, inside, depth, x 10000 in) of notches 1-5, no type codes, no count - `notch 1` there is a slit of depth 0.1496 in (0.38 cm) where the
+table now says 0.1574 (0.40 cm): the copy is the table AS IT WAS. The real markers' copies equal the real tables: 1825D, 5683D and 2591A hold `NEED-P-NOTCH` (15 numbers), 418T a 6-notch `P-NOTCH`, 2303 a 2-notch one
+(sites keep different tables under the same name).
+
+**Section 4 = the Lay Limits ROWS** (`accumark_laylimits.parse_snapshot_rows`), 12 bytes per row, in the table's order (row 0 = DEFAULT):
+
+    +0  u16 flip code      +2  f64 tilt limit (the table's own unit; the two directions are one value here)      +10  u8 b2      +11  u8 b3     (the option bytes exactly as in the table, section 16)
+
+No names, no buffer rule, no spread, no bundling: those stay in the table (and on the piece rows). 76 of 76 rows on the 56 markers that bundle their table have the same flip code, options and tilt.
+
+**The piece row's words** (section 10, `<24 flag bytes>` = 12 u16 words w0..w11): **w1 = the piece's row of the Lay Limits table** (0 = DEFAULT: the row its category names, else DEFAULT), **w2 = the block-buffer entry**
+(0-based, 0xffff none; as before), **w3 = the buffer rule number** of that row, **w4 = its flip code**, **w5, w6 = its tilt limit as an i32 x 10000** (the CUFF's 0.1574 in = 1574), w7 = the 0x0040 flag (section 10), w9 = the
+fabric-type count; w0, w8, w10, w11 are 0. 287 of 287 piece rows on the 56 markers with a bundled table agree with the table (row index by category name, buffer rule, flip code). So **the marker states, per piece, the rotation
+rule it was made with** - row options (section 4) at index w1 - without the table. What it does not carry: the row's NAME (a nester matches a piece to its row by the piece's row index, not by category), the table's spread and its Bundling.
+
+**Consequences.** (1) `nest_spec` of a marker-only ZIP reads its own rotation rules and notch sizes (`lay_limits.source` / `notch_table.source` = `marker snapshot`): the four real production markers no longer say `assumed` -
+1825D / 5683D / 418T / 2591A are locked one-way (W + S), every piece fixed in its preset direction; the notch numbers of 2591A (1 and 5) are read from its own copy. With a bundled or supplied table as well, the two are
+compared and a difference is reported (the table was edited after the marker was made): the real `NEED- TWO WAY` reads `MWS` today, and the 1825D / 5683D markers hold `WS` - consistent with a table edited after they were made (the `M` = major piece added).
+(2) `ALL GMT WAY`, the table of 2591A that is not in any file: its DEFAULT row is `MWS`, flip code 1, no tilt - read from the marker; its Bundling still rests on the presets (all 0 = All Bundle, Same Direction). (3) Sections 3 and 4
+and the piece words leave no unknown byte (`marker_coverage`); together with section 1's four counters (below) the unknown bytes per marker fall from 1,111-1,753 to 1,031-1,280 (1.06% of a marker).
+
+**Section 1's counters** (file offsets 480 / 482 / 490 / 492, u16): the number of records (section 14), slots, models and size-table rows [V: 73 of 73 markers; `check_marker` row]. The other 40-odd varying section-1 bytes (a few
+more counters, two constants of 3750 / 1476, a value 257 / 0, a 33280-33304 word) equal none of the quantities tried (sums over records, slots, streams, areas) and stay raw.
+
+**Not decoded.** Section 5's first part is the Annotation table's copy in a packed form (row names without padding, then the field codes) - the format of the table itself is open, it does not affect a nest; section 2's 211 constant
+bytes before the name strings and the trailer's filler (`00 01 01 02 00` repeated 27 times) are identical on every marker.

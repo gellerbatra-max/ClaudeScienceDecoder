@@ -1699,8 +1699,10 @@ if os.path.isfile(zb) and os.path.isfile(zo):
     if not all(s_.get('rotation') and s_['rotation']['matched'] == 'default' for s_ in sb['shapes']): bad.append('bundled: shapes without a rotation rule')
     if not sb['complete']: bad.append('bundled spec incomplete')
     so = ns.build_nest_spec(zo)[0]
-    if so['lay_limits']['source'] != 'named only' or so['lay_limits']['name'] != 'L' or not so['rotation']['basis'].startswith('assumed') or any('rotation' in s_ for s_ in so['shapes']): bad.append(f"marker-only: {so['lay_limits']['source']}")
-    if not any("'L'" in w for w in so['warnings']) or not so['complete']: bad.append('marker-only: no warning naming the table / incomplete')
+    # v4.14: a marker-only ZIP reads its own rows (section 4) - the same rules the bundled table gives, the table named 'L', no spread / bundling (the marker does not carry them)
+    if so['lay_limits']['source'] != 'marker snapshot' or so['lay_limits']['name'] != 'L' or not so['rotation']['basis'].startswith('verified') or not all(s_.get('rotation') for s_ in so['shapes']): bad.append(f"marker-only: {so['lay_limits']['source']}")
+    if so['rotation']['allowed_deg'] != sb['rotation']['allowed_deg'] or so['lay_limits']['rows'][0]['options'] != sb['lay_limits']['rows'][0]['options'] or so['lay_limits']['spread'] is not None or not so['complete']: bad.append('marker-only: the marker snapshot does not give the bundled table\'s rule / incomplete')
+    if [d['allowed_deg_by_slot'] for d in so['demand']] != [d['allowed_deg_by_slot'] for d in sb['demand']]: bad.append('marker-only demand rotations differ from the bundled-table spec')
     # supplying the table (a storage-area file) turns a marker-only spec into a verified one, per category
     sz = ns.build_nest_spec(zo, lay_limits=os.path.join(LLDIR, 'ZZLL-1.GT_lay'))[0]
     got = {s_['category']: (s_['rotation']['row'], s_['rotation']['matched'], s_['rotation']['allowed_deg'], s_['rotation']['flip_x_axis_allowed']) for s_ in sz['shapes']}
@@ -1709,7 +1711,7 @@ if os.path.isfile(zb) and os.path.isfile(zo):
     if not any('marker names' in w for w in sz['warnings']): bad.append('supplied table of another name: no warning')
     if _json.loads(_json.dumps(sz)) != sz: bad.append('supplied spec not JSON round-trippable')
     if any(len(d['preset_rot180_by_slot']) != d['quantity'] or sum(d['preset_rot180_by_slot']) != d['preset_rot180'] for d in sz['demand']): bad.append('demand presets by slot')
-print(f"   {'ok ' if not bad else 'FAIL'} nest spec: bundled table -> verified rotation per category; marker-only -> named, assumed, warned; --lay-limits FILE -> verified  {'; '.join(bad[:3])}")
+print(f"   {'ok ' if not bad else 'FAIL'} nest spec: bundled table -> verified rotation per category; marker-only -> read from the marker's own rows (v4.14); --lay-limits FILE -> verified  {'; '.join(bad[:3])}")
 if bad: fails.append('nest spec / lay limits: ' + '; '.join(bad[:5]))
 
 # a real nest: AccuNest kept a one-way (`W`) piece in the direction its bundle was retrieved in (laylimits/EXPERIMENT_W_ALTERNATE.md)
@@ -1764,7 +1766,10 @@ for zn_, mn_, tn_ in (('1825D-SS21-UNLAID', '1825D-BD 180 SS21.zip', 'NEED- TWO 
     if not os.path.isfile(zp): continue
     for sp_ in ns.build_nest_spec(zp):
         s2 = ns.build_nest_spec(zp, marker=sp_['source']['marker'], lay_limits=real_t[tn_])[0]; ll2 = s2['lay_limits']
-        if sp_['lay_limits']['name'] != tn_ or sp_['lay_limits']['source'] != 'named only': bad.append(f"{zn_}: the marker names {sp_['lay_limits']['name']}")
+        if sp_['lay_limits']['name'] != tn_ or sp_['lay_limits']['source'] != 'marker snapshot' or not sp_['rotation']['locked'] or sp_['rotation']['allowed_deg'] != [0]: bad.append(f"{zn_}: the marker names {sp_['lay_limits']['name']}, reads {sp_['lay_limits']['source']} {sp_['rotation']['allowed_deg']}")
+        # the marker's own row against the table now in the support files: 1825D and 5683D were made when NEED- TWO WAY had no `M` (major piece) - the table was edited since; 418T agrees
+        want_diff = ["row 0 (DEFAULT): options 'WS' in the marker, 'MWS' in the table"] if tn_ == 'NEED- TWO WAY' else []
+        if ll2['snapshot']['differences'] != want_diff or ll2['snapshot']['agrees'] != (not want_diff): bad.append(f"{zn_}: marker row vs table {ll2['snapshot']}")
         if ll2['source'] != 'supplied' or ll2['bundle_pattern']['state'] != 'consistent' or not s2['rotation']['locked'] or s2['rotation']['allowed_deg'] != [0] or not s2['complete'] or any('supplied' in w_ for w_ in s2['warnings']): bad.append(f"{zn_} {tn_}: {ll2['source']} {ll2['bundle_pattern']} {s2['rotation']['allowed_deg']}")
         if any(a_ != [180 * p_] for d in s2['demand'] for a_, p_ in zip(d['allowed_deg_by_slot'], d['preset_rot180_by_slot'])): bad.append(f'{zn_}: MWS did not fix the preset direction')
         real_pairs[zn_] += int(ll2['bundle_pattern']['detail'].split(' ')[0])
@@ -1773,7 +1778,8 @@ if len(real_pairs) < 3: bad.append(f'real markers found: {dict(real_pairs)}')
 z25 = os.path.join(HERE, 'markers', '2591A-SS21-UNLAID', '2591A-BD 157 AW SS21.zip')
 if os.path.isfile(z25):
     m25 = am.place_marker(z25)['markers'][0]
-    if m25['marker']['tables']['lay_limits'] != 'ALL GMT WAY' or ns.build_nest_spec(z25)[0]['lay_limits']['source'] != 'named only': bad.append('2591A does not name ALL GMT WAY / is not "named only"')
+    s25 = ns.build_nest_spec(z25)[0]
+    if m25['marker']['tables']['lay_limits'] != 'ALL GMT WAY' or s25['lay_limits']['source'] != 'marker snapshot' or s25['lay_limits']['rows'][0]['options'] != 'MWS' or s25['rotation']['allowed_deg'] != [0]: bad.append('2591A: ALL GMT WAY is not read from the marker as MWS / one way')
     verdict = {b_: ns._bundle_pattern(m25['inventory'], dict(real_t['L'], bundling=b_))[0] for b_ in (0, 1, 2)}
     if verdict != {0: 'consistent', 1: 'contradicted', 2: 'contradicted'}: bad.append(f'2591A under each Bundling: {verdict}')
 print(f"   {'ok ' if not bad else 'FAIL'} real support files: L / G-LAYLIMITS / NEED- TWO WAY / ONE GMT ONW WAY read as the editor showed (two AccuMark 9 layouts with a short trailer); the real 1825D / 5683D / 418T markers follow them on {sum(real_pairs.values())} bundle pairs; 2591A's presets predict ALL GMT WAY = All Bundle, Same Direction  {'; '.join(bad[:3])}")
@@ -1849,12 +1855,13 @@ for zp in [os.path.join(HERE, rel_) for rel_, _ in NEST_ZIPS] + [zsa]:
             for u_ in nb['numbers_used']: used[u_] += 1
             if _json.loads(_json.dumps(sp_)) != sp_: bad.append(f"{sp_['source']['marker']}: not JSON round-trippable")
             if nb['undefined_numbers'] and 'CLAUDE-D4' not in sp_['source']['marker']: bad.append(f"{sp_['source']['marker']}: undefined notch numbers {nb['undefined_numbers']}")
-if checked < 30 or set(used) - {1}: bad.append(f'{checked} specs with a notch table; numbers used {dict(used)}')
+if checked < 30 or set(used) - {1, 5}: bad.append(f'{checked} specs with a notch table; numbers used {dict(used)}')      # 5 = 2591A, read from its own copy since v4.14
 # real production: the 1825D notch (number 1) is a 0.50 cm slit; without the table the spec names it but reads nothing
 z18 = os.path.join(HERE, 'markers', '1825D-SS21-UNLAID', '1825D-BD 180 SS21.zip')
 s18 = next((sp_['notch_table'] for sp_ in ns.build_nest_spec(z18, notch_table=real_n['NEED-P-NOTCH']) if sp_['notch_table']['numbers_used']), {'parsed': False}); s18n = ns.build_nest_spec(z18)[0]['notch_table']
 if not s18['parsed'] or s18['name'] != 'NEED-P-NOTCH' or s18['numbers_used'] != [1] or abs(s18['entries']['1']['depth'] - 0.5) > 0.005 or s18['entries']['1']['kind'] != 'slit' or s18['entries']['6']['direction'] != 'external': bad.append(f'1825D notch block {s18}')
-if s18n['parsed'] or s18n['source'] != 'named only' or s18n['name'] != 'NEED-P-NOTCH': bad.append('1825D marker-only notch block')
+# v4.14: the marker carries its own copy (section 3): the marker-only spec reads all 15 notches, equal to the real table - no `--notch-table` needed
+if not s18n['parsed'] or s18n['source'] != 'marker snapshot' or s18n['name'] != 'NEED-P-NOTCH' or s18n['entries'] != s18['entries'] or s18n['undefined_numbers']: bad.append('1825D marker-only notch block')
 # geometry: the plotted marker of ZZC-M1 (default P-NOTCH: notch 1 = slit, depth 0.40 cm) has 30 notch spikes, every one 0.40 cm long
 fxp = os.path.join(LLDIR, 'EXPERIMENT_W_ALTERNATE.DXF')
 if os.path.isfile(fxp):
@@ -2186,13 +2193,79 @@ except am.AccuMarkError: pass
 print(f"   {'ok ' if not bad else 'FAIL'} marker storage files (.GT_mark): ZZC-M1 reads as its export does (slots, records, tables), ZZROT-B (NeedsApproval) reads as partial, 17 placed + 1 unplaced  {'; '.join(bad[:3])}")
 if bad: fails.append('storage files: ' + '; '.join(bad[:5]))
 
+print('-- the marker carries its own tables (v4.14, MARKER_FORMAT_SPEC.md section 22): notch table, lay-limits rows, each piece\'s row')
+# Section 3 is the marker's copy of its Notch Parameter Table, section 4 its Lay Limits ROWS (12 bytes: flip code, tilt, b2, b3) and every piece row names its row (`lay_row`) with the buffer rule
+# and flip code it gave. Proved against the bundled tables of every marker that has them; the real production markers (no tables bundled) then read their own rotation rules and notch sizes.
+import accumark_notch as _nt, accumark_laylimits as _ll
+bad = []; cnt = Counter(); seen_m = set(); rows_eq = rows_all = pr_eq = pr_all = 0; legacy = []
+for zp_ in zips_all:
+    try: L_ = am.list_zip(zp_)
+    except Exception: continue
+    nts_ = {o_['name']: o_ for o_ in L_.get('notch_table', [])}; lls_ = {}
+    for o_ in L_.get('lay_limits', []):
+        try: lls_[o_['name']] = _ll.parse_lay_limits(o_)
+        except _ll.LayLimitsError: pass
+    for o_ in L_.get('marker', []):
+        key_ = (o_['name'], len(o_['data']), hash(o_['data']))
+        if key_ in seen_m: continue
+        seen_m.add(key_)
+        try: mk_ = am.parse_marker(o_['data'])
+        except Exception: continue
+        sn_ = mk_['snapshots']
+        if sn_['warnings'] or sn_['notch'] is None or 'error' in sn_['notch'] or sn_['lay_limits'] is None or not sn_['lay_limits']['ok']: bad.append(f"{o_['name']}: {sn_['warnings'] or 'no snapshot'}")
+        cnt[sn_['notch'].get('vintage')] += 1
+        nt_ = nts_.get(mk_['tables'].get('notch_table'))
+        if nt_ is not None and sn_['notch'].get('vintage') == 'table':
+            same = [(n_['number'], n_['type'], n_['perimeter_in'], n_['inside_in'], n_['depth_in']) for n_ in _nt.parse_notch_table(nt_)['notches']] == [(n_['number'], n_['type'], n_['perimeter_in'], n_['inside_in'], n_['depth_in']) for n_ in sn_['notch']['notches']]
+            cnt['table == snapshot' if same else 'table != snapshot'] += 1
+        elif nt_ is not None: legacy.append(o_['name'])
+        lt_ = lls_.get(mk_['tables'].get('lay_limits'))
+        if lt_ is not None and sn_['lay_limits']:
+            snr = sn_['lay_limits']['rows']
+            if len(snr) != len(lt_['rows']): bad.append(f"{o_['name']}: {len(snr)} snapshot rows, {len(lt_['rows'])} in the table"); continue
+            for a_, b_ in zip(snr, lt_['rows']):
+                rows_all += 1; rows_eq += (a_['options'] == b_['options'] and a_['flip_code'] == b_['flip_code'] and (abs(a_['tilt_cw'] - b_['tilt_cw']) < 5e-4 or abs(a_['tilt_cw'] - b_['tilt_ccw']) < 5e-4))
+            names_ = [r_['category'] for r_ in lt_['rows']]
+            for p_ in mk_['pieces']:
+                if 'lay_row' not in p_: continue
+                try: ix_ = names_.index(p_['fabric'])
+                except ValueError: ix_ = 0
+                pr_all += 1; pr_eq += (p_['lay_row'] == ix_ and p_['buffer_rule'] == lt_['rows'][ix_]['buffer_rule'] and p_['flip_code'] == lt_['rows'][ix_]['flip_code'])
+if cnt['table != snapshot'] or cnt['table == snapshot'] < 36 or cnt['legacy-5-triplets'] != 16 or len(legacy) != 16 or rows_all < 70 or rows_eq != rows_all or pr_all < 280 or pr_eq != pr_all:
+    bad.append(f'{dict(cnt)}; legacy copies with a table {len(legacy)}; rows {rows_eq}/{rows_all}; piece rows {pr_eq}/{pr_all}')
+print(f"   {'ok ' if not bad else 'FAIL'} {len(seen_m)} markers: section 3 = the notch table ({cnt['table == snapshot']} equal to their bundled table, {cnt['legacy-5-triplets']} older 60-byte copies), section 4 = the lay-limits rows ({rows_eq} of {rows_all} rows equal the bundled table), piece rows name their row / rule / flip ({pr_eq} of {pr_all})  {'; '.join(bad[:3])}")
+if bad: fails.append('marker tables: ' + '; '.join(bad[:5]))
+
+# byte patches: every fact must fail when broken
+bad = []
+zc_ = next((o_ for o_ in am.list_zip(zsa)['marker'] if o_['name'] == 'ZZC-M1'), None) if os.path.isfile(zsa) else None
+if zc_ is not None:
+    d0_ = bytes(zc_['data']); m0_ = am.parse_marker(d0_); D_ = m0_['directory']
+    def _mut(off, val, fmt='<B'):
+        b_ = bytearray(d0_); struct.pack_into(fmt, b_, off, val); return am.parse_marker(bytes(b_)), bytes(b_)
+    p_fr = next(p_ for p_ in m0_['pieces'] if p_['name'].endswith('-FR')); r_fr = p_fr['offset'] - 28
+    mfl, _ = _mut(r_fr + 12, 9, '<H')                                                    # the FRONT piece row claims flip code 9
+    if mfl['snapshots']['lay_limits']['ok'] or not any('disagrees with its piece rows' in w_ for w_ in am.marker_warnings(mfl)) or all(ok_ for n_, ok_, dd_ in am.check_marker(mfl) if n_.startswith('section 4 = whole')): bad.append('a wrong flip code on a piece row was not noticed')
+    mrw, _ = _mut(r_fr + 6, 40, '<H')                                                    # ... a row index beyond the table
+    if mrw['snapshots']['lay_limits']['ok']: bad.append('a piece row pointing past the rows was not noticed')
+    mb3, _ = _mut(D_[4] - 6 + 12 * 1 + 11, 0x20)                                        # row 1 (FRONT) loses M and W: now `S`
+    if mb3['snapshots']['lay_limits']['rows'][1]['options'] != 'S' or m0_['snapshots']['lay_limits']['rows'][1]['options'] != 'MW': bad.append(f"row 1 options {mb3['snapshots']['lay_limits']['rows'][1]['options']} / {m0_['snapshots']['lay_limits']['rows'][1]['options']}")
+    mnt, dnt_ = _mut(D_[3] - 6 + 60, 99, '<I')                                              # the notch table's record count
+    if 'error' not in mnt['snapshots']['notch'] or not any('not a notch table' in w_ for w_ in am.marker_warnings(mnt)): bad.append('a broken notch snapshot was not noticed')
+    cv_ = am.marker_coverage(d0_, m0_); unk_ = [r_ for r_ in cv_['unknown_runs'] if r_[2] in (3, 4)]
+    if unk_: bad.append(f'sections 3 / 4 leave unknown bytes: {unk_[:3]}')
+    if am.marker_coverage(dnt_, mnt)['counts']['unknown'] <= cv_['counts']['unknown']: bad.append('a broken section 3 does not show as unknown bytes')
+print(f"   {'ok ' if not bad else 'FAIL'} byte patches on ZZC-M1: a wrong flip code / row index on a piece row, a changed option byte in section 4, a broken notch count each show; sections 3 and 4 leave no unknown byte  {'; '.join(bad[:3])}")
+if bad: fails.append('marker tables mutations: ' + '; '.join(bad[:5]))
+
 print('-- marker byte map (v4.4, see accumark_marker.marker_coverage)')
 # Every byte owned by a section a parser reads must be classified (identified /
 # raw / zero_pad / opaque) - only the envelope, the header scalars, sections 2-5,
 # section 10's 6-byte lead and the trailer may hold unknown bytes. This is the
 # measurable form of "fully decoded" for the marker: a parser change that loses
 # a section moves its bytes to `unknown` and fails here.
-PARSED_SECTIONS = {6, 11, 12, 13, 14, 15, 21, 30}
+PARSED_SECTIONS = {3, 4, 6, 11, 12, 13, 14, 15, 21, 30}      # v4.14: 3 (notch table copy) and 4 (lay-limits rows)
+if set(am.PARSED_SECTIONS) != PARSED_SECTIONS: fails.append('am.PARSED_SECTIONS differs from the selftest list')
 n_mk = 0; leaks = []; unk = []; tot = Counter()
 for zp in sorted(glob.glob(os.path.join(HERE, 'markers', '**', '*.zip'), recursive=True)):
     try: mos = am.list_zip(zp).get('marker', [])

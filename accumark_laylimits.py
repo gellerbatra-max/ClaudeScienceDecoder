@@ -177,6 +177,23 @@ def parse_lay_limits(source, name=None):
     return t
 
 
+def parse_snapshot_rows(s4, buffer_rules=None):
+    """v4.14: the Lay Limits ROWS a marker carries as its own section 4 (a copy taken when the marker was made): 12 bytes per row, `u16 flip code, f64 tilt limit, b2, b3` - the option bytes
+    exactly as in the table, the tilt in the table's own unit (inches; the two directions are not separate here - both were equal on the only corpus rows that have one). No names, no buffer rule
+    (that is on the piece rows, see accumark_marker: `lay_row`, `buffer_rule`), no spread, no bundling. Verified against the bundled table on 76 rows of 56 markers.
+    `buffer_rules` = {row index: rule number} from the pieces. -> [row dicts shaped like a table's rows: category '(row i)', options, flip_code, flip, tilt_*, buffer_rule, raw]"""
+    s4 = bytes(s4)
+    if not s4 or len(s4) % 12: raise LayLimitsError(f'{len(s4)} bytes are not whole 12-byte rows')
+    rows = []
+    for i in range(len(s4) // 12):
+        flip, tilt = struct.unpack_from('<Hd', s4, 12 * i); b2, b3 = s4[12 * i + 10], s4[12 * i + 11]
+        t4 = int(round(tilt * 1e4))
+        r = _row('(row %d)' % i, b2, b3, flip, 1 if b2 & _B2_DEGREES else 0, (buffer_rules or {}).get(i), t4, t4, s4[12 * i:12 * i + 12])
+        r['weft_skew_deg'] = None; r['group'] = None; r['tilt_directions_separate'] = False
+        rows.append(r)
+    return rows
+
+
 def row_for(table, category):
     """The row that governs a piece of `category`: its own row, else DEFAULT (case-insensitive) - [row, 'category' | 'default' | None]."""
     up = (category or '').upper()

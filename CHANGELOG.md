@@ -1,5 +1,9 @@
 # Changelog
 
+## v4.28 (2026-09-25) - the engine's FOLD_LINE (documentation only)
+
+`FOLD_LINE` of the engine's input file = the first point of the piece's fold (mirror) line from the middle of the unbuffered box, in the engine's frame [V on the two pieces whose stream carries the mirror line]; the collar's fold is horizontal in the stream frame like the BACK's, so the +90 turn is not a fold-direction rule (MARKER_FORMAT_SPEC.md section 32). No code change.
+
 ## v4.27 (2026-09-25) - the byte map's residue; the engine's fabric weight and cost
 
 `__version__` stays `'3.0'`. New fixtures `engine/ZZN-B5.GT_mark`, `engine/INTOMED_HEADERS.json` (the header of the engine's OUTPUT file of five jobs). Plan item 7, offline.

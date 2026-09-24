@@ -1,0 +1,89 @@
+{
+ "what": "v4.21: unequal tilt limits in a Lay Limits table (a copy of ZZLL-1, `ZZLL-TLT`) and the marker each version made (Order Editor, LADIES-BLOUSE, size 10 x 2). The marker stores ONE tilt per row: the smaller of the two limits, 0 when either is 0; the unit flag is b2 bit 0x20 (degrees).",
+ "table_v1_ZZR_T": {
+  "FRONT": {
+   "unit": "cm",
+   "cw": 20,
+   "ccw": 15
+  },
+  "BACK": {
+   "unit": "cm",
+   "cw": 0.5,
+   "ccw": 0.2
+  },
+  "COLLAR": {
+   "unit": "degrees",
+   "cw": 5,
+   "ccw": 10
+  },
+  "CUFF": {
+   "unit": "cm",
+   "cw": 0.3,
+   "ccw": 0.5
+  },
+  "SLEEVE": {
+   "unit": "cm",
+   "cw": 0,
+   "ccw": 0
+  }
+ },
+ "table_v2_ZZR_T2": {
+  "FRONT": {
+   "unit": "cm",
+   "cw": 20,
+   "ccw": 15
+  },
+  "BACK": {
+   "unit": "cm",
+   "cw": 0.5,
+   "ccw": 0.2
+  },
+  "COLLAR": {
+   "unit": "degrees",
+   "cw": 5,
+   "ccw": 10
+  },
+  "CUFF": {
+   "unit": "cm",
+   "cw": 0,
+   "ccw": 0.4
+  },
+  "SLEEVE": {
+   "unit": "cm",
+   "cw": 0.3,
+   "ccw": 0
+  }
+ },
+ "piece_row_tilt_x1e4": {
+  "ZZR-T": {
+   "BK": 787,
+   "COL": 50000,
+   "CUFF": 1181,
+   "FR": 59055,
+   "SL": 0
+  },
+  "ZZR-T2": {
+   "BK": 787,
+   "COL": 50000,
+   "CUFF": 0,
+   "FR": 59055,
+   "SL": 0
+  }
+ },
+ "file_ZZLL_TLT": "the second version (ZZR-T2); the values of the first version are above",
+ "piece_options": {
+  "M": "Major Piece",
+  "W": "One Way Piece. Flip in X-axis. No Rotation.",
+  "S": "Allow 180 degree rotation. No Flip.",
+  "9": "Allow 90 degree rotation.",
+  "4": "Allow 45 degree rotation.",
+  "F": "Allow folds for mirrored pieces.",
+  "O": "Optional piece. Placing will not be required.",
+  "N": "Do not plot this piece.",
+  "X": "Do not cut this piece.",
+  "P": "Pair orientation maintained.",
+  "U": "Will not include this area in marker.",
+  "Z": "Piece can be completely inside a splice mark."
+ },
+ "piece_options_source": "the Piece Options checklist of the Lay Limits Editor (own process), read 2026-09-25"
+}

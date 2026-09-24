@@ -1,5 +1,18 @@
 # Changelog
 
+## v4.21 (2026-09-25) - the marker keeps the smaller tilt limit; the S option pins a slot's chirality
+
+`__version__` stays `'3.0'`. New fixtures `tilt/` (two markers, the table copy, `GROUND_TRUTH.json` with the twelve Piece Options read from the editor). Plan items 6 and 4, one live round (my own Lay Limits Editor and Order Editor), the second one closed by the checklist text and by data already held.
+
+* **Item 6** (MARKER_FORMAT_SPEC.md section 27). A table with unequal clockwise / counter-clockwise limits (cm and degrees) -> the marker's section 4 and the piece row's tilt words hold `min(cw, ccw)`: back 0.5 / 0.2 cm -> 0.0787 in, collar 5 / 10 degrees -> 5.0 (unit bit 0x20), cuff 0.3 / 0.5 -> 0.1181, front 20 / 15 cm -> 5.9055, a zero side -> 0.
+  The nest spec notes it and `_snapshot_diff` compares with the smaller.
+* **Item 4.** The Piece Options checklist: W = one way, flip in X-axis, no rotation; S = allow 180 degree rotation, no flip (all twelve options in the spec). Cross-tab over 42 placed markers / 1,240 slots of asymmetric pieces: rows with S keep each slot's chirality (905 of 922; the 17 exceptions are the flip-override runs `ZZROT-*`), rows without
+  S 188 of 314, and the number of mirrored placements per piece differs from the model's in 48 of 102 groups. So the mirrored flags are a preset on a flip-allowed row and a constraint on an S row: `demand[].mirror_binding` = `kept` / `free` (S is not a "symmetric" flag: it forbids flipping).
+* **Code.** `nest_spec.py`: `demand[].mirror_binding`, the tilt comparison; `accumark_laylimits.py`: the tilt note, the section-4 docstring.
+* **Checks.** `selftest` (new section): the tilt words and rows of both markers against the table values (10 rows, cm and degrees, the zero side), the snapshot-versus-table comparison, the note in the spec, S rows 38 of 38 against other rows 24 of 50 on the fixtures (not `rotation/`), `mirror_binding` per shape of the flipcount marker.
+* **Scratch state:** `ZZLL-TLT`, `ZZLL-SM/SS/SW` (made, unused), `ZZR-T`, `ZZR-T2`, `ZZR-P` removed; my Lay Limits and Order Editors closed. One oddity: the Lay Limits Editor's Piece Options popup swallows Alt+F4 - click the Comments box first, then close.
+* **Open.** What the F, P, O, Z options do to a marker (only their letters are stored: b2 / b3 bits); plan items 5, 8, 10 and the rest of item 7.
+
 ## v4.20 (2026-09-25) - three more counters of section 1, the two engine words, and the attribute-point count
 
 `__version__` stays `'3.0'`. No new fixtures (the folders `twoply/`, `flipcount/`, `spread/`, `rotation/`, `blockarea/` and the corpus were enough). Plan item 7, offline: correlate every varying section 1 word with everything the decoder can count.

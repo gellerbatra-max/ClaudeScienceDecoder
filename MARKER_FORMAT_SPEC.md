@@ -582,3 +582,18 @@ Section 1 is 372 bytes (file offsets 304-675). Twelve of its words vary from mar
 | @168.. / @202 / @264 / @672 | see MARKER_FORMAT_SPEC.md section 13 (byte map); not reduced | [?] |
 
 `mk['header_counts2']` (pieces + 1, lay rows, block entries), `mk['engine_words']` and `mk['nested_by']` (`accunest` / `automark or none` / `other (n)`), a check row (the three counters equal what the sections hold), and the byte map marks the five words as identified.
+
+## 27. The tilt limit and the Piece Options [V, v4.21]
+
+**The marker keeps ONE tilt: the smaller of the table's two limits.** A Lay Limits row has a clockwise and a counter-clockwise tilt limit (`tilt/`: a copy of ZZLL-1 with unequal limits, made into markers with the Order Editor): the marker's section-4 row holds one f64, and the piece row's tilt words (w5-6, i32 x 1e4) the same number.
+Rows and what was stored (cw / ccw in the table -> the marker): back 0.5 / 0.2 cm -> 0.0787 in; collar 5 / 10 degrees -> 5.0 (b2 bit 0x20 set: the unit is degrees); cuff 0.3 / 0.5 cm -> 0.1181 in; front 20 / 15 cm -> 5.9055 in; and with a ZERO side (cuff 0 / 0.4, sleeve 0.3 / 0) -> 0.
+So `min(cw, ccw)`, in inches for a length and in degrees for the degree unit. A nester reading a marker-only ZIP sees both directions equal to the smaller limit: **that is stricter than the table** when the two differ, and the real table (bundled or supplied) is the source when the two directions matter.
+The nest spec adds a `note` to `tilt_limit` from a marker's own copy, and `_snapshot_diff` compares the marker's tilt with `min(cw, ccw)` (before: with either).
+
+**The twelve Piece Options** (read from the checklist of the Lay Limits Editor, 2026-09-25): M Major Piece; W One Way Piece, Flip in X-axis, No Rotation; S Allow 180 degree rotation, No Flip; 9 Allow 90 degree rotation; 4 Allow 45 degree rotation; F Allow folds for mirrored pieces; O Optional piece (placing will not be required);
+N Do not plot this piece; X Do not cut this piece; P Pair orientation maintained; U Will not include this area in marker; Z Piece can be completely inside a splice mark. The decoder's `orientation_rules` (`flip_x_axis_allowed = 'S' not in options`, W removes the rotation, S the flip) was already this; the checklist is the ground truth.
+
+**What S does to a marker** (closes the open question of sections 23 / 24 - why AccuNest and AutoMark laid as-is instances mirrored and mirrored ones as is): **a row WITHOUT `S` allows the flip, and the engines then treat the mirrored / as-is instances of a piece as interchangeable - even their
+number is not kept (48 of 102 (piece, size) groups differ); a row WITH `S` (no flip) keeps every slot's chirality.** Over 42 placed markers (the corpus and the fixtures), 1,240 slots of pieces that are not their own mirror image: rows with S kept the chirality on 905 of 922 slots (the 17 exceptions are the `ZZROT-*` AccuNest runs, which ticked the
+"Flip: Enable" override that lifts the row's S; without them 100%), rows without S on 188 of 314 (60%; with W 46%). In the fixtures used by `selftest` (no override): 38 of 38 against 24 of 50. So the mirrored flags of the model are a PRESET on a flip-allowed row and a constraint on an S row: the nest spec's `demand[].mirror_binding` says
+`kept` (the row has S) or `free`.

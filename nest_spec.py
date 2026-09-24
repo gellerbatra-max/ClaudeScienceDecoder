@@ -9,7 +9,7 @@ One command from the ZIP AccuMark exports (marker-only is enough: no piece objec
     shapes      one per (piece, size, cut) the marker lists: the CUT outline, the seam (stitch) line when the marker holds one,
                 notches (position + type), the grain line, internal lines, drill holes, area, perimeter, bounding box
     demand      how many of each shape to lay, and how many of those mirrored - with the mirrored outline written out, so the
-                nester needs no mirror convention. Per slot (v4.17): `flip_by_slot` = the model's flip of that instance (`--`, X, Y, X,Y;
+                nester needs no mirror convention (`mirror_binding` 'kept' = the row has S, AccuMark lays each instance as its flip says; 'free' = it may lay them either way). Per slot (v4.17): `flip_by_slot` = the model's flip of that instance (`--`, X, Y, X,Y;
                 X and Y are mirror images, X,Y a half turn) and `preset_turn_deg_by_slot` = the direction it is retrieved in
     checks      every number a nester will trust, verified against numbers AccuMark itself stored (declared area, stored home box)
 
@@ -241,7 +241,7 @@ def _snapshot_diff(snap, table):
     for i, (s, t) in enumerate(zip(snap['rows'], table['rows'])):
         if s['options'] != t['options']: d.append("row %d (%s): options '%s' in the marker, '%s' in the table" % (i, t['category'], s['options'], t['options']))
         if s['flip_code'] != t['flip_code']: d.append('row %d (%s): flip code %d in the marker, %d in the table' % (i, t['category'], s['flip_code'], t['flip_code']))
-        if abs((s['tilt_cw'] or 0) - (t['tilt_cw'] or 0)) > 1e-4 and abs((s['tilt_cw'] or 0) - (t['tilt_ccw'] or 0)) > 1e-4: d.append('row %d (%s): tilt %.4f in the marker, %.4f / %.4f in the table' % (i, t['category'], s['tilt_cw'] or 0, t['tilt_cw'] or 0, t['tilt_ccw'] or 0))
+        if abs((s['tilt_cw'] or 0) - min(t['tilt_cw'] or 0, t['tilt_ccw'] or 0)) > 1e-4: d.append('row %d (%s): tilt %.4f in the marker, %.4f / %.4f in the table (the marker keeps the smaller)' % (i, t['category'], s['tilt_cw'] or 0, t['tilt_cw'] or 0, t['tilt_ccw'] or 0))
     return d
 
 
@@ -359,7 +359,12 @@ def build_nest_spec(path, units='cm', marker=None, lay_limits=None, notch_table=
         # an instance is retrieved in its bundle's preset direction (0 or 180) and may be turned by `allowed_deg` from there: a `W` row (no rotation) therefore fixes it in its preset
         # direction [measured, AccuNest: laylimits/EXPERIMENT_W_ALTERNATE.md]; a row that allows 180 leaves both directions open
         # v4.17: the direction an instance is retrieved in also carries the 180 of a Y / X,Y flip (`turn_deg`: the bundle's 0x2000 direction turned by it); `flip_by_slot` names the model flip (`--`, X, Y, X,Y)
-        demand = [dict(shape=g['shape'], quantity=g['quantity'], mirrored=g['mirrored'], slots=g['slots'], bundles=sorted(g['bundles']), preset_rot180=g['preset_rot180'], preset_rot180_by_slot=g['presets'],
+        # v4.21: whether a mirrored instance must be laid mirrored: only on a row with the S option (no flip) did AccuNest / AutoMark keep each slot's chirality (905 of 922 asymmetric slots); on a row that allows the flip the
+        # engines lay as-is and mirrored instances of a piece interchangeably, the counts included (48 of 102 (piece, size) groups differ), so the flags are then a preset [MARKER_FORMAT_SPEC.md section 27]
+        def _binding(shape_id):
+            rot_ = shapes_by(shapes, shape_id).get('rotation') or dflt
+            return 'kept' if not rot_.get('flip_x_axis_allowed', True) else ('free' if shapes_by(shapes, shape_id).get('rotation') else 'free (assumed: the table is not known)')
+        demand = [dict(shape=g['shape'], quantity=g['quantity'], mirrored=g['mirrored'], mirror_binding=_binding(g['shape']), slots=g['slots'], bundles=sorted(g['bundles']), preset_rot180=g['preset_rot180'], preset_rot180_by_slot=g['presets'],
                        flip_by_slot=g['flips'], preset_turn_deg_by_slot=g['turns'],
                        allowed_deg_by_slot=[sorted({(t + a) % 360 for a in (shapes_by(shapes, g['shape']).get('rotation') or dflt)['allowed_deg']}) for t in g['turns']])
                   for g in sorted(groups.values(), key=lambda g: (g['shape'], g['mirrored']))]

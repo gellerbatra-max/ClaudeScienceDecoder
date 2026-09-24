@@ -1,0 +1,37 @@
+{
+ "what": "v4.22: a 45-degree placement. A copy of ZZLL-1 (ZZLL-45) whose rows are all `MW` (one way: no rotation) with the 45-degree initial orientations as flip codes - FRONT 11 (rotate 45 CW), BACK 9 (45 CCW, flip X), COLLAR 10 (45 CCW), CUFF 12 (45 CW, flip X), SLEEVE 7 (90 CW) - made into a marker (Order Editor, LADIES-BLOUSE size 10 x 2), nested by AccuNest (Draft, no overrides), plotted by MarkPlot to ZZR-45.DXF.",
+ "result": "every piece with a 45-degree code sits at a TILT of exactly +-45.0 degrees (slot byte +38, float32 radians) on top of its orientation code; the sleeve (90 degrees) has tilt 0. The decoded outline (mirror, turn, then tilt) lies on the plotted loop to 0.16 in (curve sag; cuff 0.001) on 14 slots; the collar needs its 90-degree stream frame (0.16 in with it, 7.1 in without) - a frame the stored home boxes cannot show when every slot is tilted 45 degrees (frames_ambiguous).",
+ "flip_codes": {
+  "1": "Original Digitized Position",
+  "2": "Rotate 180 Degrees",
+  "3": "Flip about Y-axis",
+  "4": "Flip about X-axis",
+  "5": "Rotate 90 degrees, CCW, Flip X-axis",
+  "6": "Rotate 90 degrees, CCW",
+  "7": "Rotate 90 degrees, CW",
+  "8": "Rotate 90 degrees, CW, Flip X-axis",
+  "9": "Rotate 45 degrees, CCW, Flip X-axis",
+  "10": "Rotate 45 degrees, CCW",
+  "11": "Rotate 45 degrees, CW",
+  "12": "Rotate 45 degrees, CW, Flip X-axis"
+ },
+ "piece_rows": {
+  "LADIES-BLOUSE-BK": 9,
+  "LADIES-BLOUSE-COL": 10,
+  "LADIES-BLOUSE-CUFF": 12,
+  "LADIES-BLOUSE-FR": 11,
+  "LADIES-BLOUSE-SL": 7
+ },
+ "tilt_deg_expected": {
+  "LADIES-BLOUSE-BK": 45.0,
+  "LADIES-BLOUSE-COL": 45.0,
+  "LADIES-BLOUSE-CUFF": 45.0,
+  "LADIES-BLOUSE-FR": "45.0 (one slot -45.0)",
+  "LADIES-BLOUSE-SL": 0.0
+ },
+ "markers": {
+  "ZZR-45": "unmade",
+  "ZZR-45-MADE": "AccuNest, 18 placed slots",
+  "ZZR-45.DXF": "MarkPlot plot to file"
+ }
+}

@@ -1,5 +1,17 @@
 # Changelog
 
+## v4.22 (2026-09-25) - a 45-degree placement is a tilt of exactly 45 degrees; two more words of section 1
+
+`__version__` stays `'3.0'`. New fixtures `deg45/` (unmade + AccuNest-made marker, the plot DXF, the table copy, `GROUND_TRUTH.json`). Plan item 5, solved without Easy Marking (the last attempt stalled at its Override / Select Piece dialog): a `W` row with the 45-degree flip codes 9-12.
+
+* **Answer** (MARKER_FORMAT_SPEC.md section 28). A table copy whose rows are all `MW` with flip codes 11 / 9 / 10 / 12 / 7 on front / back / collar / cuff / sleeve, nested by AccuNest: the slots carry tilt floats of exactly +-45.0 on top of the low-bits orientation, the sleeve (90-degree code) 0. The decoded outlines lie on the MarkPlot plot to 0.16 in
+  on 18 of 18 slots (tilt ignored or inverted misses by 3-11 in). No separate 45-degree encoding exists.
+* **A limit found.** A thin piece tilted by 45 degrees has the same bounding box in every frame, so `frame_offsets` chose frame 0 for the collar (7.1 in off the plot; +90 gives 0.16). `frame_ambiguous` / `mk['frames_ambiguous']` name the pieces the home boxes cannot decide (back, collar, cuff here; none on any earlier marker) and `place_marker`'s inventory warns.
+* **Section 1.** @472 = the sum over the slots of the record prefix word 3 (the record's attribute points, 94% of 1,319 records), @476 = the sum of prefix word 4 (76 of 100 markers exactly; exceptions listed in the spec). Refines v4.20's per-piece finding.
+* **Code.** `frame_ambiguous`, `mk['frames_ambiguous']`, an inventory warning. **Checks.** `selftest` (new section): tilt floats per piece, the plot fit with mutations (tilt ignored / inverted), the collar with and without its frame, the ambiguity list (and none on four earlier markers), the two section 1 sums on 33 fixtures.
+* **Scratch state:** `ZZLL-45`, `ZZR-45` (order, marker) removed; my Lay Limits, Order, Queue Submit and MarkPlot processes closed. UI notes: the Lay Limits Editor's flip-code cell needs a click to select, a second click to edit, then the in-cell arrow (real x 577) to open the list; the list's last item (12) is reached with the keyboard (Down x 11, Enter).
+* **Open.** Why the collar's stream frame is a quarter turn off (its record has no grain line and an extra 0x46 tag); the meaning of record prefix words 0-2, 4; plan items 8, 10 and the rest of item 7 (@484, @488, @530, @674 counts, the trailer, section 5).
+
 ## v4.21 (2026-09-25) - the marker keeps the smaller tilt limit; the S option pins a slot's chirality
 
 `__version__` stays `'3.0'`. New fixtures `tilt/` (two markers, the table copy, `GROUND_TRUTH.json` with the twelve Piece Options read from the editor). Plan items 6 and 4, one live round (my own Lay Limits Editor and Order Editor), the second one closed by the checklist text and by data already held.

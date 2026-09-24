@@ -62,7 +62,7 @@ on the unlaid 2303-BD 137 both are `last_model`; on its laid twin `@422` is `all
 
 ## 4. Sections 2, 3, 4, 5 [?]
 
-Not decoded. 2 = options + the marker's name (grows with the name); 3 = repeating
+Section 2's tail is decoded (section 15 below: the names of the four tables the marker was made with); the rest is not. 2 = options + those names (grows with them); 3 = repeating
 `00 00 b0 07` groups; 4 = a 12-byte label-config header; 5 = the `-PDSTEXT-` label
 table (`-PDSTEXT-`, then a 3-byte gap and the piece's label text: what
 `declared_piece_names` scans). They hold most of the marker's unexplained bytes.
@@ -284,9 +284,9 @@ Pairs: slots sharing (bundle, record) form a group of 1 or 2; a group of 2 is a
 
 ## 13. Byte-map status (`marker_coverage`, 18 markers)
 
-Every byte in sections 6, 11-15, 21, 30 is classified. Unknown = 1,187-1,829 bytes
-per marker (1.38% overall, the same on a 3 KB marker as a 280 KB one): trailer,
-section 1's unread bytes, sections 2-5, the envelope. **identified 32.4%, raw 7.1%,
+Every byte in sections 6, 11-15, 21, 30 is classified. Unknown = 1,111-1,753 bytes
+per marker (1.32% overall, the same on a 3 KB marker as a 280 KB one; v4.8: was 1.38% before section 2's table names were decoded): trailer,
+section 1's unread bytes, sections 2-5, the envelope. **identified 32.5%, raw 7.1%,
 zero_pad 0.8%, opaque 58.3%** (v4.7: was 4.1 / 2.4 / 0.8 / 91.3 before the section-14 stream was decoded; a
 stream that verifies against its record's area + perimeter is identified up to its trailer). The opaque bytes are now almost entirely section 30, the embedded type-10 object.
 
@@ -302,7 +302,72 @@ stream that verifies against its record's area + perimeter is identified up to i
 | placed slots 7.2% larger than their record (ZZC-M3, ZZN-F1) | 2 slots each | live: repeat with a plain piece |
 | why `@422` / `@454` are last-model sums; LADIES-BLOUSE 2x | modes observed exactly; a FRESH two-model as-generated marker (`CLAUDE-D2-E7B`) shows `last_model` on both [V], so it is generation-time behaviour, not a laid-state artefact; the LADIES-BLOUSE `2x_all` case is still unexplained [?] | one more two-model order laid in Easy Marking |
 | size-row `flags` (0xffff vs 0) | 12 vs 6 markers | live |
-| sections 2, 3, 4, 5; section 1's 45 varying bytes; the trailer | mostly constant | twin diffs |
+| sections 2 (its bytes before the name strings), 3, 4, 5; section 1's 45 varying bytes; the trailer | mostly constant | twin diffs |
+| Lay Limits: the low three bits of a row's byte b2 (0x07), the eight constant bytes `01 00 .. 00` before the skew array and `7f 00 ..` after it, what the Group column does; older-vintage multi-row tables and their tilt / skew bytes | b2 & 0x07 varies (06 / 05 / 01 / 00) with no visible setting behind it; every other byte is constant across 15 tables | a fresh table from File > New, one row edited at a time; a real multi-row table of the older vintage |
+| does a row that allows 180 let the nest engine turn a piece against its preset? | presets follow the table's Bundling on 29 markers [V]; a `W` piece keeps its preset in a real AccuNest nest [V, `laylimits/EXPERIMENT_W_ALTERNATE.md`]; no piece in that small draft nest was turned | live: a blank-options table with alternating bundles, a marker with room to gain, read the placed orientations |
 
 Marker-only ZIPs (no piece objects) can never yield outlines, and an unplaced marker
 carries no positions - those are limits of the export, not of the decoder.
+
+## 15. Section 2 - the table names [V: 69 of 69 markers, every vintage]
+
+Section 2 ends with the NAMES of the tables the marker was made with. Eleven u16 lengths sit at section start -4, -2, 0, 2, 4, 6, 8, 10, 12, 14 and 18; the strings follow, back to back
+and without separators, from **section start + 231**, in that order:
+
+| at | string | seen |
+|---|---|---|
+| -4 | the marker's own name | equals the object name on 68 of 69 (the 69th, `ZZN-D1`, is a copy that kept its source's name) |
+| -2 | customer | empty, `GERBER GARMENT TECH`, `MarkerWizard`; `[1]` appended once per regeneration |
+| 0 | the order object's name | may differ from the marker's (`CLAUDE-D2-GEN` / `CLAUDE-D2-M0`) |
+| 2 | reference | `4` on the ACCUPLAN markers, else empty |
+| 4 | **lay limits** table | `L`, `SINGLE-PLY`, `COSTINGS`, `ZZLL-1..3`, and the user's `NEED- TWO WAY`, `ALL GMT WAY`, `G-LAYLIMITS` |
+| 6 | annotation table | `A`, `SIZE-AND-BUNDLE`, `M-MARKER`, `NEED-MARKER` |
+| 8 | block buffer table | empty, `3MM`, `ZZBB-1` |
+| 10, 14 | (always empty) | |
+| 12 | notch table | `P-NOTCH`, `AP-NOTC`, `V-NOTCH-ALL CUSTOMERS`, `NEED-P-NOTCH` |
+| 18 | extra | `A4-LADIES-BLOUSE`, `-REGEN-` |
+
+`lay_limits`, `annotation`, `block_buffer` and `notch_table` equal the names of the type 6 / 2 / 3 / 17 objects bundled next to the marker (58 markers find their lay-limits object). The **order** stores
+the same ten slots (below), and an order and its marker agree on the four table names in 58 of 58 pairs (41 orders) (`customer` and `extra` change when a marker is regenerated). `accumark_marker.parse_marker_tables`.
+
+## 16. Lay Limits tables (object type 6) [V]
+
+`accumark_laylimits.py`. In an export ZIP the table starts at object offset 0x8a (10 bytes into the payload region, after `00 00 90 00 00 00 00 00 00 00`) and is `payload_len` long; a `.GT_lay`
+file in a storage area holds the same bytes from 0x90. Two vintages, told apart by structure (the file's type byte at 0x76 is 5 / 4):
+
+**V17 vintage** (every table the current editor saves) - verified against the editor's grid on six tables (`ZZLL-1`, `-X1`, `-X2`, `-X3`, and the older-vintage `L` and `SINGLE-PLY`) and against the recorded settings of nine single-row tables
+(`laylimits/GROUND_TRUTH.json`); `ZZLL-X1..X3` were built one setting at a time from `ZZLL-1`, each saved under a new name and diffed:
+
+```
+u16 line1_len, u16 line2_len      the comment, wrapped at 20 characters (20 + 13 for "ZZ scratch enforcement test table")
+u8 spread                         0 single ply, 1 face to face, 2 book fold, 3 tubular
+u8 bundling                       0 all bundles same direction, 1 alternate bundles alternate direction, 2 same size same direction
+u16 n_rows
+u8 per_model, 7 x 00              Per Model checkbox
+comment text
+n_rows x ( u16 name_len, u8 b2, u8 b3, u8 flip_code (1-12), u8 units_flag, u16 buffer_rule, i32 tilt_cw, i32 tilt_ccw, name )
+u32 1, u32 0
+u32 4*n, n x i32                  weft skew x 10000, degrees
+u32 0x7f, u32 0
+u32 len, u32 n_props, props       each: u32 len, u32 1, u32 0, u32 nlen, name, u32 4+vlen, u32 vlen, text   ("Category group" = "0,0,3,0,0,0,0", only when a group is non-zero)
+```
+
+Piece options are bits: b3 `M 0x80, W 0x40, S 0x20, 9 0x10, 4 0x08, F 0x04, O 0x02, N 0x01`; b2 `U 0x80, X 0x40, Z 0x10, P 0x08`. `b2 & 0x20` + `units_flag = 1` = the tilt unit is degrees; b2 & 0x07 carries nothing
+visible (06 / 05 / 01 / 00 seen; a row's b2 is rewritten when its options are edited). The tilt limit is stored x 10000 in **inches** for a length (0.40 cm -> 1574, 1.5 cm -> 5905, 2.5 cm -> 9842) and
+raw degrees when the unit is degrees (0.40 -> 4000). The rule number is a u16 (17 read back). Flip codes as the editor labels them: 1 Original Digitized Position, 2 Rotate 180, 3 Flip about Y-axis,
+4 Flip about X-axis, 5 Rotate 90 CCW + Flip X-axis, 6 Rotate 90 CCW, 7 Rotate 90 CW, 8 Rotate 90 CW + Flip X-axis, 9 Rotate 45 CCW + Flip X-axis, 10 Rotate 45 CCW, 11 Rotate 45 CW, 12 Rotate 45 CW + Flip X-axis
+(Gerber's help text lists 5 and 6 identically; the editor and `marker-making.md` agree on the table above).
+
+**Older vintage** (the user's real `L`, `SINGLE-PLY`; 84 / 76 bytes): 40 comment characters, u8 spread, u8 bundling, u16 n_rows, then the row: name padded to 20, `00`, options byte (same bits), flip code,
+one byte, u16 buffer rule, zeros. Read for single-row tables only, verified in the editor on `L` (Single Ply, Same Size Same Direction, blank options, flip 1, rule 0) and `SINGLE-PLY` (Single Ply,
+Alternate Bundle, `MS`, flip 1, rule 1); `COSTINGS` (2303 CP 150) reads `MWS`, rule 1, alternate - by the same layout, not seen in the editor. The corpus `L` (in every user ZIP) is the blank-options table.
+
+**Independent confirmation.** The table's Bundling predicts the 180-degree pattern the marker stores on its bundles: on 29 markers with a bundled table every neighbouring bundle pair follows it - alternate
+bundles differ (`COSTINGS`, `SINGLE-PLY`, `ZZLL-1..3`), same size same direction is equal within a size and alternates between sizes (`L`, 16 markers where two bundles share a size), all same direction is equal -
+and the wrong Bundling on `CLAUDE-D2-E7B` is contradicted (`selftest`). The stored presets carry no trace of a flip code.
+
+## 17. The order's table names [V: 41 of 41 orders, 58 order-marker pairs]
+
+The order object stores the same ten name slots. **V17 vintage:** u16 lengths at payload +10, +12, +14, +74, +76, +78, +80, +82, +84, +88 (name = the marker name the order generates, customer, reference,
+lay limits, annotation, block buffer, -, notch table, -, extra) and the strings back to back from +176. **Older vintage** (`COSTORDER`, `LADIES-BLOUSE`): ten 20-character slots, space- or NUL-padded, at +10, +31,
++52, +132, +153, +174, +195, +216, +237, +259. `accumark_marker.parse_order_tables` (also in `parse_order(...)['tables']`).

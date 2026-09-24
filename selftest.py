@@ -1542,6 +1542,204 @@ if _Poly:
     print(f"   {'ok ' if not sh_bad else 'FAIL'} nest spec read by shapely: {sh_n} outlines are valid polygons of the stated area, seam lines inside their cut lines  {'; '.join(sh_bad[:3])}")
     if sh_bad: fails.append('nest spec / shapely: ' + '; '.join(sh_bad[:4]))
 
+print('-- lay limits (v4.8, see accumark_laylimits): the table a marker / order names, read from the bundle')
+# The Lay Limits table decides how a piece may be turned. It is a separate object: the marker (section 2) and the order both NAME it, and the export
+# ZIP bundles it when the marker is exported with its components. Read here against what the Lay Limits Editor SHOWED (laylimits/GROUND_TRUTH.json:
+# ZZLL-1, then -X1 / -X2 / -X3 built one setting at a time and diffed), against the markers themselves (their stored bundle directions must follow the
+# table's Bundling) and against the orders (which name the same four tables as their marker).
+import json as _json
+import accumark_laylimits as ll
+bad = []; LLDIR = os.path.join(HERE, 'laylimits')
+gt = _json.load(open(os.path.join(LLDIR, 'GROUND_TRUTH.json')))
+n_tab = n_row = 0
+def _cmp_rows(nm, t, want_rows):
+    global n_row
+    if len(t['rows']) != len(want_rows): bad.append(f'{nm}: {len(t["rows"])} rows, editor showed {len(want_rows)}'); return
+    for r, w in zip(t['rows'], want_rows):
+        n_row += 1
+        if (r['category'], r['options'], r['flip_code'], r['buffer_rule']) != tuple(w[:4]): bad.append(f"{nm} {w[0]}: {(r['category'], r['options'], r['flip_code'], r['buffer_rule'])} != {tuple(w[:4])}")
+        if len(w) > 4:
+            (cw, ccw, unit), conv = w[5], (1 / 2.54 if w[5][2] == 'length' else 1.0)
+            if r['group'] != w[4] or r['tilt_unit'] != unit or abs(r['weft_skew_deg'] - w[6]) > 1e-6: bad.append(f"{nm} {w[0]}: group / unit / skew")
+            if abs(r['tilt_cw'] - cw * conv) > 1e-3 or abs(r['tilt_ccw'] - ccw * conv) > 1e-3: bad.append(f"{nm} {w[0]}: tilt {r['tilt_cw']}/{r['tilt_ccw']}")
+for nm, want in gt['tables'].items():
+    fp = os.path.join(LLDIR, nm + '.GT_lay')
+    if not os.path.isfile(fp): bad.append(f'{nm}: fixture missing'); continue
+    t = ll.parse_lay_limits(fp); n_tab += 1
+    if t['spread_name'] != want['spread'] or t['bundling_name'] != want['bundling'] or t['per_model'] != want.get('per_model', False) or t['vintage'] != 'v5': bad.append(f'{nm}: spread / bundling / per model / vintage')
+    if 'comment' in want and t['comment'] != want['comment']: bad.append(f'{nm}: comment {t["comment"]!r}')
+    _cmp_rows(nm, t, want['rows'])
+# the older vintage (the user's real `L`, `SINGLE-PLY`) as the editor showed it, read from the bundled objects
+zsa = os.path.join(HERE, 'markers-live', 'ZZ-SCRATCH-ALL-20260921', 'ZZ-SCRATCH-ALL-20260921.zip'); tabs_sa = ll.load_zip_tables(zsa) if os.path.isfile(zsa) else {}
+for nm, want in gt['older_vintage_seen_in_the_editor'].items():
+    t = tabs_sa.get(nm)
+    if not t: bad.append(f'{nm}: not in the scratch bundle'); continue
+    n_tab += 1
+    if t['vintage'] != 'v4' or t['spread_name'] != want['spread'] or t['bundling_name'] != want['bundling']: bad.append(f'{nm}: older vintage spread / bundling')
+    _cmp_rows(nm, t, want['rows'])
+# a table exported inside a ZIP is the same table as the file in the storage area
+if tabs_sa.get('ZZLL-1'):
+    a, b = tabs_sa['ZZLL-1'], ll.parse_lay_limits(os.path.join(LLDIR, 'ZZLL-1.GT_lay'))
+    if [(r['category'], r['options'], r['flip_code'], r['buffer_rule'], r['raw']) for r in a['rows']] != [(r['category'], r['options'], r['flip_code'], r['buffer_rule'], r['raw']) for r in b['rows']] or (a['spread'], a['bundling'], a['comment']) != (b['spread'], b['bundling'], b['comment']):
+        bad.append('ZZLL-1: the bundled table differs from the storage-area file')
+# every lay-limits object of every ZIP of the corpus reads (both vintages, no error)
+n_obj = 0; n_err = []
+zips_all = sorted(glob.glob(os.path.join(HERE, 'markers', '**', '*.zip'), recursive=True) + glob.glob(os.path.join(HERE, 'markers-live', '**', '*.zip'), recursive=True))
+for zp in zips_all:
+    try: tt = ll.load_zip_tables(zp)
+    except Exception: continue
+    n_obj += len([k for k in tt if k != '_errors']); n_err += [f'{os.path.basename(zp)}: {n}: {m}' for n, m in tt.get('_errors', [])]
+if n_obj < 20 or n_err: bad.append(f'corpus tables: {n_obj} read, errors {n_err[:2]}')
+print(f"   {'ok ' if not bad else 'FAIL'} lay-limits tables: {n_tab} tables / {n_row} rows equal what the editor showed (spread, bundling, per model, options, flip code, buffer rule, group, tilt + unit, weft skew); {n_obj} bundled objects in {len(zips_all)} ZIPs all read  {'; '.join(bad[:3])}")
+if bad: fails.append('lay limits: ' + '; '.join(bad[:5]))
+
+# the names: a marker's section 2 and its order name the same four tables
+bad = []; n_mk = n_join = n_tab_in_zip = 0
+for zp in zips_all:
+    try: lst = am.list_zip(zp)
+    except Exception: continue
+    tnames = {o['name'] for o in lst.get('lay_limits', [])}; mts = []
+    for o in lst.get('marker', []):
+        try: mk_ = am.parse_marker(o['data'])
+        except Exception: continue
+        n_mk += 1
+        if not mk_['tables'] or not mk_['tables']['ok']: bad.append(f"{o['name']}: section-2 name strings do not parse"); continue
+        mts.append(mk_['tables'])
+        if mk_['tables']['lay_limits'] in tnames: n_tab_in_zip += 1
+    for od in lst.get('order', []):
+        ot = am.parse_order_tables(od)
+        if ot is None: bad.append(f"{od['name']}: order table names do not parse"); continue
+        for mt in mts:
+            if mt['order_name'] != od['name']: continue
+            n_join += 1
+            if any(ot[k] != mt[k] for k in ('lay_limits', 'annotation', 'block_buffer', 'notch_table')): bad.append(f"{od['name']}: order and marker name different tables")
+if n_mk < 40 or n_join < 30: bad.append(f'only {n_mk} markers / {n_join} order-marker pairs')
+print(f"   {'ok ' if not bad else 'FAIL'} table names: {n_mk} markers (every vintage) name lay limits / annotation / block buffer / notch table in section 2; {n_join} order-marker pairs name the same four; {n_tab_in_zip} markers find their lay-limits table bundled  {'; '.join(bad[:3])}")
+if bad: fails.append('lay limits names: ' + '; '.join(bad[:5]))
+# the user's real production markers name tables that are not in their ZIPs: reported by name, rotation stays assumed
+real = {}
+for zn_, mn_ in (('1825D-SS21-UNLAID', '1825D-BD 180 SS21.zip'), ('5683D-SS21-UNLAID', '5683D-BD 168 SS21.zip'), ('2591A-SS21-UNLAID', '2591A-BD 157 AW SS21.zip'), ('418T-SHAPESHIFTER-UNLAID', '418T-BD 160 SHAPESHIFTER.zip')):
+    zp = os.path.join(HERE, 'markers', zn_, mn_)
+    if os.path.isfile(zp): real[zn_] = {m['marker']['tables']['lay_limits'] for m in am.place_marker(zp)['markers']}
+want_real = {'1825D-SS21-UNLAID': {'NEED- TWO WAY'}, '5683D-SS21-UNLAID': {'NEED- TWO WAY'}, '2591A-SS21-UNLAID': {'ALL GMT WAY'}, '418T-SHAPESHIFTER-UNLAID': {'G-LAYLIMITS'}}
+ok = all(real.get(k) == v for k, v in want_real.items() if k in real) and len(real) >= 3
+print(f"   {'ok ' if ok else 'FAIL'} real production markers name their tables: {sorted(set().union(*real.values())) if real else '-'}")
+if not ok: fails.append(f'lay limits: real marker table names {real}')
+
+# the marker's own data agrees with the table: pre-set 180 degree directions follow the table's Bundling
+import nest_spec as ns
+bad = []; states = Counter(); dec = None
+for zp in zips_all:
+    try: lst = am.list_zip(zp); tabs = ll.load_zip_tables(zp, lst)
+    except Exception: continue
+    if not any(k != '_errors' for k in tabs): continue
+    try: res = am.place_marker(zp)
+    except Exception: continue
+    for m_ in res['markers']:
+        nm_ = (m_['marker'].get('tables') or {}).get('lay_limits')
+        if nm_ in tabs and m_['inventory']['slots']:
+            st, det = ns._bundle_pattern(m_['inventory'], tabs[nm_]); states[st] += 1
+            if st == 'contradicted': bad.append(f"{m_['marker']['name']}: {det}")
+            if m_['marker']['name'] == 'CLAUDE-D2-E7B': dec = (m_['inventory'], tabs[nm_])
+if states['consistent'] < 20: bad.append(f'only {states["consistent"]} markers give a decisive comparison: {dict(states)}')
+# and it can fail: E7B holds two bundles of one size next to a bundle of the other - "alternate bundles" contradicts it, "same size" and "alternate sizes" agree
+if dec:
+    inv_, tab_ = dec
+    verdict = {b_: ns._bundle_pattern(inv_, dict(tab_, bundling=b_))[0] for b_ in (0, 1, 2)}
+    if verdict != {0: 'contradicted', 1: 'contradicted', 2: 'consistent'}: bad.append(f'E7B under each Bundling: {verdict}')
+else: bad.append('CLAUDE-D2-E7B missing')
+print(f"   {'ok ' if not bad else 'FAIL'} the stored bundle directions follow the table's Bundling on {states['consistent']} markers ({dict(states)}); mutation: the wrong Bundling on E7B is caught  {'; '.join(bad[:3])}")
+if bad: fails.append('lay limits / bundle pattern: ' + '; '.join(bad[:5]))
+
+# the parser refuses what it does not understand
+bad = []
+raw_ = open(os.path.join(LLDIR, 'ZZLL-X2.GT_lay'), 'rb').read()[0x90:]
+def _refused(b):
+    try: ll.parse_lay_limits(bytes(b)); return False
+    except ll.LayLimitsError: return True
+muts = {'truncated by one byte': raw_[:-1], 'one byte too long': raw_ + b'\x00'}
+b_ = bytearray(raw_); b_[4] = 7; muts['unknown spread'] = b_
+b_ = bytearray(raw_); b_[6] = 9; muts['row count 9 for 7 rows'] = b_
+b_ = bytearray(raw_); struct.pack_into('<I', b_, raw_.index(b'Category group') - 24, 999); muts['property block length'] = b_
+b_ = bytearray(raw_); i_ = raw_.index(b'Category group'); b_[i_ - 4] = 15; muts['property name length'] = b_
+for what, b in muts.items():
+    if not _refused(b): bad.append(f'{what}: read as if valid')
+t_ = ll.parse_lay_limits(raw_)
+b_ = bytearray(raw_); i_ = raw_.index(b'COLLAR') - 16 + 5; b_[i_] = 0        # COLLAR's degree flag: the two unit flags now disagree
+t2 = ll.parse_lay_limits(bytes(b_))
+if not any('unit flags disagree' in w for w in t2['warnings']): bad.append('unit-flag mismatch not reported')
+if t_['warnings']: bad.append(f'a clean table warns: {t_["warnings"]}')
+print(f"   {'ok ' if not bad else 'FAIL'} the parser refuses {len(muts)} broken variants of a table and reports disagreeing unit flags  {'; '.join(bad[:3])}")
+if bad: fails.append('lay limits mutations: ' + '; '.join(bad[:5]))
+
+# what a row allows a nesting engine to do (Gerber help, "Piece Options")
+bad = []
+def _rules(nm, cat):
+    t = ll.parse_lay_limits(os.path.join(LLDIR, nm + '.GT_lay')); r_, how = ll.row_for(t, cat); return ll.orientation_rules(r_), how
+want = [('ZZLL-1', 'FRONT', [0], True, False), ('ZZLL-1', 'DEFAULT', [0, 180], False, False), ('ZZLL-1', 'BACK', [0, 90, 180, 270], True, False),
+        ('ZZLL-1', 'COLLAR', [0, 45, 90, 135, 180, 225, 270, 315], True, False), ('ZZLL-LOCK-R8', 'anything', [0], False, True), ('ZZLL-BOOKFOLD', 'x', [0, 180], True, False),
+        ('ZZLL-1', 'no such category', [0, 180], False, False)]
+for nm, cat, deg, flip, lock in want:
+    r_, how = _rules(nm, cat)
+    if (r_['allowed_deg'], r_['flip_x_axis_allowed'], r_['locked']) != (deg, flip, lock): bad.append(f'{nm} {cat}: {(r_["allowed_deg"], r_["flip_x_axis_allowed"], r_["locked"])}')
+if _rules('ZZLL-1', 'no such category')[1] != 'default' or _rules('ZZLL-1', 'front')[1] != 'category': bad.append('row_for: category / default fallback')
+r_, _ = _rules('ZZLL-1', 'SLEEVE')
+if r_['initial_orientation'] != dict(code=7, label='Rotate 90 degrees, CW', rotate_deg=-90, flip=None): bad.append(f'SLEEVE initial orientation {r_["initial_orientation"]}')
+r_, _ = _rules('ZZLL-X1', 'FRONT')
+if r_['weft_skew_deg'] != 45.0 or _rules('ZZLL-X2', 'CUFF')[0]['tilt_limit'] != dict(unit='degrees', cw=0.4, ccw=0.4) or _rules('ZZLL-X1', 'DEFAULT')[0]['buffer_rule'] != 17: bad.append('skew / tilt / rule')
+print(f"   {'ok ' if not bad else 'FAIL'} orientation rules: blank = 180 + flip, W = one way, S = no flip, W+S = locked, 9 / 4 add 90 / 45 degrees, category row else DEFAULT  {'; '.join(bad[:3])}")
+if bad: fails.append('lay limits rules: ' + '; '.join(bad[:5]))
+
+# the nest spec carries it
+bad = []
+zb = os.path.join(HERE, 'markers-live', 'CLAUDE-UNP-D3-BLIND', 'CLAUDE-D3-BF.zip'); zo = os.path.join(HERE, 'markers-live', 'CLAUDE-UNP-D3-BLIND', 'CLAUDE-D3-BF-MARKER-ONLY.zip')
+if os.path.isfile(zb) and os.path.isfile(zo):
+    sb = ns.build_nest_spec(zb)[0]
+    if sb['lay_limits']['source'] != 'bundled' or sb['lay_limits']['name'] != 'L' or not sb['rotation']['basis'].startswith('verified') or sb['rotation']['allowed_deg'] != [0, 180] or not sb['rotation']['flip_x_axis_allowed']: bad.append(f"bundled: {sb['lay_limits']['source']} {sb['rotation']}")
+    if not all(s_.get('rotation') and s_['rotation']['matched'] == 'default' for s_ in sb['shapes']): bad.append('bundled: shapes without a rotation rule')
+    if not sb['complete']: bad.append('bundled spec incomplete')
+    so = ns.build_nest_spec(zo)[0]
+    if so['lay_limits']['source'] != 'named only' or so['lay_limits']['name'] != 'L' or not so['rotation']['basis'].startswith('assumed') or any('rotation' in s_ for s_ in so['shapes']): bad.append(f"marker-only: {so['lay_limits']['source']}")
+    if not any("'L'" in w for w in so['warnings']) or not so['complete']: bad.append('marker-only: no warning naming the table / incomplete')
+    # supplying the table (a storage-area file) turns a marker-only spec into a verified one, per category
+    sz = ns.build_nest_spec(zo, lay_limits=os.path.join(LLDIR, 'ZZLL-1.GT_lay'))[0]
+    got = {s_['category']: (s_['rotation']['row'], s_['rotation']['matched'], s_['rotation']['allowed_deg'], s_['rotation']['flip_x_axis_allowed']) for s_ in sz['shapes']}
+    if got.get('BACK') != ('BACK', 'category', [0, 90, 180, 270], True) or got.get('FRONT') != ('FRONT', 'category', [0], True): bad.append(f'supplied ZZLL-1: {got}')
+    if sz['lay_limits']['source'] != 'supplied' or not sz['rotation']['basis'].startswith('verified') or not sz['complete']: bad.append('supplied: source / basis / complete')
+    if not any('marker names' in w for w in sz['warnings']): bad.append('supplied table of another name: no warning')
+    if _json.loads(_json.dumps(sz)) != sz: bad.append('supplied spec not JSON round-trippable')
+    if any(len(d['preset_rot180_by_slot']) != d['quantity'] or sum(d['preset_rot180_by_slot']) != d['preset_rot180'] for d in sz['demand']): bad.append('demand presets by slot')
+print(f"   {'ok ' if not bad else 'FAIL'} nest spec: bundled table -> verified rotation per category; marker-only -> named, assumed, warned; --lay-limits FILE -> verified  {'; '.join(bad[:3])}")
+if bad: fails.append('nest spec / lay limits: ' + '; '.join(bad[:5]))
+
+# a real nest: AccuNest kept a one-way (`W`) piece in the direction its bundle was retrieved in (laylimits/EXPERIMENT_W_ALTERNATE.md)
+try:
+    from shapely.geometry import Polygon as _P2
+    from shapely import affinity as _aff
+except Exception: _P2 = None
+fx = os.path.join(LLDIR, 'EXPERIMENT_W_ALTERNATE.DXF')
+if _P2 and os.path.isfile(fx) and os.path.isfile(zsa):
+    bad = []
+    sp_ = ns.build_nest_spec(zsa, marker='ZZC-M1')[0]
+    fr = next((s_ for s_ in sp_['shapes'] if s_['piece'] == 'LADIES-BLOUSE-FR'), None)
+    if fr is None or fr['rotation']['options'] != 'MW' or fr['rotation']['allowed_deg'] != [0]: bad.append('ZZC-M1 FRONT is not read as MW / [0]')
+    else:
+        ref = _P2(fr['outline']).buffer(0)
+        dem = [d for d in sp_['demand'] if d['shape'] == fr['id']]; pres = [p_ for d in dem for p_ in d['preset_rot180_by_slot']]
+        if any(a_ != [180 * p_] for d in dem for a_, p_ in zip(d['allowed_deg_by_slot'], d['preset_rot180_by_slot'])): bad.append('allowed_deg_by_slot for a W row is not the preset direction')
+        plotted = [_P2(pl).buffer(0) for pl in ns.read_dxf_polylines(fx).get('T001L001', []) if len(pl) >= 20]
+        mine = [p_ for p_ in plotted if p_.area and abs(p_.area / ref.area - 1) < 0.015]
+        rev = 0
+        for p_ in mine:
+            best = {}
+            for tn, sx, sy in (('fwd', 1, 1), ('fwd', 1, -1), ('rev', -1, -1), ('rev', -1, 1)):
+                T = _aff.scale(ref, sx, sy, origin=(0, 0)); T = _aff.translate(T, p_.centroid.x - T.centroid.x, p_.centroid.y - T.centroid.y)
+                best[tn] = min(best.get(tn, 9), p_.symmetric_difference(T).area / p_.area)
+            rev += best['rev'] + 0.0005 < best['fwd']
+        if len(mine) != len(pres) or rev != sum(pres): bad.append(f'plot: {len(mine)} FR outlines, {rev} reversed; the marker stores {len(pres)} instances, {sum(pres)} preset to 180')
+    print(f"   {'ok ' if not bad else 'FAIL'} AccuNest nest of ZZC-M1: the {len(pres) if not bad else '?'} FRONT (MW) pieces keep their preset direction ({sum(pres) if not bad else '?'} reversed, as stored)  {'; '.join(bad[:3])}")
+    if bad: fails.append('lay limits / real nest: ' + '; '.join(bad[:5]))
+
 print('-- marker byte map (v4.4, see accumark_marker.marker_coverage)')
 # Every byte owned by a section a parser reads must be classified (identified /
 # raw / zero_pad / opaque) - only the envelope, the header scalars, sections 2-5,

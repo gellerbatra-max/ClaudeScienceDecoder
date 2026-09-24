@@ -600,7 +600,33 @@ def parse_marker(d, size_vocab=None, binding='structural'):
     mk['bundles'] = sorted({p['bundle'] for p in placements})
     mk['sum_slot_areas'] = sum(p['area'] for p in placements)
     _add_order_and_state(d, mk, sec)
+    mk['tables'] = parse_marker_tables(d, sec, mk['name'])
     return mk
+
+TABLE_LENS = (('marker_name', -4), ('customer', -2), ('order_name', 0), ('reference', 2), ('lay_limits', 4), ('annotation', 6), ('block_buffer', 8),
+              ('reserved_10', 10), ('notch_table', 12), ('reserved_14', 14), ('extra', 18))
+TABLE_STRINGS = 231     # the name strings start this far into section 2, one after the other, no separators
+
+def parse_marker_tables(d, sec, name=None):
+    """v4.8: section 2 ends with the NAMES of the tables the marker was made with. Eleven u16 lengths sit at section start -4, -2, 0, 2, 4, 6, 8, 10, 12, 14
+    and 18; the strings follow in that order from section start + 231, without separators. Verified on all 44 markers of the corpus (every vintage): the
+    first string is the marker's own name (43 of 44; the 44th is a marker copied without renaming) and `lay_limits` / `annotation` / `block_buffer` /
+    `notch_table` equal the names of the type 6 / 2 / 3 / 17 objects bundled next to the marker. -> dict of names, plus `ok` (strings printable and inside
+    the section), or None when the marker has no section 2."""
+    s2 = sec[2] if len(sec) > 2 else None
+    if not s2: return None
+    a = s2[0]
+    try: lens = [u16(d, a + o) for _, o in TABLE_LENS]
+    except struct.error: return None
+    pos = a + TABLE_STRINGS; out = {}
+    ok = pos + sum(lens) <= s2[1]
+    for (k, _), n in zip(TABLE_LENS, lens):
+        raw = d[pos:pos + n] if ok else b''
+        if not all(32 <= c < 127 for c in raw): ok = False
+        out[k] = raw.decode('latin1'); pos += n
+    out['ok'] = ok
+    out['name_matches'] = name is None or out['marker_name'] == name
+    return out
 
 def _add_order_and_state(d, mk, sec):
     """v4.2: the order copy (section 15), the block buffers (section 6), where
@@ -1160,6 +1186,10 @@ def marker_coverage(d, mk=None):
     if sec[2]:
         i = d.find(mk['name'].encode('latin1'), sec[2][0], sec[2][1])
         if i >= 0: mark(i, i + len(mk['name']) + 1, 'identified')
+        tb = mk.get('tables')
+        if tb and tb['ok']:                     # v4.8: the eleven name lengths and the name strings
+            for _, o in TABLE_LENS: mark(sec[2][0] + o, sec[2][0] + o + 2, 'identified')
+            a0 = sec[2][0] + TABLE_STRINGS; mark(a0, a0 + sum(len(tb[k]) for k, _ in TABLE_LENS), 'identified')
     if sec[5]:
         for m in re.finditer(rb'-PDSTEXT-', d[sec[5][0]-_LEAD:sec[5][1]-_LEAD]):
             a = sec[5][0] - _LEAD + m.start(); mark(a, a + 9, 'identified')
@@ -1354,6 +1384,35 @@ def type10_tagged_fields(marker_data):
     return out
 
 # ---------------------------------------------------------------- order
+ORDER_TABLE_SLOTS = (('name', 10), ('customer', 12), ('reference', 14), ('lay_limits', 74), ('annotation', 76), ('block_buffer', 78),
+                     ('reserved_80', 80), ('notch_table', 82), ('reserved_84', 84), ('extra', 88))
+ORDER_TABLE_SLOTS_OLD = (('name', 10), ('customer', 31), ('reference', 52), ('lay_limits', 132), ('annotation', 153), ('block_buffer', 174),
+                         ('reserved_80', 195), ('notch_table', 216), ('reserved_84', 237), ('extra', 259))
+
+def parse_order_tables(obj):
+    """v4.8: the names an order stores for the tables it was made with - the SAME ten slots the marker copies into its section 2 (parse_marker_tables), so an
+    order and its marker agree name for name [V: every order that shares a ZIP with its marker, 34 of 34 with both].
+    Newer vintage (V17): ten u16 lengths at payload +10, +12, +14, +74, +76, +78, +80, +82, +84, +88 and the strings back to back from +176; older vintage
+    (`COSTORDER`, `LADIES-BLOUSE`, ...): ten 20-character space-padded slots at +10, +31, +52, +132, +153, +174, +195, +216, +237, +259.
+    -> dict(vintage, name, customer, reference, lay_limits, annotation, block_buffer, notch_table, extra) or None if the bytes do not fit either layout.
+    `name` is the order's marker name - the marker's own name, which need not equal the order object's name."""
+    p = obj['payload'] if isinstance(obj, dict) else obj
+    if len(p) >= 0x120 and re.fullmatch(rb'[\x20-\x7e]{20}\x00', bytes(p[10:31])):
+        out = dict(vintage='v4')
+        for k, o in ORDER_TABLE_SLOTS_OLD:
+            raw = bytes(p[o:o+20])
+            if not all(c == 0 or 32 <= c < 127 for c in raw): return None
+            out[k] = raw.replace(b'\x00', b' ').decode('latin1').strip()
+        return out
+    if len(p) < 176 + 2: return None
+    lens = [u16(p, o) for _, o in ORDER_TABLE_SLOTS]; pos = 176; out = dict(vintage='v5')
+    if pos + sum(lens) > len(p): return None
+    for (k, _), n in zip(ORDER_TABLE_SLOTS, lens):
+        raw = bytes(p[pos:pos+n])
+        if not all(32 <= c < 127 for c in raw): return None
+        out[k] = raw.decode('latin1'); pos += n
+    return out
+
 def parse_order(d):
     """Order object (type 13): name, the four table names (lay limits,
     annotation, block buffer, notch), then per model the requested sizes
@@ -1369,7 +1428,7 @@ def parse_order(d):
             models[-1]['sizes'].append(dict(size=s, fields=[u16(d, o+len(s)+2*k) for k in range(8)]))
         elif not re.fullmatch(r'\d{1,2}[A-Z]{0,3}', s) and len(s) >= 6:
             models.append(dict(name=s, offset=o, sizes=[]))
-    return dict(name=obj['name'], object=obj, models=models, strings=strs[:4])
+    return dict(name=obj['name'], object=obj, models=models, strings=strs[:4], tables=parse_order_tables(obj))
 
 def parse_model(d):
     """Model object (type 12): the pieces of a garment [V for names]."""

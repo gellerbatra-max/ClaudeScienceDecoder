@@ -1,0 +1,37 @@
+{
+  "_about": "What the Lay Limits Editor (V17, own process, 2026-09-24) SHOWED for each table - written by hand from screenshots, not produced by the decoder. Tilt limits are shown in cm by the Metric editor and stored in inches x 10000 (0.40 cm = 1574). X1..X3 were built one setting at a time from ZZLL-1 (Save As under a new name) and diffed against it. The single-row tables carry the settings recorded when they were made (skill note multi-fabric-oneway.md: 1WAY = MW, All Bundle Same Direction; -R5..R8 = same with buffer rule 5..8; F2F-R5 = Face To Face rule 5; BOOKFOLD = Book Fold, no options; LOCK-R8 = MWS same direction rule 8; BUNDLE-R8 = LOCK-R8 + Alternate Bundle, Alternate Direction).",
+  "tilt_inches_per_cm": 0.3937008,
+  "tables": {
+    "ZZLL-1": {"spread": "single_ply", "bundling": "alternate_bundle_alternate_direction", "per_model": false, "comment": "ZZ scratch enforcement test table",
+      "rows": [["DEFAULT", "MS", 1, 0, 0, [0, 0, "length"], 0], ["FRONT", "MW", 1, 1, 0, [0, 0, "length"], 0], ["BACK", "M9", 1, 2, 0, [0, 0, "length"], 0],
+               ["COLLAR", "M4", 1, 3, 0, [0, 0, "length"], 0], ["CUFF", "MS", 1, 0, 0, [0.40, 0.40, "length"], 0], ["SLEEVE", "MS", 7, 4, 0, [0, 0, "length"], 0]]},
+    "ZZLL-X1": {"spread": "single_ply", "bundling": "alternate_bundle_alternate_direction", "per_model": false, "comment": "ZZ scratch enforcement test table",
+      "rows": [["DEFAULT", "MS", 1, 17, 0, [1.5, 2.5, "length"], 0], ["FRONT", "MW", 1, 1, 0, [0, 0, "length"], 45], ["BACK", "M9", 1, 2, 3, [0, 0, "length"], 0],
+               ["COLLAR", "M4", 1, 3, 0, [0, 0, "degrees"], 0], ["CUFF", "MS", 1, 0, 0, [0.40, 0.40, "length"], 0], ["SLEEVE", "MS", 7, 4, 0, [0, 0, "length"], -30]]},
+    "ZZLL-X2": {"spread": "tubular", "bundling": "same_size_same_direction", "per_model": false, "comment": "ZZ scratch enforcement test table",
+      "rows": [["DEFAULT", "F", 1, 17, 0, [1.5, 2.5, "length"], 0], ["FRONT", "O", 1, 1, 0, [0, 0, "length"], 45], ["BACK", "N", 1, 2, 3, [0, 0, "length"], 0],
+               ["COLLAR", "X", 1, 3, 0, [0, 0, "degrees"], 0], ["CUFF", "P", 1, 0, 0, [0.40, 0.40, "degrees"], 0], ["SLEEVE", "U", 7, 4, 0, [0, 0, "length"], -30],
+               ["ZROW", "Z", 1, 0, 0, [0, 0, "length"], 0]]},
+    "ZZLL-X3": {"spread": "tubular", "bundling": "same_size_same_direction", "per_model": true, "comment": "ZZ scratch enforcement test table",
+      "rows": [["DEFAULT", "F", 1, 17, 0, [1.5, 2.5, "length"], 0], ["FRONT", "O", 1, 1, 0, [0, 0, "length"], 45], ["BACK", "N", 1, 2, 3, [0, 0, "length"], 0],
+               ["COLLAR", "X", 1, 3, 0, [0, 0, "degrees"], 0], ["CUFF", "P", 1, 0, 0, [0.40, 0.40, "degrees"], 0], ["SLEEVE", "U", 7, 4, 0, [0, 0, "length"], -30],
+               ["ZROW", "Z", 1, 0, 0, [0, 0, "length"], 0]]},
+    "ZZLL-1WAY": {"spread": "single_ply", "bundling": "all_bundle_same_direction", "rows": [["DEFAULT", "MW", 1, 1]]},
+    "ZZLL-1W-R5": {"spread": "single_ply", "bundling": "all_bundle_same_direction", "rows": [["DEFAULT", "MW", 1, 5]]},
+    "ZZLL-1W-R6": {"spread": "single_ply", "bundling": "all_bundle_same_direction", "rows": [["DEFAULT", "MW", 1, 6]]},
+    "ZZLL-1W-R7": {"spread": "single_ply", "bundling": "all_bundle_same_direction", "rows": [["DEFAULT", "MW", 1, 7]]},
+    "ZZLL-1W-R8": {"spread": "single_ply", "bundling": "all_bundle_same_direction", "rows": [["DEFAULT", "MW", 1, 8]]},
+    "ZZLL-BOOKFOLD": {"spread": "book_fold", "bundling": "all_bundle_same_direction", "rows": [["DEFAULT", "", 1, 0]]},
+    "ZZLL-F2F-R5": {"spread": "face_to_face", "bundling": "all_bundle_same_direction", "rows": [["DEFAULT", "MW", 1, 5]]},
+    "ZZLL-LOCK-R8": {"spread": "single_ply", "bundling": "all_bundle_same_direction", "rows": [["DEFAULT", "MWS", 1, 8]]},
+    "ZZLL-BUNDLE-R8": {"spread": "single_ply", "bundling": "alternate_bundle_alternate_direction", "rows": [["DEFAULT", "MWS", 1, 8]]}
+  },
+  "_rows_format": "[category, options, flip code, block/buffer rule, group, [tilt CW, tilt CCW, unit], weft skew degrees]; single-row tables list [category, options, flip, rule]",
+  "older_vintage_seen_in_the_editor": {
+    "L": {"spread": "single_ply", "bundling": "same_size_same_direction", "rows": [["DEFAULT", "", 1, 0]], "note": "the user's real table; in every corpus ZIP"},
+    "SINGLE-PLY": {"spread": "single_ply", "bundling": "alternate_bundle_alternate_direction", "rows": [["DEFAULT", "MS", 1, 1]]}
+  },
+  "flip_code_labels_seen": {"1": "Original Digitized Position", "2": "Rotate 180 Degrees", "3": "Flip about Y-axis", "4": "Flip about X-axis", "5": "Rotate 90 degrees, CCW, Flip X-axis",
+    "6": "Rotate 90 degrees, CCW", "7": "Rotate 90 degrees, CW", "8": "Rotate 90 degrees, CW, Flip X-axis", "9": "Rotate 45 degrees, CCW, Flip X-axis",
+    "10": "Rotate 45 degrees, CCW", "11": "Rotate 45 degrees, CW", "12": "Rotate 45 degrees, CW, Flip X-axis"}
+}

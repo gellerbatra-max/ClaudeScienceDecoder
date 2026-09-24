@@ -17,6 +17,7 @@ Unzip `pds_decoder_handoff.zip` into a working folder on the Windows laptop
 | `captures/TASK1…TASK6/` | the eight first-round captures — baselines + regression fixtures |
 | `accumark_marker.py` | (2026-09-09) reader for marker / order / model objects, slot→piece binding, placement transform, grading + fold unfolding |
 | `verify_marker.py` | (2026-09-09) the marker validator: report, `--expect`, `--dxf` against a drawn-marker DXF, `--baseline` section diff |
+| `accumark_laylimits.py`, `laylimits/` | (2026-09-24) reader for Lay Limits tables (`.GT_lay` / bundled objects) and the rotation rules a row gives a nester; `laylimits/` = 13 tables built one setting at a time in the editor + `GROUND_TRUTH.json` + a real AccuNest experiment (`EXPERIMENT_W_ALTERNATE.*`) |
 | `markers/` | (2026-09-09) six production markers of style 2303 + four drawn DXFs (2026-09-21: plus `1825D-SS21-UNLAID/`, two unlaid markers from another AccuMark install) — regression fixtures run by `selftest.py` |
 | `MARKER_DECODE_PLAN.md` | marker format facts, status table, and what to ask for next |
 | `pds_decoded.json`, `pds_decode_validation.csv` | reference decode of those eight |
@@ -122,6 +123,10 @@ order, it targets the original's marker.
 
 To hand the job to a nesting engine: `python nest_spec.py "some marker.zip" --json job.json [--dxf pieces.dxf] [--svg pieces.svg]` (format in `NEST_SPEC.md`;
 ends `NEST SPEC COMPLETE` or names the failing check).
+
+How pieces may be turned lives in the **Lay Limits table**, which the marker only names (section 2). Export the marker *with its components* (the ZIP then bundles the table and the
+spec's `rotation` says `verified`), or hand the table over: `--lay-limits NAME.GT_lay` (from `C:\userroot\storage\<AREA>\lay\`) or another ZIP that holds it. `python accumark_laylimits.py <zip or file>`
+prints a table. A marker-only export of the user's real styles names `NEED- TWO WAY` / `ALL GMT WAY` / `G-LAYLIMITS`: those tables are not in the corpus, so their specs say `assumed`.
 
 `--inventory --json` gives the same thing as data. The byte-level spec is
 `MARKER_FORMAT_SPEC.md`; `python -c "import accumark_marker as m; ..."`

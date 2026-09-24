@@ -256,8 +256,9 @@ def build_nest_spec(path, units='cm', marker=None, lay_limits=None, notch_table=
                                self_intersecting=_crosses(o), complete=True, _y=(0.0, (y1 - y0) * k))
                     # the box AccuMark stored for the piece: equal to the outline's own box on every marker-only ZIP of the corpus (residual 0),
                     # larger by the block buffer (+ a small curve allowance in y) on the July CP 150 markers - `padding` is what it reserves around the piece
-                    shp['stored_box'] = [e['home_box_in'][0] * k, e['home_box_in'][1] * k]
-                    shp['padding'] = [shp['stored_box'][0] - w, shp['stored_box'][1] - h]
+                    hb = e['home_box_piece_in'] if 'home_box_piece_in' in e else e['home_box_in']      # the piece's own frame (a laid marker's slot may sit at a quarter turn)
+                    shp['stored_box'] = None if hb is None else [hb[0] * k, hb[1] * k]
+                    shp['padding'] = None if hb is None else [shp['stored_box'][0] - w, shp['stored_box'][1] - h]
                 else: problems.append(f"{e['piece']} {e['size']}: no outline")
                 shapes[rec_i] = shp
             g = groups.setdefault((rec_i, mirrored), dict(shape=shapes[rec_i]['id'], quantity=0, mirrored=mirrored, slots=[], bundles=set(), preset_rot180=0, presets=[]))
@@ -341,10 +342,11 @@ def validate_nest_spec(spec, _private=None, marker_checks=(), inv=None, k=1.0):
     bad = [s['id'] for s in comp if s['declared_area'] and abs(s['area'] / s['declared_area'] - 1) > 0.01]
     rows.append(('outline area == the area AccuMark declares for the piece (1%)', not bad, f"{len(comp) - len(bad)} of {len(comp)}" + (f"; off: {bad[:4]}" if bad else '')))
     tol = 2e-3 * k
-    bad = [s['id'] for s in comp if any(v < -tol or v > 0.25 * k for v in s['padding'])]
-    exact = sum(1 for s in comp if all(abs(v) <= tol for v in s['padding']))
+    boxed = [s for s in comp if s['padding'] is not None]
+    bad = [s['id'] for s in boxed if any(v < -tol or v > 0.25 * k for v in s['padding'])]
+    exact = sum(1 for s in boxed if all(abs(v) <= tol for v in s['padding']))
     rows.append(('outline fits the box AccuMark stored (never larger, at most 0.25 in of padding)', not bad,
-                 f"{exact} of {len(comp)} exactly equal, {len(comp) - exact - len(bad)} padded (reserve `padding` around them)" + (f"; off: {bad[:4]}" if bad else '')))
+                 f"{exact} of {len(boxed)} exactly equal, {len(boxed) - exact - len(bad)} padded (reserve `padding` around them)" + (f"; off: {bad[:4]}" if bad else '') + (f"; {len(comp) - len(boxed)} tilted, box unknown" if len(boxed) < len(comp) else '')))
     bad = [s['id'] for s in comp if not all(s['outline'][i] != s['outline'][(i + 1) % len(s['outline'])] for i in range(len(s['outline']))) or _area([tuple(p) for p in s['outline']]) <= 0]
     rows.append(('outlines are counter-clockwise closed polygons without repeated points', not bad, ''))
     si = [s['id'] for s in comp if s.get('self_intersecting')]

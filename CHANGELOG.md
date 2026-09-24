@@ -1,5 +1,23 @@
 # Changelog
 
+## v4.17 (2026-09-25) - the flip bits (0x0100 = Y) and how a two-ply marker merges pieces
+
+`__version__` stays `'3.0'`. New fixtures `twoply/` (13 markers + `GROUND_TRUTH.json`). Request: "go to the next step" (open item from v4.16: how a two-ply marker treats a piece with cut quantity 1).
+
+* **Answer to the open item, and more** (MARKER_FORMAT_SPEC.md section 24). Made with my own processes on scratch copies: ONE model (`ZZQ-BLOUSE`, a copy of LADIES-BLOUSE) whose FLIPS columns I edited three times (`--`, X, Y, X,Y counts per piece), one order of two size-10 garments,
+  tables of every spread; AutoMark on two markers, AccuNest (Queue Submit, own process) on two more. Slot words: **0x0080 = flip X, 0x0100 = flip Y, both = X,Y** (0x0100 had never occurred; the decoder used to warn about it). A single-ply marker lists exactly the flips the
+  model states (90 of 90 multisets). A two-ply marker: each as-is instance absorbs ONE flipped instance (Y first, then X,Y, then X) - a piece cut once keeps its slot per garment, only mirrored pairs halve (15 configurations). No field states "pieces per garment": the slots are the demand.
+* **Geometry of the flips.** X and Y are mirror images, X,Y a half turn (AutoMark, sleeve, 14 of 14 slots); a Y / X,Y instance is retrieved turned 180 and this composes with the bundle's 0x2000 direction: on no-rotation rows AccuNest keeps `turn = 180 x (0x2000 XOR flip in {Y, X,Y})` on 32 of 32
+  slots (ZZLL-1WAY) and 8 of 8 front slots (ZZLL-1, alternating). Neither engine keeps each slot's chirality on an `MW` row (front piece: AutoMark 3 of 8, AccuNest 9 of 16 kept; the sleeve under `MS`: 14 of 14 and 6 of 6): the flips are a preset, not a constraint.
+* **Code.** `accumark_marker.py`: `FLIP_Y_BIT`, `FLIP_LABELS`; slots gain `flip`, `preset_mirrored`, `preset_turn_deg`; `KNOWN_ORIENT_BITS` includes 0x0100; the inventory's `preset` gains `flip`, `mirrored`, `turn_deg` (`mirror` = 0x0080 as before) and `other` excludes 0x0100; the text report names the flips.
+  `nest_spec.py`: `demand[].mirrored` = X or Y (X,Y is no longer mirrored), `flip_by_slot`, `preset_turn_deg_by_slot`, `allowed_deg_by_slot` from the turn, `fabric.plies_note`.
+* **Checks.** `selftest` (new section): 9 unmade markers x 2 bundles x 5 pieces (90 flip multisets against the model / the two-ply rule), the 0x2000 bundle direction per table, the nest spec (mirrored, flip, turn per slot), AutoMark chirality (14 slots), AccuNest direction (40 slots), a toggled flip bit and an unknown bit (0x0400)
+  in a byte patch; mutation-tested (merge order, half turn). `dataset_test`, robustness unchanged (see the STATUS line).
+* **Live-run notes.** Model Editor FLIPS cells: double-click, Ctrl+A, type, Enter (without Ctrl+A the digit is appended: `1` -> `31`); Order Editor: the Model Name chooser on the model tab (dots button, real (480,203)) swaps the model; Process with a marker name equal to an existing ORDER asks "Overwrite" (my own copy: Yes);
+  AutoMark Editor fields: Ctrl+A is "Add to Job List" and triple-click / Shift+Home do not select - click, End, 30 x Backspace, type; a tubular table (`ZZLL-X2`) ended "Process completed with warnings" (marker still made). Scratch objects made: model `ZZQ-BLOUSE`, orders `ZZQ-S/F/B/T/S2/F2/F3/W/A`, markers `ZZQ-*`, Made `ZZQ-SA/FA/W/A`
+  (the original LADIES-BLOUSE model is byte-identical to its backup). My Model / Order / AutoMark / Queue Submit processes were closed; the user's windows were not touched.
+* **Open.** Three or more flips of one kind as a two-ply merge (3 x X); the 0x2000 x Y composition on a rotating row; why AccuNest swaps chirality; the other section-1 counters, trailer state words, section 5, 45-degree placement.
+
 ## v4.16 (2026-09-24) - the spread is in the marker; the piece flag @+14 is the major-piece option
 
 `__version__` stays `'3.0'`. New fixtures `spread/` (four markers + `GROUND_TRUTH.json`). Request: "go to the next step" (open items: what the marker keeps of the lay table; the piece-row flag @+14).

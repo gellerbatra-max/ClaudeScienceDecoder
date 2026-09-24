@@ -199,6 +199,10 @@ SLOT_HEAD = 6       # a slot's (record index, piece index, bundle) u16s sit 6 by
 SEC_SCALARS, SEC_PIECES, SEC_MODELS, SEC_SIZES, SEC_INDEX, SEC_RECORDS, SEC_ORDER_COPY, SEC_SLOTS, SEC_GEOMETRY = 1, 10, 11, 12, 13, 14, 15, 21, 30
 SEC_BUFFERS = 6
 ROT180_BIT, MIRROR_BIT = 0x2000, 0x0080
+# v4.17: the two bits 0x0080 / 0x0100 of an unlaid slot are the piece's FLIP from the Model Editor's FLIPS columns (`--` as is, X, Y, X,Y): 0x0080 = X, 0x0100 = Y, both = X,Y.
+# X and Y are mirror images (X top-to-bottom, Y left-to-right = X turned 180); X,Y is the piece turned 180, not mirrored. Every rotation composes with the 0x2000 bundle direction.
+FLIP_Y_BIT = 0x0100
+FLIP_LABELS = {0: '--', MIRROR_BIT: 'X', FLIP_Y_BIT: 'Y', MIRROR_BIT | FLIP_Y_BIT: 'X,Y'}
 PLACED_BIT = 0x0200
 # v4.13: the LOW THREE BITS of a slot's orientation word are the PLACED orientation - (degrees counter-clockwise, mirrored top-to-bottom BEFORE the turn) - and a
 # signed float32 at slot byte +38 is a further tilt in radians (counter-clockwise). 0x2000 / 0x0080 are the PRE-SET pattern of the unlaid marker and stay as they were
@@ -558,8 +562,11 @@ def parse_slots(d, lo, hi):
         tilt = struct.unpack_from('<f', d, s+38)[0]
         tilt_ok = math.isfinite(tilt) and abs(tilt) <= 2 * math.pi
         pr, pf = ORIENT_L[u16(d, s+32) & 7]
+        code = u16(d, s+32); flip = FLIP_LABELS[code & (MIRROR_BIT | FLIP_Y_BIT)]
         out.append(dict(slot=s, index=i, x=px, y=py, home_x=hx, home_y=hy,
-                        orient_code=u16(d, s+32), area=f64(d, s+42),
+                        orient_code=code, area=f64(d, s+42),
+                        flip=flip, preset_mirrored=flip in ('X', 'Y'),
+                        preset_turn_deg=180 if bool(code & ROT180_BIT) != (flip in ('Y', 'X,Y')) else 0,
                         orient_L=u16(d, s+32) & 7, placed_rot=pr, placed_flip=pf,
                         tilt_deg=(math.degrees(tilt) + 0.0) if tilt_ok else None,
                         bundle=u32(d, s+64) & 0xffff, bundle_flags=u32(d, s+64) >> 16,
@@ -779,7 +786,7 @@ def _sig88_model(mk):
                 constant={p: (next(iter(v)) if len(v) == 1 else None) for p, v in per.items()})
 
 KNOWN_SECTIONS = frozenset({1, 2, 3, 4, 5, 6, 10, 11, 12, 13, 14, 15, 21, 30})    # every directory slot ever seen used
-KNOWN_ORIENT_BITS = ROT180_BIT | MIRROR_BIT | 0x0040                                  # what a NEVER-LAID slot's word can carry
+KNOWN_ORIENT_BITS = ROT180_BIT | MIRROR_BIT | FLIP_Y_BIT | 0x0040                     # what a NEVER-LAID slot's word can carry
 
 def marker_warnings(mk):
     """v4.6: the future-proofing contract. Every way a marker can differ from
@@ -1820,7 +1827,7 @@ def unplaced_inventory(mk, pieces=None, piece_errors=None, use_grading=True, geo
     for members in groups.values():
         if len(members) < 2: continue
         g += 1
-        ordered = sorted(members, key=lambda s: (bool(s['orient_code'] & MIRROR_BIT), s['index']))
+        ordered = sorted(members, key=lambda s: (s['preset_mirrored'], s['index']))
         for part, s in zip('ABCDEFGH', ordered): pair_of[s['index']] = dict(group=g, part=part)
     piece_row = {p['name']: p for p in mk['pieces']}
     slots = []; n_geo = 0
@@ -1838,8 +1845,9 @@ def unplaced_inventory(mk, pieces=None, piece_errors=None, use_grading=True, geo
                      home_box_piece_in=_piece_frame_box(s, frames.get(pname, 0)) if was_placed(s) else (s['home_x']*2, s['home_y']*2),
                      bbox_in=(s['home_x']*2 - (b[0] + b[1]), s['home_y']*2 - (b[2] + b[3])),
                      preset=dict(rot180=bool(s['orient_code'] & ROT180_BIT), mirror=bool(s['orient_code'] & MIRROR_BIT),
+                                 flip=s['flip'], mirrored=s['preset_mirrored'], turn_deg=s['preset_turn_deg'],
                                  pair_bit=bool(s['orient_code'] & 0x0040),
-                                 other=s['orient_code'] & ~(ROT180_BIT | MIRROR_BIT | 0x0040)),
+                                 other=s['orient_code'] & ~(ROT180_BIT | MIRROR_BIT | FLIP_Y_BIT | 0x0040)),
                      note=note)
         if note.startswith(STREAM_NOTE) and s.get('record'):
             ro_ = record_outline(mk['object']['data'], s['record'])
@@ -2005,9 +2013,9 @@ def inventory_report(inv, checks=()):
     for (piece, cut, copies), ss in per.items():
         pair = ' (mirrored pair)' if copies == 2 and any(x['pair'] for x in ss) else ''
         lines.append(f"   {piece}  [{ss[0]['category']}]  {cut}{pair}: {len(ss)} slots over {len({x['size'] for x in ss})} sizes")
-    pre = Counter((s['preset']['rot180'], s['preset']['mirror']) for s in inv['slots'])
+    pre = Counter((s['preset']['rot180'], s['preset']['flip']) for s in inv['slots'])
     if pre: lines.append("PRE-SET lay pattern (reported, not placements): " +
-                         ', '.join(f"{'rot180' if r else 'rot0'}{'+mirror' if mi else ''} x{n}" for (r, mi), n in sorted(pre.items())))
+                         ', '.join(f"{'rot180' if r else 'rot0'}{'' if fl == '--' else ' flip ' + fl} x{n}" for (r, fl), n in sorted(pre.items())))
     geo = m['geometry_available']
     lines.append('GEOMETRY: ' + {'all': 'outlines for every slot', 'some': 'outlines for SOME slots', 'none': 'none - the ZIP holds no piece objects for these slots (declared areas / boxes only)',
                                  'n/a': 'n/a - nothing left to lay'}[geo])

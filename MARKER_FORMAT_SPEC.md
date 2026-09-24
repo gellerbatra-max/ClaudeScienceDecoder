@@ -231,7 +231,7 @@ order)> <u16 piece index (1-based, section 10)> <u16 bundle>` [V: 677 of 677 slo
 all 18 markers]. (Earlier notes read `+90/+92/+94` as a circular pointer; it is the
 next slot's head.)
 
-**Orientation.** (v4.13: this is the PRE-SET pattern of an unlaid marker; the PLACED orientation of a laid slot is its low three bits + the tilt float - section 20.) Bit 0x2000 = rotate 180, bit 0x0080 = mirror [V vs drawn DXF]. Bit
+**Orientation.** (v4.13: this is the PRE-SET pattern of an unlaid marker; the PLACED orientation of a laid slot is its low three bits + the tilt float - section 20.) Bit 0x2000 = rotate 180, bit 0x0080 = mirror [V vs drawn DXF]; v4.17: 0x0080 = flip X, 0x0100 = flip Y, both = X,Y - the model's FLIPS (section 24). Bit
 0x0040 is a COPY of the piece row's flag u16 @+14 (section 10): slot bit == (flag == 1)
 [V: 9,122 of 9,122 slots, 111 markers; no marker mixes flag values, which is why it looked
 marker-level]. It is not the mirrored-pair bit (2303 has pairs and no 0x0040); what order /
@@ -516,3 +516,28 @@ another for the same pieces" were two different tables).
 **Bundling.** Still not stored, but the presets it produces are: `nest_spec` lists the modes the stored bundle directions do not contradict (`lay_limits.bundling_candidates`) and, when one is left, states it as INFERRED
 (`bundling_basis`): the real 2591A (all 7 sizes preset 0) -> All Bundle, Same Direction - the still-missing `ALL GMT WAY`; the fixtures `ZZLL-F2F-R5` and `ZZLL-BOOKFOLD` (all bundles preset alike) infer their own table's
 mode correctly, and `ZZLL-X2` (tubular, same size same direction) leaves {alternate, same size} of which its own is one.
+
+## 24. Flips and two-ply slots [V, v4.17]
+
+**The flip bits.** A slot word's bits 0x0080 and 0x0100 are the piece's FLIP from the Model Editor's FLIPS columns (`--` as is, `X`, `Y`, `X,Y` = how many of the piece are cut as is / flipped about X / flipped about Y / flipped
+about both): `0x0000` = `--`, `0x0080` = X, `0x0100` = Y, `0x0180` = X,Y. Until v4.17 only 0x0080 was known ("mirror"); 0x0100 had never occurred in the corpus (the decoder warned about it). Proved on one model (a copy of LADIES-BLOUSE
+with the FLIPS of its five pieces edited three times, `twoply/`, 9 unmade markers + 4 placed ones): in every single-ply marker the slots of a piece in a bundle carry exactly the flips the model states (90 of 90 (bundle, piece) multisets),
+including counts above one (3 as is, 2 + 2, 1 + 2). Geometry: **X and Y are mirror images, X,Y is the piece turned 180 degrees** (AccuMark's own flip vocabulary; on the sleeve, placed under a `MS` row, both engines kept it: AutoMark
+14 of 14 slots, AccuNest 6 of 6). What a flip means to a nester is its RETRIEVAL DIRECTION as well: a Y or X,Y instance is retrieved turned 180 degrees (Y = X mirrored, then turned), and the direction composes with the bundle's 0x2000 bit
+(`turn = 180 x (0x2000 XOR flip in {Y, X,Y})`, `slot['preset_turn_deg']`). On a row that may not rotate (`W`) AccuNest keeps it: **the rotation part of the placed orientation equals `preset_turn_deg` on 32 of 32 slots** (ZZLL-1WAY, every
+row `MW`) **and on 8 of 8 front-piece slots** of an alternating table (ZZLL-1, FRONT = `MW`, the X,Y instance of bundle 1 comes out at 0). What neither engine keeps everywhere is the per-slot chirality: where the row is `MW` they lay as-is and
+mirrored instances of one piece interchangeably (front piece: AutoMark 3 of 8 slots kept, AccuNest 9 of 16; sleeve on the all-`MW` table 2 of 6) - so the flips are a PRESET, not a constraint; whether the `S` option is what protects the sleeve
+(its row is `MS`, and carries a 90-degree flip code) is not established. `slot['flip']`, `slot['preset_mirrored']`, `slot['preset_turn_deg']`;
+`unplaced_inventory` `preset` = `{rot180, mirror (0x0080 only, as before), flip, mirrored, turn_deg, pair_bit, other}`; the nest spec's `demand[]` counts `mirrored` = X or Y (it was: bit 0x0080, so X,Y is no longer called
+mirrored), and lists `flip_by_slot` and `preset_turn_deg_by_slot` (`allowed_deg_by_slot` turns from there).
+
+**Two-ply spreads.** Section 23 said a two-ply marker lays a `CUT X02` pair as ONE slot. In terms of the flips (`twoply/`, face to face; book fold and tubular gave the same slots on the first configuration): **each as-is instance
+of a piece in a bundle absorbs ONE flipped instance - the partner is the second ply - taking Y first, then X,Y, then X**: slots = pieces - min(`--`, X + Y + X,Y), and the surviving slots keep their own words (the absorbing `--` slot is
+still `--`). Fifteen configurations (a, x, y, b) agree: (3,0,0,0) -> 3; (2,2,0,0) -> 2; (0,1,0,0) -> 1 (X); (2,0,0,0) -> 2; (1,1,1,1) -> `--`, X, X,Y (Y absorbed); (0,0,1,0) -> Y; (0,0,0,1) -> X,Y; (1,0,1,0) -> `--`; (0,1,1,0) -> X, Y
+(nothing to absorb them); (1,0,0,1) -> `--`; (1,1,0,1) -> `--`, X; (1,1,1,0) -> `--`, X; (1,0,1,1) -> `--`, X,Y; (2,1,0,1) -> `--`, `--`; (1,2,0,0) -> `--`, X. So **a piece cut once (`CUT1`, a back, a single collar) keeps
+one slot per garment in a two-ply marker** - nothing to absorb - and only a mirrored pair halves; there is no field for "pieces per garment" (the same section-10 word signature occurs for one-copy and two-copy pieces: e.g. 130 groups of each share the flags `0 / none / 0 0 0 0 / 1 / 0 0` on the single-ply markers of the corpus;
+the record's cut text is the piece's annotation, e.g. `1 SELF` on a piece that lays as a pair), the slots ARE the demand. The header counters, size rows and order copy do not change. A nester of a two-ply marker lays each listed slot once; `fabric.plies` = 2 and `fabric.plies_note` say what a slot stands for.
+[?] a piece cut three or more times as flips of the same kind (3 x X) and the count the ply height multiplies it by are not measured beyond the table above.
+
+**What is still open here.** The 0x2000 composition with a Y flip is derived from the placed directions above, not from a separate experiment on a rotating row; whether AccuNest's chirality swaps are its S-row / pair balancing or a
+choice of the Draft engine; the tubular spread differs from face to face only in its slot words (no 0x0040 bit here: the table's row has no `M`).

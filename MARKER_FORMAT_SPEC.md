@@ -304,6 +304,7 @@ stream that verifies against its record's area + perimeter is identified up to i
 | size-row `flags` (0xffff vs 0) | 12 vs 6 markers | live |
 | sections 2 (its bytes before the name strings), 3, 4, 5; section 1's 45 varying bytes; the trailer | mostly constant | twin diffs |
 | Lay Limits: the low three bits of a row's byte b2 (0x07), the eight constant bytes `01 00 .. 00` before the skew array and `7f 00 ..` after it, what the Group column does; older-vintage multi-row tables and their tilt / skew bytes | b2 & 0x07 varies (06 / 05 / 01 / 00) with no visible setting behind it; every other byte is constant across 15 tables | a fresh table from File > New, one row edited at a time; a real multi-row table of the older vintage |
+| `ALL GMT WAY` (2591A): its presets are all 0 over 7 sizes, so it should be All Bundle, Same Direction - unconfirmed until the file arrives | 2591A marker, bundle presets | the table from Explorer `OldFiles` |
 | does a row that allows 180 let the nest engine turn a piece against its preset? | presets follow the table's Bundling on 29 markers [V]; a `W` piece keeps its preset in a real AccuNest nest [V, `laylimits/EXPERIMENT_W_ALTERNATE.md`]; no piece in that small draft nest was turned | live: a blank-options table with alternating bundles, a marker with room to gain, read the placed orientations |
 
 Marker-only ZIPs (no piece objects) can never yield outlines, and an unplaced marker
@@ -358,7 +359,10 @@ raw degrees when the unit is degrees (0.40 -> 4000). The rule number is a u16 (1
 4 Flip about X-axis, 5 Rotate 90 CCW + Flip X-axis, 6 Rotate 90 CCW, 7 Rotate 90 CW, 8 Rotate 90 CW + Flip X-axis, 9 Rotate 45 CCW + Flip X-axis, 10 Rotate 45 CCW, 11 Rotate 45 CW, 12 Rotate 45 CW + Flip X-axis
 (Gerber's help text lists 5 and 6 identically; the editor and `marker-making.md` agree on the table above).
 
-**Older vintage** (the user's real `L`, `SINGLE-PLY`; 84 / 76 bytes): 40 comment characters, u8 spread, u8 bundling, u16 n_rows, then the row: name padded to 20, `00`, options byte (same bits), flip code,
+**AccuMark 9 saves** (`NEED- TWO WAY`, 39 bytes; `ONE GMT ONW WAY`, 55): the V17 header and row layout, then either nothing or only `u32 1, u32 0, u32 4n, n x i32` (the weft-skew array) - no `0x7f`, no property block.
+The editor shows them exactly as read (Single Ply, Alternate Bundle, `MWS`, rule 1).
+
+**Older vintage** (the user's real `L`, `SINGLE-PLY`, `G-LAYLIMITS`; 84 / 76 bytes): 40 comment characters, u8 spread, u8 bundling, u16 n_rows, then the row: name padded to 20, `00`, options byte (same bits), flip code,
 one byte, u16 buffer rule, zeros. Read for single-row tables only, verified in the editor on `L` (Single Ply, Same Size Same Direction, blank options, flip 1, rule 0) and `SINGLE-PLY` (Single Ply,
 Alternate Bundle, `MS`, flip 1, rule 1); `COSTINGS` (2303 CP 150) reads `MWS`, rule 1, alternate - by the same layout, not seen in the editor. The corpus `L` (in every user ZIP) is the blank-options table.
 

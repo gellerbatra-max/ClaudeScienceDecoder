@@ -1,5 +1,22 @@
 # Changelog
 
+## v4.9 (2026-09-24) - the user's real support files: `NEED- TWO WAY`, `G-LAYLIMITS`, `L` read and checked against the real markers
+
+`__version__` stays `'3.0'`. Source: `all support files.zip` (AccuMark Explorer "OldFiles", AccuMark 9 data): lay limits `L`, `G-LAYLIMITS` (418T), `NEED- TWO WAY` (1825D, 5683D), `ONE GMT ONW WAY`;
+block buffers `3MM`, `3MM-N`; notch tables `P-NOTCH`, `NEED-P-NOTCH`; annotations `A`, `NEED-MARKER`, `M-MARKER`; the rule table `4155B`; cutter / plotter / environment parameter tables.
+`ALL GMT WAY` (2591A) is not in it. Only redacted table bytes are kept in the repo (`laylimits/REAL_SUPPORT_TABLES.json`: no envelope, no user names, the author comment of `G-LAYLIMITS` blanked).
+
+* **Two more table layouts.** `NEED- TWO WAY` (39 bytes) and `ONE GMT ONW WAY` (55) use the V17 header and row layout but stop early - no trailer, or only the weft-skew array. `parse_lay_limits` reads them (`trailer`
+  `'none'` / `'skew'`; any other trailer is refused) and the Lay Limits Editor shows scratch copies of the exact bytes as decoded: Single Ply, Alternate Bundle / Alternate Direction, `DEFAULT` = `MWS`, flip 1, rule 1.
+  The real `L` is byte for byte the corpus `L`; `G-LAYLIMITS` was checked the same way (older layout, `MWS`).
+* **Against the real markers.** Supplied to the marker that names it, `NEED- TWO WAY` agrees with the stored bundle directions of the real 1825D (2 markers) and 5683D markers, `G-LAYLIMITS` with the real 418T marker: 31
+  neighbouring bundle pairs, none against. `MWS` (locked) fixes every instance in its preset direction, so those specs are `verified`.
+* **A prediction for the missing table.** Every bundle of the real 2591A marker (7 different sizes) is preset to 0: only "All Bundle, Same Direction" fits (the other two Bundling modes are contradicted on all 6 pairs).
+  So `ALL GMT WAY` should be All Bundle, Same Direction - to be confirmed when its file arrives. (The names fit: `NEED- TWO WAY` = alternating directions, `ALL GMT WAY` = every garment the same way.)
+* **Not useful / not done.** The block buffers again have equal sides (`3MM` 591 and `3MM-N` 590 = 0.059 in), so the side order stays open; the parameter tables (cutter, plotters, layrule search, environment) are
+  machine setup, nothing for a nesting job; `parse_rul` reads `.RUL` text, not the binary `4155B` rule-table object (its pieces are not here). The two notch tables define notch geometry (depths 0.1574 in and 0.1968 in
+  appear) - decoding them would put notch sizes in the spec; not started.
+
 ## v4.8 (2026-09-24) - the Lay Limits table: read from the order / marker, and what a row lets a nester do
 
 `__version__` stays `'3.0'`. New module `accumark_laylimits.py`; new fixtures `laylimits/` (13 tables + `GROUND_TRUTH.json`). Request: "read the lay limits from the order".

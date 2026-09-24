@@ -48,7 +48,7 @@ A **shape** has its own frame: the lower-left corner of its cut outline's boundi
 ## What it does NOT say
 
 * **Positions.** An unlaid marker has none; the 0 / 180 degree pattern in it is a pre-set lay pattern.
-* **Whether the fabric is one-way, unless the Lay Limits table is available.** The marker names its table but does not contain it (`lay_limits.source: named only`); the real production tables of the corpus (`NEED- TWO WAY`, `ALL GMT WAY`, `G-LAYLIMITS`) are not in their ZIPs, so those specs say `assumed`.
+* **Whether the fabric is one-way, unless the Lay Limits table is available.** The marker names its table but does not contain it (`lay_limits.source: named only`); the real production table `ALL GMT WAY` (2591A) is not in the corpus, so that spec says `assumed`. `NEED- TWO WAY` (1825D, 5683D) and `G-LAYLIMITS` (418T) are read from the user's support files: pass `all support files.zip` (or the `.GT_lay` files) as `--lay-limits` and those specs are `verified` (`MWS`: locked, every piece fixed in its preset direction).
 * **Notch and drill sizes** (only positions and, for notches, a type code), **piece and fabric rules of a nester** (buffers between pieces beyond `padding`, matching, splicing).
 * For the older marker vintage: internal lines, drills, seam lines and the mirror line of a fold piece (see `MARKER_FORMAT_SPEC.md`), and a *verified* grain (it is `inferred`).
 

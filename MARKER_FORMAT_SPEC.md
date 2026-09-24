@@ -295,6 +295,7 @@ stream that verifies against its record's area + perimeter is identified up to i
 | open | evidence so far | method |
 |---|---|---|
 | side order of the four block-buffer doubles; what the table is for | home box ignores it (ZZC-M1 vs ZZC-BIG) | live: unequal buffers on a piece with real geometry |
+| the laid `LADIES-BLOUSE TEST-2` shows its 4 COLLAR outlines turned 90 degrees against their stored home boxes (other pieces agree; unlaid markers never do) - does a laid marker's stream carry the piece as placed? | 4 shapes flagged by the box check with `--as-job`; `ZZC-M1` (unlaid) has no such case | a laid marker with a piece deliberately turned 90 degrees in Easy Marking |
 | notch numbers above 15 in a marker stream (the low nibble of the extra byte holds `type`; the table allows 99 numbers) | only numbers 1 and 5 occur in the corpus | a piece with notch number 20+ (PDS Add Standard Notch, Type 20) in a marker |
 | what order / model option sets the piece-row flag @+14 (= the slot 0x0040 bit); the pre-set rot180 alternation | 0x0040 == flag @+14 on 9,122 / 9,122 slots [V]; alternates per bundle | live: flip one order / model option per run (DATASET_DESIGN F5) |
 | the extra byte's high nibble; the stream trailer's last 3 bytes | kinds and notch types classify 7,455 / 7,455 piece points | correlate with the piece's f2 / rule fields and the size |

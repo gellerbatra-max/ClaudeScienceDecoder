@@ -1,7 +1,7 @@
 # Nest spec - an unplaced AccuMark marker as a nesting job
 
 ```
-python nest_spec.py "<marker>.zip" --json job.json [--dxf pieces.dxf] [--svg pieces.svg] [--units cm|mm|in] [--marker NAME] [--lay-limits NAME.GT_lay|other.zip] [--notch-table NAME.GT_notpt|other.zip]
+python nest_spec.py "<marker>.zip" --json job.json [--dxf pieces.dxf] [--svg pieces.svg] [--units cm|mm|in] [--marker NAME] [--lay-limits NAME.GT_lay|other.zip] [--notch-table NAME.GT_notpt|other.zip] [--as-job]
 python accumark_marker.py "<marker>.zip" --nest-spec --json job.json          # same thing
 ```
 
@@ -17,7 +17,7 @@ Verified on the four real marker-only styles (1825D x2 markers, 5683D, 2591A, 41
 | key | meaning |
 |---|---|
 | `units` | `cm` (default), `mm` or `in` - every length and area below (area = units squared) |
-| `source` | ZIP name, marker name, models, `laid_state` (`unlaid` / `partial`), `lay_history`, decoder version, `tables` (the names the marker stores: `lay_limits`, `annotation`, `block_buffer`, `notch_table`) |
+| `source` | ZIP name, marker name, models, `laid_state` (`unlaid` / `partial`), `lay_history`, decoder version, `job_of_laid_marker` (`--as-job`: a LAID marker read as the whole job, positions ignored), `tables` (the names the marker stores: `lay_limits`, `annotation`, `block_buffer`, `notch_table`) |
 | `fabric` | `width`; `fabric_types`; `block_buffer_in` (the buffer definitions in inches, side order unverified) ; `min_length` = total area / width (a 100%-efficient lay, **not** a nesting result) |
 | `rotation` | the DEFAULT row of the Lay Limits table (`allowed_deg`, `flip_x_axis_allowed`, `locked`, `initial_orientation`, `tilt_limit`, `weft_skew_deg`, `buffer_rule`, `group`, `options`, `flags`) with `basis: verified: table NAME, row DEFAULT`; without the table `allowed_deg: [0, 180]`, `basis: assumed: ...` and a warning naming the missing table. Every shape of another category carries its own `rotation` |
 | `lay_limits` | `name`, `source` (`bundled` / `supplied` / `named only` / `none`), `parsed`, `vintage`, `spread` (`single_ply` / `face_to_face` / `book_fold` / `tubular`), `bundling` (`all_bundle_same_direction` / `alternate_bundle_alternate_direction` / `same_size_same_direction`), `per_model`, `comment`, `rows[]` (one per category, each with the same fields as `rotation`), `bundle_pattern` (do the marker's stored bundle directions follow `bundling`?), `order_names` (what the bundled order says, when there is one) |
@@ -99,3 +99,23 @@ components, or passed as `--notch-table NAME.GT_notpt` (from the storage area's 
 `named only` and a warning says so. Verified in the Notch editor and against a real plot (every notch spike of a nested `ZZC-M1` is exactly the table's 0.40 cm depth); `MARKER_FORMAT_SPEC.md` section 18.
 The real 1825D / 5683D notch (number 1) is a 0.50 cm slit; the default `P-NOTCH` defines notch 1 as a 0.40 cm slit; `V-NOTCH-ALL CUSTOMERS` (2303) is 25 external Vs, perimeter 0.30 cm, depth -0.20 cm.
 The DXF / SVG piece libraries still draw a notch as a point.
+
+## Reference consumer - `reference_nester.py`
+
+`python reference_nester.py job.json [--res 0.15] [--best] [--svg lay.svg] [--dxf lay.dxf] [--out lay.json]` is a nesting engine that reads **only** the spec JSON (numpy, Pillow, shapely; no marker, no ZIP,
+no decoder). It takes the fabric width, every instance (`shapes[].outline`, or `outline_mirrored` for mirrored instances), the rotations each instance may take (`demand[].allowed_deg_by_slot`) and the gap
+(`--gap`, else the block buffer), rasterises the pieces, and places them largest first with an FFT search for the position with the smallest right edge. It is a bottom-left heuristic - built to be *valid*,
+not to compete with AccuNest - and its lay is checked independently with shapely (inside the fabric, no overlap, every rotation allowed, every instance laid): the last line is `VALID` or `INVALID`.
+
+`--as-job` on `nest_spec.py` reads a LAID marker as the whole job (positions ignored), so any lay AccuMark made becomes a benchmark. Results (fabric widths and AccuMark's own numbers from the markers):
+
+| job | pieces | AccuMark's lay | reference nester (`--res 0.2`) |
+|---|---|---|---|
+| 2303-BD 137 (bra cups), laid by AccuMark | 97 | 377.7 cm, 71.5% | 371.5 cm, 72.7% - valid |
+| AD1234 TEST 134 (laid marker as a job) | 13 | 47.0 cm, 55.7% | 56.8 cm, 45.9% - valid |
+| ZZC-M1, nested by my own AccuNest run (Draft) | 18 | 249.8 cm, 79.7% | 353.7 cm, 55.1% (`--best`: 332.4 cm, 58.7%) - valid |
+| real 1825D / 5683D / 418T / 2591A (unlaid) | 27 / 24 / 22 / 35 | - | 68.8 cm 63.6% / 47.3 cm 65.0% / 503.8 cm 62.8% / 135.1 cm 69.9% - all valid |
+
+The proof that matters is validity, not length: every job comes out `VALID` - the rotations follow the Lay Limits (the real `MWS` tables fix each 1825D / 5683D / 418T instance in its preset direction), mirrored
+instances use `outline_mirrored`, nothing overlaps. And the other direction: AccuMark's own 2303 lay, rebuilt from the *spec's* shapes with the placed marker's positions and flags, has no overlap (worst 0.0003 in2),
+stays inside the 137 cm fabric and reproduces the marker's utilisation (71.51%) - so the shapes, mirror convention and areas in the spec are the ones AccuMark laid.

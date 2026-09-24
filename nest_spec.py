@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """nest_spec - turn an AccuMark marker export ZIP into a NESTING JOB a nesting engine can read.
 
-    python nest_spec.py "<marker>.zip" --json job.json [--dxf pieces.dxf] [--svg pieces.svg] [--units cm|mm|in] [--marker NAME] [--lay-limits NAME.GT_lay|other.zip] [--notch-table NAME.GT_notpt|other.zip]
+    python nest_spec.py "<marker>.zip" --json job.json [--dxf pieces.dxf] [--svg pieces.svg] [--units cm|mm|in] [--marker NAME] [--lay-limits NAME.GT_lay|other.zip] [--notch-table NAME.GT_notpt|other.zip] [--as-job]
 
 One command from the ZIP AccuMark exports (marker-only is enough: no piece objects needed, no AccuMark installed) to
 
@@ -154,10 +154,10 @@ def _lay_limits_block(mk, inv, bundled, supplied, orders=None):
     return block, table, warns
 
 
-def build_nest_spec(path, units='cm', marker=None, lay_limits=None, notch_table=None):
+def build_nest_spec(path, units='cm', marker=None, lay_limits=None, notch_table=None, as_job=False):
     """-> [spec] one per marker of the ZIP (or the one named `marker`). `lay_limits`: a Lay Limits table the ZIP does not bundle (see `_supplied_tables`)."""
     if units not in UNITS: raise ValueError('units must be one of %s' % sorted(UNITS))
-    k = UNITS[units]; res = am.place_marker(path); out = []
+    k = UNITS[units]; res = am.place_marker(path, as_unlaid=as_job); out = []
     try:
         listing = am.list_zip(path); bundled = ll.load_zip_tables(path, listing)
         orders = {o['name']: am.parse_order_tables(o) for o in listing.get('order', [])}
@@ -230,7 +230,7 @@ def build_nest_spec(path, units='cm', marker=None, lay_limits=None, notch_table=
         spec = dict(
             format=FORMAT, units=units,
             source=dict(file=os.path.basename(path), marker=mk['name'], models=inv['marker']['models'], laid_state=inv['marker']['laid_state'],
-                        lay_history=inv['marker']['lay_history'], decoder_version=am.__version__,
+                        lay_history=inv['marker']['lay_history'], decoder_version=am.__version__, job_of_laid_marker=bool(as_job),
                         tables={k: (mk.get('tables') or {}).get(k) or None for k in ('lay_limits', 'annotation', 'block_buffer', 'notch_table')}),
             fabric=dict(width=W, fabric_types=inv['marker']['fabric_types'],
                         block_buffer_in=[list(b) for b in inv['marker']['block_buffers']] or None,
@@ -411,7 +411,7 @@ def main(argv):
         return argv[argv.index(name) + 1] if name in argv else default
     if not a:
         print(__doc__); return 2
-    units = opt('--units', 'cm'); specs = build_nest_spec(a[0], units, opt('--marker'), opt('--lay-limits'), opt('--notch-table'))
+    units = opt('--units', 'cm'); specs = build_nest_spec(a[0], units, opt('--marker'), opt('--lay-limits'), opt('--notch-table'), '--as-job' in argv)
     if not specs: print('no such marker in the ZIP'); return 1
     for sp in specs:
         tag = '' if len(specs) == 1 else '.' + ''.join(ch if ch.isalnum() else '_' for ch in sp['source']['marker'])

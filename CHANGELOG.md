@@ -1,5 +1,20 @@
 # Changelog
 
+## v4.11 (2026-09-24) - the reference nester: the spec is enough to nest
+
+`__version__` stays `'3.0'`. New `reference_nester.py` (numpy + Pillow + shapely, reads only the spec JSON). Request: "go to the next step" (the reference consumer proposed earlier).
+
+* **The nester.** Rasterised pieces, largest first, FFT correlation for every position that touches nothing laid, smallest right edge wins, every rotation from `demand[].allowed_deg_by_slot`; `--best` tries 8 order /
+  score combinations. Its lay is validated independently with shapely (inside the fabric, no overlap, rotations allowed, all instances laid): `VALID` / `INVALID`.
+* **Results.** Every job is valid: 2303 (97 bra cups) 371.5 cm / 72.7% vs AccuMark's own 377.7 cm / 71.5%; AD1234 56.8 cm / 45.9% vs 47.0 cm / 55.7%; `ZZC-M1` 353.7 cm / 55.1% (best of 8: 332.4 cm / 58.7%) vs my
+  AccuNest Draft run's 249.8 cm / 79.7% (a plain bottom-left heuristic is far from AccuNest on large irregular pieces); the real 1825D, 5683D, 418T and 2591A jobs 62.8-69.9%, all valid, with the real `MWS` tables
+  fixing each piece in its preset direction.
+* **The reverse proof.** AccuMark's own lay of the real 2303 job, rebuilt from the SPEC's shapes with the placed marker's positions and orientation flags: 97 valid polygons, no overlap beyond 0.0003 in2, inside the
+  53.94 in fabric, area / (W x L) = 71.51% = the marker's utilisation. It confirms outlines, the mirror convention and areas end to end on a real production lay.
+* **`--as-job` / `place_marker(as_unlaid=True)`.** A laid marker read as the whole job (positions ignored, `check_marker` taken before the change): `source.job_of_laid_marker`.
+* **Observation, not chased.** In the laid `LADIES-BLOUSE TEST-2` the COLLAR stream outline is 90 degrees off its stored home box (8.8 x 41.8 vs 41.8 x 8.8 cm, four sizes; the other pieces agree), so a laid marker may
+  carry a piece as placed; the unlaid markers do not show it (that check flags it in the `--as-job` spec).
+
 ## v4.10 (2026-09-24) - the Notch Parameter Table: what a notch number is
 
 `__version__` stays `'3.0'`. New module `accumark_notch.py`; fixtures `notch/` (two editor-built tables + `GROUND_TRUTH.json`). Request: "decode the notch tables".

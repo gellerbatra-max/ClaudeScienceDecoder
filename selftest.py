@@ -2791,6 +2791,22 @@ if n_pc != 27 or n_grow != n_pc or n_box != n_pc or n_frame != n_pc or len(sides
 print(f"   {'ok ' if not bad else 'FAIL'} {n_pc} pieces of 6 jobs, {len(sides_seen)} buffer patterns (0 .. 1 cm, one unequal): the engine's outline = the stream outline grown by the rectangle (area within 1.5%, box within 0.003 in, symmetric about the middle of the box); only the COLLAR is turned, +90 (its outline is {worst_c and round(worst_c[0], 2)} in from the +90 turn, {worst_c and round(worst_c[1], 2)} from 270)  {'; '.join(bad[:3])}")
 if bad: fails.append('engine outline: ' + '; '.join(bad[:5]))
 
+print("-- the engine's fabric weight / cost in section 1 and the byte map's residue (v4.27, MARKER_FORMAT_SPEC.md section 33)")
+# two float32 at file offsets 596 / 600: 0 / 0 on an unmade marker; after AccuNest the engine's own output header (intomed.mra: MARKER_LENGTH, FABRIC_WEIGHT, FABRIC_COST) is repeated in the marker
+IH = _json.load(open(os.path.join(HERE, 'engine', 'INTOMED_HEADERS.json'))); bad = []; n_ih = 0
+for nm_, e_ in IH['jobs'].items():
+    d_ = am.read_storage_marker(os.path.join(HERE, e_['marker_file'])); mk_ = am.parse_marker(d_); fc_ = mk_['fabric_weight_cost']
+    if not fc_ or abs(fc_['weight'] - e_['FABRIC_WEIGHT']) > 1e-5 * max(1.0, e_['FABRIC_WEIGHT']) or abs(fc_['cost'] - e_['FABRIC_COST']) > 1e-5 * max(1.0, e_['FABRIC_COST']) or abs(mk_['length'] - e_['MARKER_LENGTH'] / 1e4) > 1e-3: bad.append(f'{nm_}: {fc_}, length {mk_["length"]} vs {e_["MARKER_LENGTH"]}')
+    n_ih += 1
+um_ = am.parse_marker(am.read_storage_marker(os.path.join(HERE, 'twoply', 'ZZQ-W.GT_mark')))['fabric_weight_cost']
+if um_ != dict(weight=0.0, cost=0.0) or IH['jobs']['ZZN-B5']['FABRIC_COST'] != 11.43: bad.append(f'unmade marker {um_}')
+d5_ = am.read_storage_marker(os.path.join(HERE, 'engine', 'ZZN-B5.GT_mark')); m5_ = am.parse_marker(d5_); b5_ = bytearray(d5_); struct.pack_into('<f', b5_, 600, 1.0)
+if am.parse_marker(bytes(b5_))['fabric_weight_cost']['cost'] != 1.0 or 'cost' not in m5_['fabric_weight_cost']: bad.append('cost patch not read')
+cv5_ = am.marker_coverage(d5_, m5_)
+if cv5_['counts']['zero'] < 500 or cv5_['counts']['unknown'] > 400 or any(k_ == 1 and a_ <= 596 < b_ for a_, b_, k_ in cv5_['unknown_runs']): bad.append(f"byte map of ZZN-B5: {cv5_['counts']}")
+print(f"   {'ok ' if not bad else 'FAIL'} {n_ih} made markers repeat the engine's fabric weight / cost and length (a job with its own values, 11.43 / 5.8987, included); an unmade marker holds 0 / 0; the byte map leaves {cv5_['counts']['unknown']} unidentified non-zero bytes on ZZN-B5 ({cv5_['counts']['zero']} unidentified zero bytes are their own class)  {'; '.join(bad[:3])}")
+if bad: fails.append('fabric weight / cost: ' + '; '.join(bad[:5]))
+
 print('-- marker byte map (v4.4, see accumark_marker.marker_coverage)')
 # Every byte owned by a section a parser reads must be classified (identified /
 # raw / zero_pad / opaque) - only the envelope, the header scalars, sections 2-5,
@@ -2811,7 +2827,7 @@ ok = n_mk and not leaks
 print(f"   {'ok ' if ok else 'FAIL'} {n_mk} markers: every byte in sections {sorted(PARSED_SECTIONS)} is classified"
       + (f"; unknown bytes per marker {min(unk)}-{max(unk)}, {100*tot['unknown']/sum(tot.values()):.2f}% overall "
          f"(identified {100*tot['identified']/sum(tot.values()):.1f}%, raw {100*tot['raw']/sum(tot.values()):.1f}%, "
-         f"zero_pad {100*tot['zero_pad']/sum(tot.values()):.1f}%, opaque {100*tot['opaque']/sum(tot.values()):.1f}%)" if n_mk else '')
+         f"zero_pad {100*tot['zero_pad']/sum(tot.values()):.1f}%, zero {100*tot['zero']/sum(tot.values()):.1f}%, opaque {100*tot['opaque']/sum(tot.values()):.1f}%)" if n_mk else '')
       + ('  ' + '; '.join(leaks[:3]) if leaks else ''))
 if not ok: fails.append('marker byte map: ' + '; '.join(leaks[:5]))
 # and it can fail: break section 11's first name length and the model list's bytes must fall out of the map

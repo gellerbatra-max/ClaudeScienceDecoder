@@ -30,6 +30,9 @@ diffed; `L` and `SINGLE-PLY` are the older vintage) and the recorded settings of
       u32 length, u32 n_properties, n_properties x ( u32 length, u32 1, u32 0, u32 len, name, u32 4 + len2, u32 len2, text )
           the one property seen is `Category group` = the group column as a comma list ("0,0,3,0,0,0"); absent when every group is 0
 
+Tables saved by AccuMark 9 (the user's `NEED- TWO WAY`, `ONE GMT ONW WAY`) use this same header and row layout but end early: no trailer at all, or only the weft-skew array
+(`vintage v5`, `trailer` 'none' / 'skew'; no weft skew and no group are stored, so they read 0). Anything that is not exactly one of the three trailers is refused.
+
 The older vintage (`.GT_lay` type byte 4: the user's real `L` table, `SINGLE-PLY`) keeps a 40-character comment, then spread, bundling, u16
 n_rows and the row with a name padded to 20 characters; only single-row tables are read (spread, bundling, options, flip code and buffer rule
 verified against the editor on `L` and `SINGLE-PLY`); its tilt / skew bytes are zero in every sample and are reported only when they are.
@@ -101,6 +104,15 @@ def _parse_v5(p):
         rows.append(_row(name.decode('latin1'), h[2], h[3], h[4], h[5], _u16(h, 6), _i32(h, 8), _i32(h, 12), h.hex()))
         pos += 16 + nl
     t = p[pos:]
+    # tables saved by AccuMark 9 (the user's NEED- TWO WAY, ONE GMT ONW WAY) end early: no trailer at all, or only the weft-skew array
+    if not t:
+        for r in rows: r['weft_skew_deg'] = 0.0; r['group'] = 0
+        return dict(vintage='v5', trailer='none', spread=spread, bundling=bund, per_model=bool(p[8]), comment=comment.decode('latin1'), rows=rows, properties={},
+                    basis='decoded: header and rows as the V17 layout; this older save has no trailer (no weft skew, no group)')
+    if len(t) == 12 + 4 * n and _u32(t, 0) == 1 and _u32(t, 8) == 4 * n:
+        for i, r in enumerate(rows): r['weft_skew_deg'] = _i32(t, 12 + 4 * i) / 1e4; r['group'] = 0
+        return dict(vintage='v5', trailer='skew', spread=spread, bundling=bund, per_model=bool(p[8]), comment=comment.decode('latin1'), rows=rows, properties={},
+                    basis='decoded: header and rows as the V17 layout; this older save ends after the weft-skew array (no group)')
     if len(t) < 8 + 4 + 4 * n + 8 + 8 or _u32(t, 0) != 1 or _u32(t, 8) != 4 * n: raise LayLimitsError('trailer does not start with the weft-skew array')
     skew = [_i32(t, 12 + 4 * i) / 1e4 for i in range(n)]
     q = 12 + 4 * n
@@ -119,7 +131,7 @@ def _parse_v5(p):
     groups = [int(x) for x in props['Category group'].split(',')] if 'Category group' in props else [0] * n
     if len(groups) != n: raise LayLimitsError('group list length differs from the row count')
     for r, s, g in zip(rows, skew, groups): r['weft_skew_deg'] = s; r['group'] = g
-    return dict(vintage='v5', spread=spread, bundling=bund, per_model=bool(p[8]), comment=comment.decode('latin1'), rows=rows, properties=props,
+    return dict(vintage='v5', trailer='full', spread=spread, bundling=bund, per_model=bool(p[8]), comment=comment.decode('latin1'), rows=rows, properties=props,
                 basis='decoded: every field verified against the Lay Limits Editor grid')
 
 
@@ -136,7 +148,7 @@ def _parse_v4(p):
     r['tilt_unit'] = 'length'; r['units_consistent'] = True
     r['weft_skew_deg'] = 0.0 if zero else None; r['group'] = 0
     comment = p[:40].decode('latin1').replace('\x00', ' ').strip()
-    return dict(vintage='v4', spread=spread, bundling=bund, per_model=False, comment=comment, rows=[r], properties={},
+    return dict(vintage='v4', trailer=None, spread=spread, bundling=bund, per_model=False, comment=comment, rows=[r], properties={},
                 basis='partial: single-row older-vintage table; spread, bundling, options, flip code and buffer rule verified against the editor'
                       + ('' if zero else '; tilt / skew bytes are non-zero and not decoded'))
 

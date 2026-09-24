@@ -1740,6 +1740,45 @@ if _P2 and os.path.isfile(fx) and os.path.isfile(zsa):
     print(f"   {'ok ' if not bad else 'FAIL'} AccuNest nest of ZZC-M1: the {len(pres) if not bad else '?'} FRONT (MW) pieces keep their preset direction ({sum(pres) if not bad else '?'} reversed, as stored)  {'; '.join(bad[:3])}")
     if bad: fails.append('lay limits / real nest: ' + '; '.join(bad[:5]))
 
+# the user's REAL support files (AccuMark Explorer "OldFiles", AccuMark 9 data): laylimits/REAL_SUPPORT_TABLES.json holds the table bytes only, redacted (no envelope, no names)
+bad = []
+rt = _json.load(open(os.path.join(LLDIR, 'REAL_SUPPORT_TABLES.json')))
+real_t = {k: ll.parse_lay_limits(bytes.fromhex(v), name=k) for k, v in rt['lay_limits_hex'].items()}
+# as the Lay Limits Editor showed scratch copies of these exact bytes (V17 file header + these bytes)
+want_r = {'L': ('v4', None, 'single_ply', 'same_size_same_direction', '', 1, 0), 'G-LAYLIMITS': ('v4', None, 'single_ply', 'alternate_bundle_alternate_direction', 'MWS', 1, 1),
+          'NEED- TWO WAY': ('v5', 'none', 'single_ply', 'alternate_bundle_alternate_direction', 'MWS', 1, 1), 'ONE GMT ONW WAY': ('v5', 'skew', 'single_ply', 'alternate_bundle_alternate_direction', 'MWS', 1, 1)}
+for k, w in want_r.items():
+    t = real_t.get(k)
+    if not t or len(t['rows']) != 1 or (t['vintage'], t['trailer'], t['spread_name'], t['bundling_name'], t['rows'][0]['options'], t['rows'][0]['flip_code'], t['rows'][0]['buffer_rule']) != (w[0], w[1], w[2], w[3], w[4], w[5], w[6]) or t['rows'][0]['category'] != 'DEFAULT': bad.append(f'{k}: {t and (t["vintage"], t["trailer"], t["bundling_name"], t["rows"][0]["options"])}')
+zcs = os.path.join(HERE, 'markers', 'COSTORDER.zip')
+if os.path.isfile(zcs):
+    lc = am.list_zip(zcs)['lay_limits'][0]
+    if bytes(lc['data'][0x8a:0x8a + lc['payload_len']]).hex() != rt['lay_limits_hex']['L']: bad.append('the real L is not the corpus L')
+# the two AccuMark 9 saves end early: refused when the shortened trailer is not exactly what it should be
+for k in ('NEED- TWO WAY', 'ONE GMT ONW WAY'):
+    if not _refused(bytes.fromhex(rt['lay_limits_hex'][k]) + b'\x00'): bad.append(f'{k}: a stray trailing byte was accepted')
+# on the real production markers: the table the marker names, supplied, agrees with the marker's stored bundle directions; MWS fixes every instance in its preset direction
+real_pairs = Counter()
+for zn_, mn_, tn_ in (('1825D-SS21-UNLAID', '1825D-BD 180 SS21.zip', 'NEED- TWO WAY'), ('5683D-SS21-UNLAID', '5683D-BD 168 SS21.zip', 'NEED- TWO WAY'), ('418T-SHAPESHIFTER-UNLAID', '418T-BD 160 SHAPESHIFTER.zip', 'G-LAYLIMITS')):
+    zp = os.path.join(HERE, 'markers', zn_, mn_)
+    if not os.path.isfile(zp): continue
+    for sp_ in ns.build_nest_spec(zp):
+        s2 = ns.build_nest_spec(zp, marker=sp_['source']['marker'], lay_limits=real_t[tn_])[0]; ll2 = s2['lay_limits']
+        if sp_['lay_limits']['name'] != tn_ or sp_['lay_limits']['source'] != 'named only': bad.append(f"{zn_}: the marker names {sp_['lay_limits']['name']}")
+        if ll2['source'] != 'supplied' or ll2['bundle_pattern']['state'] != 'consistent' or not s2['rotation']['locked'] or s2['rotation']['allowed_deg'] != [0] or not s2['complete'] or any('supplied' in w_ for w_ in s2['warnings']): bad.append(f"{zn_} {tn_}: {ll2['source']} {ll2['bundle_pattern']} {s2['rotation']['allowed_deg']}")
+        if any(a_ != [180 * p_] for d in s2['demand'] for a_, p_ in zip(d['allowed_deg_by_slot'], d['preset_rot180_by_slot'])): bad.append(f'{zn_}: MWS did not fix the preset direction')
+        real_pairs[zn_] += int(ll2['bundle_pattern']['detail'].split(' ')[0])
+if len(real_pairs) < 3: bad.append(f'real markers found: {dict(real_pairs)}')
+# 2591A names ALL GMT WAY (not in the support files): every bundle of its 7 sizes is preset to 0 - only "All Bundle, Same Direction" fits, the other Bundling modes are contradicted
+z25 = os.path.join(HERE, 'markers', '2591A-SS21-UNLAID', '2591A-BD 157 AW SS21.zip')
+if os.path.isfile(z25):
+    m25 = am.place_marker(z25)['markers'][0]
+    if m25['marker']['tables']['lay_limits'] != 'ALL GMT WAY' or ns.build_nest_spec(z25)[0]['lay_limits']['source'] != 'named only': bad.append('2591A does not name ALL GMT WAY / is not "named only"')
+    verdict = {b_: ns._bundle_pattern(m25['inventory'], dict(real_t['L'], bundling=b_))[0] for b_ in (0, 1, 2)}
+    if verdict != {0: 'consistent', 1: 'contradicted', 2: 'contradicted'}: bad.append(f'2591A under each Bundling: {verdict}')
+print(f"   {'ok ' if not bad else 'FAIL'} real support files: L / G-LAYLIMITS / NEED- TWO WAY / ONE GMT ONW WAY read as the editor showed (two AccuMark 9 layouts with a short trailer); the real 1825D / 5683D / 418T markers follow them on {sum(real_pairs.values())} bundle pairs; 2591A's presets predict ALL GMT WAY = All Bundle, Same Direction  {'; '.join(bad[:3])}")
+if bad: fails.append('real support tables: ' + '; '.join(bad[:5]))
+
 print('-- marker byte map (v4.4, see accumark_marker.marker_coverage)')
 # Every byte owned by a section a parser reads must be classified (identified /
 # raw / zero_pad / opaque) - only the envelope, the header scalars, sections 2-5,

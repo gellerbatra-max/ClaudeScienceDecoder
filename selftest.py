@@ -1943,6 +1943,87 @@ if res_rows:
 if _have_rn: print(f"   {'ok ' if not bad else 'FAIL'} reference nester (spec JSON only): " + '; '.join(f"{l_} {r_['pieces']}/{r_['instances']} pieces {r_['length']:.0f} cm {r_['utilisation']:.0f}% valid" for l_, r_ in res_rows) + f"; mutations caught  {'; '.join(bad[:3])}")
 if bad: fails.append('reference nester: ' + '; '.join(bad[:5]))
 
+print('-- block buffer tables (v4.12, see accumark_blockbuffer): what a buffer rule is')
+# A Lay Limits row names a RULE NUMBER; the Block Buffer table gives the rule its kind (buffer / block) and its amounts per side, static and dynamic. Read here against what the
+# Block Buffer editor SHOWED (blockbuffer/GROUND_TRUTH.json: ZZBB-USER, then -X1 / -X2 built in the editor and diffed), the real 3MM / 3MM-N, and the markers' own buffer entries.
+import accumark_blockbuffer as bbf
+bad = []; BDIR = os.path.join(HERE, 'blockbuffer'); bgt = _json.load(open(os.path.join(BDIR, 'GROUND_TRUTH.json')))
+def _cm(a): return None if a is None else (f"{a['value']:.1f}%" if a['unit'] == 'percent' else round(a['value'] * 2.54, 2))
+def _cmp_rules(nm, t, want):
+    if [r['number'] for r in t['rules']] != [w[0] for w in want]: bad.append(f"{nm}: rule numbers {[r['number'] for r in t['rules']]}"); return
+    for r, w in zip(t['rules'], want):
+        if r['kind'] != w[1]: bad.append(f'{nm} rule {w[0]}: kind {r["kind"]}')
+        for which, wv in (('static', w[2]), ('dynamic', w[3])):
+            got = [_cm(r[which][x]) if r[which][x]['value'] else None for x in ('left', 'top', 'right', 'bottom')]
+            exp = [None] * 4 if wv is None else [(f'{float(v[:-1]):.1f}%' if isinstance(v, str) else (None if v is None or v == 0 else round(v, 2))) for v in wv]
+            if got != exp: bad.append(f'{nm} rule {w[0]} {which}: {got} vs {exp}')
+        if any(r[which]['segment']['value'] for which in ('static', 'dynamic')) or r['reserved']: bad.append(f'{nm} rule {w[0]}: a segment / reserved amount is not 0')
+n_bt = 0
+base_rules = bgt['tables']['ZZBB-USER']['rules']
+for nm, want in bgt['tables'].items():
+    t = bbf.parse_block_buffer(os.path.join(BDIR, want['file'])); n_bt += 1
+    rules_w = want['rules'] if 'rules' in want else base_rules + want['extra']
+    if t['vintage'] != 'v5' or t['trailer'] is not True or t['comment'] != want['comment']: bad.append(f"{nm}: vintage / trailer / comment {t['vintage']} {t['trailer']} {t['comment']!r}")
+    _cmp_rules(nm, t, rules_w)
+for nm, want in bgt['real_tables'].items():
+    t = bbf.parse_block_buffer(bytes.fromhex(bgt['real_tables_hex'][nm]), name=nm); n_bt += 1
+    if t['vintage'] != want['vintage']: bad.append(f'{nm}: vintage {t["vintage"]}')
+    _cmp_rules(nm, t, want['rules'])
+n_obj = 0; seen_bb = {}
+for zp in zips_all:
+    try: tt = bbf.load_zip_block_buffers(zp)
+    except Exception: continue
+    n_obj += len([k for k in tt if k != '_errors']); bad += [f'{os.path.basename(zp)}: {a_}: {b_}' for a_, b_ in tt.get('_errors', [])]
+    for k, v in tt.items():
+        if k != '_errors': seen_bb[(k, len(v['rules']))] = v
+z1 = seen_bb.get(('ZZBB-1', 4))
+if not z1 or [(r['number'], r['kind']) for r in z1['rules']] != [(1, 'buffer'), (2, 'block'), (3, 'buffer'), (4, 'buffer')] or [_cm(z1['by_number'][4]['static'][x]) for x in ('left', 'right')] != [2.0, 0.5]: bad.append('ZZBB-1 (bundled in the scratch bundle)')
+if n_obj < 2: bad.append(f'only {n_obj} bundled block-buffer objects read')
+print(f"   {'ok ' if not bad else 'FAIL'} block buffer tables: {n_bt} tables (rules 1-10, Block and Buffer, static and dynamic amounts, percentages, two-line comment, both layouts) read as the editor showed; {n_obj} bundled objects all read  {'; '.join(bad[:3])}")
+if bad: fails.append('block buffer tables: ' + '; '.join(bad[:5]))
+
+# the parser refuses what it does not understand
+bad = []
+raw_b = open(os.path.join(BDIR, 'ZZBB-X2.GT_block'), 'rb').read()[0x90:]
+def _brefused(b):
+    try: bbf.parse_block_buffer(bytes(b)); return False
+    except bbf.BlockBufferError: return True
+muts = {'one byte short': raw_b[:-1], 'a non-zero trailer': raw_b[:-4] + b'\x01\x00\x00\x00', 'a stray extra byte': raw_b + b'\x00', 'too short': raw_b[:4]}
+b_ = bytearray(raw_b); struct.pack_into('<H', b_, 4, 11); muts['count says 11, bytes hold 10'] = b_
+b_ = bytearray(raw_b); o_ = 6 + 28 + 70 * 2 + 2; struct.pack_into('<H', b_, o_, 2); muts['unknown rule type 2'] = b_
+b_ = bytearray(raw_b); o_ = 6 + 28 + 70 * 3; struct.pack_into('<H', b_, o_, 1); muts['rule number 1 twice'] = b_
+b_ = bytearray(raw_b); struct.pack_into('<H', b_, 0, 60); muts['comment length 60'] = b_
+for what, b in muts.items():
+    if not _brefused(b): bad.append(f'{what}: read as if valid')
+if _brefused(raw_b): bad.append('a clean table was refused')
+print(f"   {'ok ' if not bad else 'FAIL'} the block buffer parser refuses {len(muts)} broken variants of a table  {'; '.join(bad[:3])}")
+if bad: fails.append('block buffer mutations: ' + '; '.join(bad[:5]))
+
+# the markers: the rule a piece's Lay Limits row names, looked up in the table, IS the marker's own buffer entry (Left, Right, Top / Bottom)
+bad = []; tot_eq = 0; cases = []
+zb_ = os.path.join(HERE, 'markers', '2303-CP150-JULY', '2303-CP 150 CPL.zip')
+for lab_, zp_, mk_, kw_ in (('ZZC-M1', zsa, 'ZZC-M1', {}), ('ZZC-M3', zsa, 'ZZC-M3', {}), ('2303 CP 150', zb_, '2303-CP 150 CPL LEFTBTM 26-47', {}),
+                            ('418T', os.path.join(HERE, 'markers', '418T-SHAPESHIFTER-UNLAID', '418T-BD 160 SHAPESHIFTER.zip'), None, dict(lay_limits=real_t['G-LAYLIMITS'], block_buffer=bbf.parse_block_buffer(bytes.fromhex(bgt['real_tables_hex']['3MM']), name='3MM'))),
+                            ('1825D', os.path.join(HERE, 'markers', '1825D-SS21-UNLAID', '1825D-BD 180 SS21.zip'), '1825D-BD 180 SS21', dict(lay_limits=real_t['NEED- TWO WAY'], block_buffer=bbf.parse_block_buffer(bytes.fromhex(bgt['real_tables_hex']['3MM']), name='3MM')))):
+    if not os.path.isfile(zp_): continue
+    sp_ = ns.build_nest_spec(zp_, marker=mk_, **kw_)[0]; bf_ = sp_['block_buffer']
+    if not bf_['parsed'] or bf_['marker_entries']['different'] or not bf_['marker_entries']['equal']: bad.append(f"{lab_}: {bf_.get('marker_entries')} {bf_.get('basis')}")
+    else: tot_eq += bf_['marker_entries']['equal']; cases.append(lab_)
+    if not any(s_.get('buffer', {}).get('rule') for s_ in sp_['shapes']): bad.append(f'{lab_}: no shape carries its buffer rule')
+    if _json.loads(_json.dumps(sp_)) != sp_: bad.append(f'{lab_}: not JSON round-trippable')
+# the unequal rule: ZZC-M1's sleeve is rule 4 (Left 2.00 cm, Right 0.50 cm) and its marker entry is [0.7874, 0.1968, 0, 0] - Left, Right, Top / Bottom
+sm1 = ns.build_nest_spec(zsa, marker='ZZC-M1')[0]; sl = next(s_ for s_ in sm1['shapes'] if s_['piece'] == 'LADIES-BLOUSE-SL')
+if sl['buffer']['rule'] != 4 or [round(sl['buffer']['static'][x]['value'], 2) for x in ('left', 'top', 'right', 'bottom')] != [2.0, 0.0, 0.5, 0.0]: bad.append(f"ZZC-M1 sleeve buffer {sl['buffer']}")
+mkm = am.place_marker(zsa)['markers']; mk1 = next(m_['marker'] for m_ in mkm if m_['marker']['name'] == 'ZZC-M1')
+if [round(v, 4) for v in mk1['block_buffers'][3]['sides']] != [0.7874, 0.1968, 0.0, 0.0]: bad.append('ZZC-M1 marker entry 3')
+# it can fail: the wrong table (ZZBB-USER: rule 1 is 0.30 cm, the marker holds 1.00 cm) is contradicted, and a marker-only ZIP names its table but reads nothing
+wrong = ns.build_nest_spec(zsa, marker='ZZC-M1', block_buffer=os.path.join(BDIR, 'ZZBB-USER.GT_block'))[0]['block_buffer']
+if wrong['marker_entries']['different'] < 1: bad.append('the wrong table was not contradicted by the marker')
+z18b = os.path.join(HERE, 'markers', '1825D-SS21-UNLAID', '1825D-BD 180 SS21.zip'); nb_ = ns.build_nest_spec(z18b, lay_limits=real_t['NEED- TWO WAY'])[0]['block_buffer']
+if nb_['parsed'] or nb_['source'] != 'named only' or nb_['name'] != '3MM' or nb_['rules_used'] != [1]: bad.append(f'1825D marker-only block buffer {nb_}')
+print(f"   {'ok ' if not bad else 'FAIL'} buffer rules: {tot_eq} marker entries ({', '.join(cases)}) equal the table rule their Lay Limits row names; the unequal rule 4 (Left 2.00, Right 0.50 cm) is [0.7874, 0.1968, 0, 0] in the marker - Left, Right, Top / Bottom; the wrong table is contradicted  {'; '.join(bad[:3])}")
+if bad: fails.append('buffer rules: ' + '; '.join(bad[:5]))
+
 print('-- marker byte map (v4.4, see accumark_marker.marker_coverage)')
 # Every byte owned by a section a parser reads must be classified (identified /
 # raw / zero_pad / opaque) - only the envelope, the header scalars, sections 2-5,

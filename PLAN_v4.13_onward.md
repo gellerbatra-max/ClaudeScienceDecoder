@@ -45,6 +45,7 @@ Every claim carries a status tag in the specs: **[V]** proved (live experiment o
 | v4.22 | A 45-degree placement | Tilt +-45.0 on top of the code (flip codes 9-12); the collar's frame is ambiguous when thin and tilted | `deg45/` | main `064ce2d`, pushed |
 | v4.23 | Every marker on this machine (211 unique) | No exception; plaid / stripe values = 12 doubles of section 1; matching sections 9 / 23 / 24 named; @88 tolerance 2 | `plaid/` | main `5fc30f9`, pushed |
 | v4.24 | Can the nest engine's own input file check the spec? | `frommed.mra`: orientation = `retrieval_orientation` (136 of 136), flags = Piece Options, outline = piece + block rectangle; nest spec `mirrored` / `retrieval_deg_by_slot` corrected | `engine/` | branch `v4.24-engine-input-check` |
+| v4.25 | What are the plaid / stripe matching sections? | Section 9 = rules (points, categories, types, offsets), 24 = blocks with the outline vertex, 23 = start offsets; equal to the engine's rules on 816 instances | `plaid/` (more markers + engine files) | branch `v4.25-plaid-matching` |
 
 Unknown bytes per marker fell from 1,111-1,753 to about 1,031-1,280 (roughly 1.06%) over v4.13-v4.16.
 
@@ -66,7 +67,7 @@ Ranked by value to a nesting consumer and by cost. "Live" means an AccuMark roun
 | 8 | Notch numbers above 5 on a corner point; whether the cutter draws different shapes for numbers that read the same code | Notch fidelity | Live in PDS plus a marker plot | GUI-heavy |
 | 9 | **DONE v4.19** (exact to 0.004 sq in on 18 slots, unequal block): the exact area a Block buffer adds (the 7.2% BACK-piece excess) | Area checks on blocked markers | Offline from the block-buffer fixtures | offline |
 | 10 | Why the collar needs +90 (+90 and +270 look identical), older-vintage multi-row lay limits | Robustness on older markers | Needs an asymmetric collar-like piece; older markers from the user | low priority |
-| 11 | **Added v4.23**: plaid / stripe MATCHING rules (directory slots 9, 23, 24): named and bounded, not decoded; the plaid / stripe values (section 1) done | Nesting a plaid job | Decode against the match tables and the engine's `frommed.mra` (both on this machine) | one offline round + maybe live |
+| 11 | **DONE v4.25** (sections 9 / 23 / 24 = rules / start offsets / blocks with the outline vertex; 816 instances and 1,264 points equal the engine's; the plaid / stripe values were v4.23): plaid / stripe MATCHING rules | Nesting a plaid job | Decoded against the match tables and the engine's `frommed.mra` | offline |
 | 12 | **PARTLY DONE v4.24** (`accumark_engine.py`, `engine/`): the engine's `frommed.mra` as an independent check: orientation 136 of 136 (3,460 of 3,508 over 73 jobs), flags 20 of 20, outline = piece + block rectangle 20 of 20; open: tilt length-to-angle, `S` rows with `FLIP_GROUP` 0 (7 jobs), matching rules (item 11) | The best ground truth for the job spec | Offline: parse it, compare per job | offline |
 
 Recommended order: ~~2 and 3 together in one live round (v4.18)~~ done; next 7 and 9 offline while nothing else is waiting, then 4 and 6, then 5, then 8 and 10.

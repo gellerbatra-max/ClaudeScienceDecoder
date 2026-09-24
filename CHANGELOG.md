@@ -1,5 +1,15 @@
 # Changelog
 
+## v4.25 (2026-09-25) - the plaid / stripe matching rules (sections 9, 23, 24)
+
+`__version__` stays `'3.0'`. New fixtures in `plaid/` (four more markers made with Matching tables, `ZZPU-M`, `ZZPY-M`, `ZZP2-M`, `ZZC20-STD`, and the engine's `frommed.mra` of each job). Plan item 11, offline: the engine's own per-piece rules (v4.24) were the ground truth.
+
+* **Result** (MARKER_FORMAT_SPEC.md section 31): section 9 = one 42-byte record per rule (first / second point, first / second category, X / Y type relative / none / same, offset x / y, a fabric rule has category 0 = the marker), section 24 = the blocks (category, bundle, point number, **vertex** = the point's 0-based index in the piece's outline), section 23 = the block start offsets. **Every rule
+  of 816 piece instances and every one of 1,264 rule points equal the engine's `frommed.mra` (22 jobs; the point = the outline vertex less the middle of the piece's box, worst 0.0001 in)**; all 25 markers with matching sections on this machine read cleanly.
+* **Behaviour change:** `parse_marker` gives `mk['matching']` (`None` without a Matching table); the "matching data not decoded" warning is gone (a marker whose sections do not read cleanly gets a warning that says so); the byte map counts sections 9 / 23 / 24 as identified; the nest spec has `matching` (rules) and `shapes[].matching` (each shape's points, in the shape's frame).
+* **Code.** `accumark_marker.parse_matching`, `matching_for_category`, `MATCH_TYPES`; `marker_warnings`; `marker_coverage`; `nest_spec._matching_block`. **Checks.** `selftest` (new section, the v4.23 plaid section adapted): five markers x their engine files (204 instances, 310 points), the ZZ-PLAID rules read back, four byte patches caught (a type, a vertex, the separator of section 24, a start offset of section 23), the nest spec.
+* **Open:** the offset Y and the end triple of section 9 (zero / constant in every sample); older matching vintages (none seen); what AccuNest honours; item 11's live half (a Matching table on other pieces than `ZZPLD`) is not needed for the format - the vertex is stored - but would add variety.
+
 ## v4.24 (2026-09-25) - the nest engine's own input file as a check; retrieval orientation
 
 `__version__` stays `'3.0'`. New module `accumark_engine.py` (reads `frommed.mra`), new fixtures `engine/` (the `frommed.mra` of jobs 266 / 269 / 272 / 275, made from `twoply/ZZQ-W`, `twoply/ZZQ-A`, `flipcount/ZZR-S`, `deg45/ZZR-45`). Plan item 12, offline only.

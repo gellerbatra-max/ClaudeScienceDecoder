@@ -681,7 +681,91 @@ def parse_marker(d, size_vocab=None, binding='structural'):
     _explain_block_areas(d, mk)
     mk['tables'] = parse_marker_tables(d, sec, mk['name'])
     mk['snapshots'] = parse_marker_snapshots(d, sec, mk['pieces'])
+    try: mk['matching'] = parse_matching(d, mk)
+    except (struct.error, IndexError, KeyError, ValueError, TypeError) as ex_:      # v4.25: damaged matching sections must warn, never stop the read
+        mk['matching'] = dict(rules=[], blocks=[], bundles=0, categories=[], end_triple=None, ok=False, problems=['the matching sections could not be read: %r' % (ex_,)])
     return mk
+
+MATCH_TYPES = {0: 'relative', 1: 'none', 2: 'same'}          # the X / Y matching type of a rule (the engine's MATCHING_TYPE_X / _Y)
+
+def parse_matching(d, mk):
+    """v4.25: the plaid / stripe MATCHING rules of a marker made with a Matching table (directory slots 9, 23, 24; None without one).
+    Every section is a run of records whose first 6 bytes sit BEFORE the section's start (the '-6' frame convention):
+      section 9  = one 42-byte record per RULE, cut 6 bytes early: [u16 first point][u16 second point][u16 rule index (0xffff on a fabric rule)] then
+                   [u16 second block][u16 first category][u16 second category][u16 X type][u16 Y type][f64 offset x][f64 offset y][10 zero bytes]; the last row's
+                   final 6 bytes are an end triple. Category 0 = the MARKER (a fabric rule: a piece point matched to the fabric's plaid), 1.. = the categories
+                   in the order of the piece list; the types are 0 relative / 1 none / 2 same, the offsets inches.
+      section 24 = the BLOCKS: for every point a rule uses (category, point number), one item per bundle: [u16 previous w][i32 -1][u16 category][u16 bundle][u16 point]
+                   (the first item is the 6 bytes before the section; a (0, 0, 0) item ends the list). A rule's second piece is `blocks[second block]`.
+      section 23 = the start offset (in items) of every block: the first three sit in the 6 bytes before the section, then the rest, then the first item again.
+    [V: the 22 AccuNest jobs of 25 plaid markers made from the ZZ-PLAID tables: every rule, its types, offset and its per-instance participation equal the engine's
+    own `frommed.mra` rules (accumark_engine); MARKER_FORMAT_SPEC.md section 31]. -> dict(rules, blocks, bundles, categories, ok, problems)"""
+    sec, dr = mk['sections'], mk['directory']
+    for k in MATCHING_SECTIONS:
+        if k >= len(sec) or not sec[k] or dr[k] in (0, 0xffffffff): return None
+    problems = []
+    cats = []
+    for p in mk.get('pieces') or []:
+        if p['fabric'] not in cats: cats.append(p['fabric'])
+    # section 24: the blocks. An item is [i32 -1][u16 category][u16 bundle][u16 point number][u16 vertex]: the vertex (the point's 0-based index in the piece's outline) sits in the first two bytes of the NEXT record
+    a, b = sec[24][0], sec[24][1]
+    heads = [struct.unpack_from('<3H', d, a - 6)]; body = d[a:b]; verts = []
+    if len(body) % 12: problems.append('section 24 is not a whole number of 12-byte records')
+    for i in range(0, len(body) - len(body) % 12, 12):
+        v, m1, t, k, w = struct.unpack_from('<HiHHH', body, i)
+        if m1 != -1: problems.append('section 24 record %d has no separator' % (i // 12)); break
+        verts.append(v)
+        if t == 0: break
+        heads.append((t, k, w))
+    else: problems.append('section 24 has no end item')
+    items = [(t, k, w, verts[j] if j < len(verts) else None) for j, (t, k, w) in enumerate(heads)]
+    blocks = []
+    for t, k, w, v in items:
+        if blocks and blocks[-1]['category_index'] == t and blocks[-1]['point'] == w and k == len(blocks[-1]['vertex']): blocks[-1]['vertex'].append(v)
+        else: blocks.append(dict(category_index=t, point=w, vertex=[v]))
+    nb = len(blocks[0]['vertex']) if blocks else 0
+    if not blocks or any(len(bl['vertex']) != nb for bl in blocks): problems.append('section 24: a block does not cover every bundle once')
+    for i, bl in enumerate(blocks):
+        bl['index'] = i; bl['category'] = cats[bl['category_index'] - 1] if 0 < bl['category_index'] <= len(cats) else None
+        if bl['category'] is None: problems.append('block %d names category %d, the piece list has %d' % (i, bl['category_index'], len(cats)))
+        bl['bundles'] = nb
+    # section 23: the block start offsets
+    a23, b23 = sec[23][0], sec[23][1]
+    w23 = list(struct.unpack_from('<3H', d, a23 - 6)) + list(struct.unpack_from('<%dH' % ((b23 - a23) // 2), d, a23))
+    if len(w23) < 6 or tuple(w23[-3:]) != tuple(heads[0]) or w23[:-3][:len(blocks)] != [i * nb for i in range(len(blocks))] or len(w23) - 3 != max(len(blocks), 3):
+        problems.append('section 23 (block start offsets) does not agree with section 24')
+    # section 9: the rules
+    a9, b9 = sec[9][0], sec[9][1]
+    rows = (b9 - a9) // 42
+    if (b9 - a9) % 42: problems.append('section 9 is not a whole number of 42-byte rows')
+    trip = struct.unpack_from('<3H', d, a9 - 6); rules = []
+    for i in range(rows):
+        o = a9 + 42 * i
+        blk, c1, c2, tx, ty = struct.unpack_from('<5H', d, o); ox, oy = struct.unpack_from('<2d', d, o + 10)
+        aux = u16(d, o + 28)
+        if any(d[o + 26:o + 28]) or any(d[o + 30:o + 36]) or aux != (1 if c1 == 0 else 0): problems.append('rule %d: unexpected bytes after the offsets' % i)
+        if tx not in MATCH_TYPES or ty not in MATCH_TYPES: problems.append('rule %d: X / Y type %d / %d unknown' % (i, tx, ty))
+        if not (blk < len(blocks) and blocks[blk]['category_index'] == c2 and blocks[blk]['point'] == trip[1]): problems.append('rule %d: its second block does not say category %d point %d' % (i, c2, trip[1]))
+        first_blk = next((bl for bl in blocks if bl['category_index'] == c1 and bl['point'] == trip[0]), None) if c1 else None
+        if c1 and first_blk is None: problems.append('rule %d: no block for category %d point %d' % (i, c1, trip[0]))
+        rules.append(dict(index=i, kind='fabric' if c1 == 0 else 'piece', first_category=cats[c1 - 1] if 0 < c1 <= len(cats) else None, second_category=cats[c2 - 1] if 0 < c2 <= len(cats) else None,
+                          first_point=trip[0], second_point=trip[1], first_block=None if first_blk is None else first_blk['index'], second_block=blk,
+                          type_x=MATCH_TYPES.get(tx, tx), type_y=MATCH_TYPES.get(ty, ty), offset_x_in=ox, offset_y_in=oy, tag=trip[2]))
+        trip = struct.unpack_from('<3H', d, o + 36)
+    return dict(rules=rules, blocks=blocks, bundles=nb, categories=cats, end_triple=trip, ok=not problems, problems=problems)
+
+def matching_for_category(matching, category, bundle=None):
+    """v4.25: the rules a piece of `category` takes part in, in the engine's order -> [dict(rule, role 'first' | 'second', point, partner, block, vertex, ...)] ([] for none);
+    `vertex` (the point's 0-based index in the piece's outline) only for a given `bundle`."""
+    out = []
+    if not matching: return out
+    for r in matching['rules']:
+        role = 'first' if r['first_category'] == category else ('second' if r['second_category'] == category else None)
+        if role is None: continue
+        blk = r['first_block'] if role == 'first' else r['second_block']
+        out.append(dict(r, role=role, point=r['%s_point' % role], partner=(r['second_category'] if role == 'first' else r['first_category']) or 'MARKER', block=blk,
+                        vertex=None if bundle is None or blk is None else matching['blocks'][blk]['vertex'][bundle]))
+    return out
 
 def parse_marker_snapshots(d, sec, pieces):
     """v4.14: the marker carries COPIES of the tables it was made with, as they were then.
@@ -801,7 +885,7 @@ def _sig88_model(mk):
                 constant={p: (min(v) if max(v) - min(v) <= 2 else None) for p, v in per.items()})
 
 KNOWN_SECTIONS = frozenset({1, 2, 3, 4, 5, 6, 10, 11, 12, 13, 14, 15, 21, 30})    # every directory slot ever seen used
-MATCHING_SECTIONS = frozenset({9, 23, 24})      # v4.23: present on every marker made with a Matching table (plaid / stripe point matching); not decoded, named in a warning
+MATCHING_SECTIONS = frozenset({9, 23, 24})      # v4.23: present on every marker made with a Matching table (plaid / stripe point matching); decoded in v4.25 (parse_matching)
 KNOWN_ORIENT_BITS = ROT180_BIT | MIRROR_BIT | FLIP_Y_BIT | 0x0040                     # what a NEVER-LAID slot's word can carry
 
 def marker_warnings(mk):
@@ -829,8 +913,9 @@ def marker_warnings(mk):
             w.append('directory slot %d is in use but this reader has never seen that section' % k)
     if mk['placed_word'] not in (0, 1, 2): w.append('directory word 40 is %d, expected 0 / 1 / 2' % mk['placed_word'])
     if mk['directory'][41] != 0 and not mk.get('has_plaid_stripe'): w.append('directory word 41 is %#x, expected 0' % mk['directory'][41])      # v4.23: with plaid / stripe parameters it is part of the first double
-    if mk['directory'][9] not in (0, 0xffffffff) and (mk['directory'][23] not in (0, 0xffffffff) or mk['directory'][24] not in (0, 0xffffffff)):
-        w.append('the marker carries plaid / stripe MATCHING data (sections 9, 23, 24: piece-to-piece and fabric rules): not decoded and not in the nest spec' + ('; plaid / stripe repeats and offsets are in mk["plaid_stripe"]' if mk.get('has_plaid_stripe') else ''))
+    if any(mk['directory'][k_] not in (0, 0xffffffff) for k_ in MATCHING_SECTIONS):      # v4.25: the matching rules are decoded (parse_marker: mk['matching']); a marker whose sections do not parse says so
+        if not mk.get('matching'): w.append('the marker has some of the plaid / stripe MATCHING sections (9, 23, 24) but not all three: the matching rules are not read')
+        elif not mk['matching']['ok']: w.append('the marker carries plaid / stripe MATCHING data (sections 9, 23, 24) that did not read cleanly: ' + '; '.join(mk['matching']['problems'][:2]))
     odd = [s['index'] for s in mk['slots'] if s['orient_code'] & ~KNOWN_ORIENT_BITS] if mk['lay_history'] == 'as_generated' else []
     if odd: w.append('%d slots of an as-generated marker carry orientation bits outside rot180 / mirror / pair (first: slot %d, word %#06x)'
                      % (len(odd), odd[0], mk['slots'][odd[0]]['orient_code']))
@@ -1482,8 +1567,13 @@ def marker_coverage(d, mk=None):
         if mk['slots']: mark(mk['slots'][-1]['slot'] + SLOT - SLOT_HEAD, mk['slots'][-1]['slot'] + SLOT, 'raw')
     # -- section 30: the embedded type-10 object (topology-only scratch): bounded, not chased
     if sec[SEC_GEOMETRY]: mark(sec[SEC_GEOMETRY][0] - _LEAD, tr0, 'opaque')
-    for k_ in MATCHING_SECTIONS:                                       # v4.23: the plaid / stripe matching rules - bounded here, not decoded
-        if k_ < len(sec) and sec[k_]: mark(sec[k_][0], sec[k_][1], 'opaque')
+    for k_ in MATCHING_SECTIONS:                                       # v4.23: the plaid / stripe matching rules - bounded here; v4.25: identified when they read cleanly (parse_matching)
+        if k_ < len(sec) and sec[k_]: mark(sec[k_][0], sec[k_][1], 'identified' if mk.get('matching') and mk['matching']['ok'] else 'opaque')
+    if mk.get('matching') and mk['matching']['ok']:
+        for k_ in MATCHING_SECTIONS: mark(sec[k_][0] - 6, sec[k_][0], 'identified')                    # the first record's first 6 bytes sit before the section
+        a9_, b9_ = sec[9][0], sec[9][1]
+        for o_ in range(a9_, b9_, 42): mark(o_ + 26, o_ + 28, 'zero_pad'); mark(o_ + 30, o_ + 36, 'zero_pad')
+        mark(b9_ - 6, b9_, 'raw')                                                                          # the end triple of section 9 (0, 6, 1)
     # -- trailer: the object's name, created / modified stamps, the two user names
     mark(tr0 + 0x8a, tr0 + 0x8a + len(mk['name']) + 1, 'identified')
     mark(tr0 + TRAILER_CREATED, tr0 + TRAILER_CREATED + 8, 'identified')

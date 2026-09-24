@@ -214,7 +214,7 @@ for that (model, size)** - the marker states its own cut quantities.
                                                                  -1000 once Easy Marking has
                                                                  stored the slot unplaced [V live])
     +16  f64 home x              +24  f64 home y     (half the piece's box; the block-buffer table does not drive it [?])
-    +32  u16 orientation         +34..+41  const  ff ff ff ff 00 00 00 00 [?]
+    +32  u16 orientation         +34..+37  const ff ff ff ff    +38  f32 TILT in radians, ccw (v4.13, section 20)
     +42  f64 declared area       +50..+63  raw (u16 @52, @54, @60 vary) [?]
     +64  u32 bundle (low 16) + flags (high 16, 0)    +68..+87 const [?]
     +88  u16 AS-GENERATED SIGNATURE [V]: non-zero on every slot of a marker Easy Marking
@@ -231,7 +231,7 @@ order)> <u16 piece index (1-based, section 10)> <u16 bundle>` [V: 677 of 677 slo
 all 18 markers]. (Earlier notes read `+90/+92/+94` as a circular pointer; it is the
 next slot's head.)
 
-**Orientation.** Bit 0x2000 = rotate 180, bit 0x0080 = mirror [V vs drawn DXF]. Bit
+**Orientation.** (v4.13: this is the PRE-SET pattern of an unlaid marker; the PLACED orientation of a laid slot is its low three bits + the tilt float - section 20.) Bit 0x2000 = rotate 180, bit 0x0080 = mirror [V vs drawn DXF]. Bit
 0x0040 is a COPY of the piece row's flag u16 @+14 (section 10): slot bit == (flag == 1)
 [V: 9,122 of 9,122 slots, 111 markers; no marker mixes flag values, which is why it looked
 marker-level]. It is not the mirrored-pair bit (2303 has pairs and no 0x0040); what order /
@@ -296,8 +296,10 @@ stream that verifies against its record's area + perimeter is identified up to i
 
 | open | evidence so far | method |
 |---|---|---|
-| what the buffer is for in the home box (the marker's entry order Left, Right, Top, Bottom is proved) | home box ignores it (ZZC-M1 vs ZZC-BIG) | live: unequal buffers on a piece with real geometry |
-| the laid `LADIES-BLOUSE TEST-2` shows its 4 COLLAR outlines turned 90 degrees against their stored home boxes (other pieces agree; unlaid markers never do) - does a laid marker's stream carry the piece as placed? | 4 shapes flagged by the box check with `--as-job`; `ZZC-M1` (unlaid) has no such case | a laid marker with a piece deliberately turned 90 degrees in Easy Marking |
+| what the buffer is for in the home box of an UNPLACED slot (the marker's entry order Left, Right, Top, Bottom is proved; for a PLACED slot the box is the placed shape + the buffer turned with it, section 20) | unplaced: home box ignores it (ZZC-M1 vs ZZC-BIG) | live: unequal buffers on a piece with real geometry, unlaid |
+| the COLLAR of the LADIES-BLOUSE set lies a quarter turn from the frame its orientation codes refer to (section 20, `frame_offsets`): why (grain line? a piece attribute?), and +90 vs +270 | 28 markers, one piece, +90 fits every one; the bundled pieces are stubs | a piece object with a real grain line whose stream outline is turned (a collar digitised with the grain along its length) |
+| how a 45-degree (or any other non-tilt) placement is stored | AccuNest's Rotation-45 override placed nothing off the 90-degree grid; tilts are the float at +38 (section 20) | Easy Marking: `Rotate 45 CW` on an asymmetric piece, stored, read back |
+| the exact area a BLOCK adds to a placed slot's declared area (the BACK piece, block rule 2 = 1 cm: slot 657.64 vs record 613.54 = +7.2%, the offset polygon says 652.9; ZZC-M3, ZZN-F1, the ZZROT set) | only the block rule's piece differs; buffer rules (FRONT, COLLAR, SLEEVE) leave the area equal | a block of another size on a simple rectangle |
 | notch numbers above 15 in a marker stream (the low nibble of the extra byte holds `type`; the table allows 99 numbers) | only numbers 1 and 5 occur in the corpus | a piece with notch number 20+ (PDS Add Standard Notch, Type 20) in a marker |
 | what order / model option sets the piece-row flag @+14 (= the slot 0x0040 bit); the pre-set rot180 alternation | 0x0040 == flag @+14 on 9,122 / 9,122 slots [V]; alternates per bundle | live: flip one order / model option per run (DATASET_DESIGN F5) |
 | the extra byte's high nibble; the stream trailer's last 3 bytes | kinds and notch types classify 7,455 / 7,455 piece points | correlate with the piece's f2 / rule fields and the size |
@@ -416,3 +418,44 @@ metric table). The editor requires a rule number for every used rule and greys o
 (`buffer_rule`, 0 = none); the real `3MM` rule 1 is a Buffer of 0.15 cm on every side (0.0591 in): two pieces end 3 mm apart. Blocking is a visible zone added to the piece (die-cut / matched pieces); buffering
 is invisible space that keeps the cutter blade off the neighbour; static amounts apply when the order is processed, dynamic ones during marker making. A table whose length does not add up, with an unknown
 type or a repeated rule number is refused.
+
+## 20. Placed orientation - what a LAID marker says about how each piece lies [V, v4.13]
+
+Three things, none of them the `0x2000` / `0x0080` bits of section 10 (those are the PRE-SET lay pattern of the unlaid marker and stay in the word when a nester lays the piece another way):
+
+1. **The low three bits of the slot's orientation word** (`orient_L`) = the placed orientation: a turn (degrees counter-clockwise) and whether the piece is mirrored top-to-bottom BEFORE the turn.
+
+| `L` | turn | mirror | | `L` | turn | mirror |
+|---|---|---|---|---|---|---|
+| 0 | 0 | no | | 2 | 90 | no |
+| 4 | 180 | no | | 6 | 270 | no |
+| 3 | 180 | yes | | 1 | 90 | yes |
+| 7 | 0 | yes | | 5 | 270 | yes |
+
+   (0 / 4 / 3 / 7 are the old rot0 / rot180 / flip-about-the-vertical-axis / flip-about-the-horizontal-axis; 1, 2, 5, 6 are the quarter turns the earlier reading called "unknown low bits".)
+2. **A signed float32 at slot byte +38** = a further tilt in RADIANS, counter-clockwise, applied after the mirror and the turn (0 or -0.0 = none; -0.0 is what a nester writes, +0.0 is the default). AccuNest's
+   CW / CCW Tilt Limit overrides (10 degrees) gave 10.000 degrees on the two collars that used them; the corpus marker `ZZN-B4` has +-3.0 and +1.5. Bytes +34..+37 stay `ff ff ff ff`.
+3. **A quarter turn between a piece's stream outline and the frame the code refers to** (`frame`, per piece; `frame_offsets`). Only the COLLAR of the LADIES-BLOUSE set needs it (+90 counter-clockwise): its stream
+   outline is 3.48 x 16.47 in and every placed collar, at every code and in every one of 28 markers (23 of the corpus, 5 fixtures), is 16.47 x 3.48; the other four pieces of the set and every other corpus piece need 0. The reader decides it from the
+   marker's own home boxes (the quarter turn that predicts them better, by 0.25 in per slot at least). Why the collar differs is not known: the piece objects bundled with these markers are stubs, so its grain line
+   cannot be compared (the stream's inferred grain is a 1.74 in horizontal segment for it); +90 and +270 cannot be told apart on a piece that is nearly symmetric under 180 degrees.
+
+**The home box** (`home_x`, `home_y` = half of it) is the bounding box of the PLACED shape (turned, mirrored, tilted) plus the piece's block buffer turned with the shape [V]: the sleeve's Left 2.0 + Right 0.5 cm add 0.984 in
+along x at 0 / 180 degrees and along y at 90 / 270; a collar tilted 10 degrees adds 2 x 0.1968 x (cos 10 + sin 10) = 0.456 in; every laid marker of the corpus passes the runtime check
+(`orientation_check`, appended to `place_marker`'s `checks`: 40 laid markers, worst 0.018 in). `x`, `y` is the centre of that box. `transform(outline, slot, frame)` gives the placed shape.
+
+**Proof.** Four AccuNest runs of a copy of `ZZC-M1` (Nest Markers overrides: Rotation 90 / 45 / 45 + tilt limits, Flip enabled; and the W-row run of `laylimits/EXPERIMENT_W_ALTERNATE.md`), each plotted to DXF:
+72 placed slots, every decoded outline lies on its plotted loop (Hausdorff 0.16 in = the curve sag of the plot; the cuff rectangles 0.002), all eight `L` codes measured alone on 32 slots (`rotation/GROUND_TRUTH.json`).
+Changing the rule breaks it: +180 on 56 slots, the mirror inverted on 48, the pre-4.13 rule on 47, no collar frame on 16, the tilt sign on both tilted collars. Over the 31 laid markers of the corpus the pre-4.13 reading has 1,707
+overlapping pairs of placed pieces, this one 15 (three copies of one experiment with a hand-placed piece lying across others, and slots that touch within the buffer).
+
+**Not seen, so not claimed.** A piece placed at 45 or another angle by a NESTER other than through the tilt limits: the Rotation-45 override made AccuNest place nothing off the 90-degree grid (18 slots), so there
+is no marker in the corpus whose slot says 45. Easy Marking's rotate tools (its toolbox `Rotate` list: 45 CW / CCW, 90 CW / CCW, 180, Tilt CW / CCW, Variable, Reset Tilt, Power Rotate; applied by selecting the piece
+with a left click and a right click, `Override` needed where the turned piece would touch a neighbour) were not driven to a stored marker. If a 45-degree turn is stored it can only be as a tilt of +-45 degrees on
+top of `L`, since `L` has room for the eight orientations above and nothing else; that is an inference, not a reading.
+
+## 21. Marker files in an AccuMark storage area [V, v4.13]
+
+`<area>\mark\<Made | UnMade | Partial | NeedsApproval>\NAME.GT_mark` is 0x90 bytes of its own header (created / modified stamps at 0x6a / 0x6e, user names at 0x86) followed by the payload an export object
+carries from 0x8a: slots, records, tables, stream outlines read identically (`ZZC-M1`: 18 slots, all records and tables equal to its export). `read_storage_marker(path)` rebuilds the export envelope around it and
+`place_marker(path)` takes such a file. The state folder is the marker's own: a nest that ends "needs approval" (e.g. an angled marker border) leaves a partial marker there (`rotation/ZZROT-B.GT_mark`: 17 placed, 1 not).

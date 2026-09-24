@@ -1,5 +1,33 @@
 # Changelog
 
+## v4.13 (2026-09-24) - laid-marker rotations: how a placed slot says which way the piece lies
+
+`__version__` stays `'3.0'`. New fixtures `rotation/` (five made markers + three plots + `GROUND_TRUTH.json`). Request: "laid-marker rotations (the 90 degree collar case)".
+
+* **The finding** (MARKER_FORMAT_SPEC.md section 20). The placed orientation of a slot is the LOW THREE BITS of its orientation word: 0 / 4 / 3 / 7 = 0 / 180 / 180 + mirror / mirror, and 2 / 6 / 1 / 5 = the quarter turns 90 / 270 / 90 + mirror /
+  270 + mirror (turn counter-clockwise, mirror top-to-bottom first). The `0x2000` / `0x0080` bits the decoder read until now are the PRE-SET of the unlaid marker and stay in the word when a nester lays the piece another way -
+  the reason the old rule agreed with 2303 (where both say the same) and put 1,707 pairs of placed pieces on top of each other over the 31 laid markers of the corpus (15 with the new rule; see below).
+* **The tilt.** A signed float32 at slot byte +38 is a further tilt in radians, counter-clockwise, applied last: AccuNest's CW / CCW Tilt Limit overrides (10 degrees) gave 10.000 degrees on the two collars that used them; the
+  corpus marker `ZZN-B4` holds +-3.0 and +1.5 on 19 slots (its home boxes fix the sign and the order: tilt after the mirror and the turn; no plot exists for it).
+* **The collar.** One piece needs a quarter turn (`frame`, +90) between its stream outline and the frame the codes refer to: the LADIES-BLOUSE collar (stream 3.48 x 16.47 in, placed 16.47 x 3.48 at every code, 28 markers). The reader decides it from the
+  marker's own home boxes, per piece (`frame_offsets`). This closes the v4.11 observation ("the laid TEST-2 collar is 90 degrees off its stored box") and the `--as-job` flag on it. Why the collar differs is open.
+* **The home box** of a placed slot = the placed shape's bounding box + the piece's block buffer TURNED with it: the sleeve's Left 2.0 / Right 0.5 cm land on x at 0 / 180 degrees and on y at 90 / 270 (the independent parity check of the
+  quarter turns); a collar tilted 10 degrees adds 2 x 0.1968 x (cos 10 + sin 10) = 0.456 in.
+* **Proof.** Four AccuNest runs of a copy of `ZZC-M1` (Nest Markers overrides Rotation 90; Rotation 45; Rotation 45 + tilt limits 10; the earlier W-row run), each plotted: 72 placed slots, every decoded outline on its plotted loop (0.16 in = the plot's
+  curve sag, cuffs 0.002), all eight codes measured alone on 32 slots. The same slots with +180 added miss the plot on 56, with the mirror inverted on 48, under the pre-4.13 rule on 47, without the collar frame on 16.
+  `orientation_check` (appended to `place_marker`'s `checks`): every placed shape fills its stored home box - 40 laid markers, worst 0.018 in - and fails when one slot is turned 90 degrees.
+* **Code.** `parse_slots`: `orient_L`, `placed_rot`, `placed_flip`, `tilt_deg` (None + a `marker_warnings` entry when the float is not an angle); `ORIENT_L`; `transform(outline, slot, frame)` (quarter turns, mirror, any tilt; re-centres the
+  turned box on the slot's centre - identical to the old rule for the four old orientations); `frame_offsets`; `orientation_check`; `place_marker` now places a slot by the marker's own stream outline when its piece object is a stub
+  (a marker-only ZIP places its slots too; `bbox_check` reads the placed outline's own box); `unplaced_inventory` / the nest spec of a laid marker read as a job (`--as-job`) give the piece-frame stored box `home_box_piece_in`
+  (`stored_box` / `padding` null for a tilted slot): TEST-2's four collars are no longer flagged (20 of 20 shapes equal their stored box).
+* **Marker files from a storage area.** `read_storage_marker(path)` / `place_marker('<area>\\mark\\Made\\NAME.GT_mark')`: the payload of a `.GT_mark` file equals an export object's, the envelope is rebuilt around it (section 21); `ZZC-M1` reads as its
+  export does. A nest that ends "needs approval" (AccuNest with a Marker Border Angle of 30 degrees) leaves a partial marker in `NeedsApproval\` (`rotation/ZZROT-B.GT_mark`: 17 placed, 1 not, no tilts written).
+* **Checks.** `selftest` (new section): the plot fit of 72 slots and four mutations, the tilt floats, the 19 tilted `ZZN-B4` slots (home boxes; wrong sign misses 10), the buffer parity on 72 slots, TEST-2 as a job, the corpus overlaps (1,707 -> 15,
+  the 15 = three copies of an experiment with a hand-placed slot 6, and slots that touch within the buffer), the runtime check and its mutation, storage files, a NaN tilt word; `dataset_test` 36/36; robustness 730/730.
+* **Answered on the way.** The 7.2% by which the BACK piece's placed slot exceeds its record (ZZC-M3, ZZN-F1, every ZZC-M1 nest) is its BLOCK rule (rule 2 = a visible 1 cm added to the piece; the other rules are buffers and leave the area equal).
+* **Open.** How a 45-degree placement is stored (AccuNest's Rotation-45 override placed nothing off the 90-degree grid; Easy Marking's `Rotate 45 CW` was not driven to a stored marker - inferred: a tilt of +-45 degrees on top of the code); why the
+  collar needs its quarter turn (+90 vs +270 cannot be told on it); the exact area a block adds; what +0.0 vs -0.0 in the tilt float means (a nester writes -0.0).
+
 ## v4.12 (2026-09-24) - the Block / Buffer table: what a buffer rule is
 
 `__version__` stays `'3.0'`. New module `accumark_blockbuffer.py`; fixtures `blockbuffer/` (three editor-built tables + `GROUND_TRUTH.json`). Request: "proceed" (the block buffer table).

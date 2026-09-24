@@ -1890,7 +1890,7 @@ if _have_rn and os.path.isfile(zpl) and os.path.isfile(zun):
     polys_ = []
     for s_ in mkp['slots']:
         sh, mir = by_slot[s_['index']]
-        if (sh['piece'], sh['size']) != (s_['piece'], s_['size']) or mir != bool(s_['flip_v'] or s_['flip_h']): bad.append(f"slot {s_['index']}: spec shape / mirror does not match the placed marker"); break
+        if (sh['piece'], sh['size']) != (s_['piece'], s_['size']) or mir != bool(s_['placed_flip']): bad.append(f"slot {s_['index']}: spec shape / mirror does not match the placed marker"); break
         polys_.append(_PG(am.transform([tuple(p) for p in sh['outline']], s_)).buffer(0))
     Wp, Lp = mkp['width'], mkp['length']; tree_ = _ST(polys_); n_ov = 0; worst = 0.0
     for i_, p_ in enumerate(polys_):
@@ -2026,6 +2026,165 @@ z18b = os.path.join(HERE, 'markers', '1825D-SS21-UNLAID', '1825D-BD 180 SS21.zip
 if nb_['parsed'] or nb_['source'] != 'named only' or nb_['name'] != '3MM' or nb_['rules_used'] != [1]: bad.append(f'1825D marker-only block buffer {nb_}')
 print(f"   {'ok ' if not bad else 'FAIL'} buffer rules: {tot_eq} marker entries ({', '.join(cases)}) equal the table rule their Lay Limits row names; the unequal rule 4 (Left 2.00, Right 0.50 cm) is [0.7874, 0.1968, 0, 0] and rule 9 (.11 / .22 / .33 / .44 cm) is [0.0433, 0.1299, 0.0866, 0.1732] in the marker - Left, Right, Top, Bottom; the wrong table is contradicted  {'; '.join(bad[:3])}")
 if bad: fails.append('buffer rules: ' + '; '.join(bad[:5]))
+
+print('-- laid-marker orientation (v4.13, see MARKER_FORMAT_SPEC.md section 20): low three bits, tilt float, collar frame, storage files')
+# A LAID marker says how each piece lies in three places: the low three bits of the slot's orientation word (a quarter turn, mirrored or not), a signed float32 at slot byte +38 (a further tilt,
+# radians, counter-clockwise) and - for one piece of the corpus - a quarter turn between the piece's stream frame and the frame the code refers to. Proved against the DXFs AccuMark plotted
+# from four AccuNest runs (72 placed slots; rotation/GROUND_TRUTH.json) and the home boxes of the 19 tilted slots of ZZN-B4; the pre-4.13 rule (0x2000 = rot180, 0x0080 = mirror) is wrong on them.
+import verify_marker as _vm
+bad = []; RDIR = os.path.join(HERE, 'rotation'); rgt = _json.load(open(os.path.join(RDIR, 'GROUND_TRUTH.json')))
+if {int(k): (v['rotate_ccw_deg'], v['mirror_top_to_bottom_first']) for k, v in rgt['orient_L_low_three_bits'].items()} != am.ORIENT_L: bad.append('am.ORIENT_L differs from rotation/GROUND_TRUTH.json')
+if sorted(int(k) for k in rgt['orient_L_slots_measured_alone_from_the_plot_without_collars']) != list(range(8)): bad.append('not every orientation code was measured alone')
+def _cen(p): return (sum(q[0] for q in p) / len(p), sum(q[1] for q in p) / len(p))
+def _pair_loops(outs, loops):
+    """{slot: loop}: every decoded outline to the plotted loop nearest to it, one to one (the plot is drawn from the same marker)."""
+    lc = [_cen(l) for l in loops]; cand = []
+    for i, o in outs.items():
+        c = _cen(o)
+        for j, l in enumerate(loops):
+            d_ = math.hypot(c[0] - lc[j][0], c[1] - lc[j][1])
+            if d_ < 3: cand.append((d_, i, j))
+    cand.sort(); ui, uj, out = set(), set(), {}
+    for d_, i, j in cand:
+        if i in ui or j in uj: continue
+        ui.add(i); uj.add(j); out[i] = loops[j]
+    return out
+def _old_rule(s):   # what the decoder did before 4.13: 0x2000 = rotate 180, 0x0080 = mirror, both = flip about the vertical axis
+    return dict(placed_rot=180 if (s['rot'] == 180 or s['flip_h']) else 0, placed_flip=bool(s['flip_v'] or s['flip_h']), tilt_deg=0.0)
+EXPS = (('ZZROT-90', 'ZZROT-90.DXF'), ('ZZROT-45', 'ZZROT-45.DXF'), ('ZZROT-T', 'ZZROT-T.DXF'), ('ZZLL-EXP1', os.path.join('..', 'laylimits', 'EXPERIMENT_W_ALTERNATE.DXF')))
+n_slots = n_match = 0; worst_all = 0.0; broken = {k: 0 for k in ('rot180 added', 'mirror inverted', 'tilt sign inverted', 'no collar frame', 'pre-4.13 rule')}; tilts = {}
+for nm, dxf in EXPS:
+    res = am.place_marker(os.path.join(RDIR, nm + '.GT_mark')); m = res['markers'][0]; mk = m['marker']
+    loops = _vm.dxf_marker(os.path.join(RDIR, dxf))[0]
+    placed = {s['index']: (s, o) for s, n_, sz_, o, note_ in m['placed'] if o}
+    if len(mk['slots']) != 18 or len(placed) != 18 or mk['frames'] != {n_: (90 if n_.endswith('COL') else 0) for n_ in mk['frames']} or sum(mk['frames'].values()) != 90: bad.append(f"{nm}: {len(placed)} placed of {len(mk['slots'])}, frames {mk['frames']}")
+    pair = _pair_loops({i: o for i, (s, o) in placed.items()}, loops); n_slots += len(placed); n_match += len(pair)
+    own = {s['index']: am._slot_geometry(s, res['pieces'], res['piece_errors'], True, mk)[2] for s, o in placed.values()}
+    worst = max((_vm.hausdorff(placed[i][1], l) for i, l in pair.items()), default=9)
+    worst_all = max(worst_all, worst)
+    if len(pair) != 18 or worst > 0.2: bad.append(f'{nm}: {len(pair)} slots matched to the plot, worst {worst:.3f} in')
+    tilts[nm] = {i: round(s['tilt_deg'], 2) for i, (s, o) in placed.items() if s['tilt_deg']}
+    def _off(fn, key):    # slots whose plotted loop is missed by more than 0.2 in when `fn` changes the orientation
+        n_ = 0
+        for i, (s, o) in placed.items():
+            if i not in pair: continue
+            pl = dict(s); pl.update(fn(s)); fr = mk['frames'].get(s['piece'], 0) if key != 'no collar frame' else 0
+            if _vm.hausdorff(am.transform(own[i], pl, fr), pair[i]) > 0.2: n_ += 1
+        broken[key] += n_
+    _off(lambda s: dict(placed_rot=(s['placed_rot'] + 180) % 360), 'rot180 added'); _off(lambda s: dict(placed_flip=not s['placed_flip']), 'mirror inverted')
+    _off(lambda s: dict(tilt_deg=-(s['tilt_deg'] or 0)), 'tilt sign inverted'); _off(lambda s: {}, 'no collar frame'); _off(_old_rule, 'pre-4.13 rule')
+if tilts['ZZROT-T'] != {10: 10.0, 11: 10.0} or any(tilts[k] for k in ('ZZROT-90', 'ZZROT-45', 'ZZLL-EXP1')): bad.append(f'tilt floats: {tilts}')
+if n_match != 72 or broken['tilt sign inverted'] < 2 or broken['no collar frame'] < 8 or broken['rot180 added'] < 20 or broken['mirror inverted'] < 20 or broken['pre-4.13 rule'] < 20: bad.append(f'mutations do not break the fit: {broken}')
+print(f"   {'ok ' if not bad else 'FAIL'} 4 AccuNest runs, {n_slots} placed slots: every decoded outline lies on its plotted loop (worst {worst_all:.3f} in = curve sag; cuffs 0.002); 8 orientation codes + a 10.0 deg tilt; the same slots with a changed rule miss it: {broken}  {'; '.join(bad[:3])}")
+if bad: fails.append('laid-marker orientation: ' + '; '.join(bad[:5]))
+
+# the home box is the bounding box of the placed (tilted) shape: 19 tilted slots of ZZN-B4 (tilt +-1.5, +-3 deg) - the sign and the order (tilt after the mirror) are settled here where no plot exists
+bad = []
+resb = am.place_marker(zsa); mb = next((x for x in resb['markers'] if x['marker']['name'] == 'ZZN-B4'), None)
+if mb is None: bad.append('ZZN-B4 missing')
+else:
+    tl = [(s, o) for s, n_, sz_, o, note_ in mb['placed'] if o and s['tilt_deg']]
+    worst = max((max(abs(s['home_x'] * 2 - (max(p[0] for p in o) - min(p[0] for p in o))), abs(s['home_y'] * 2 - (max(p[1] for p in o) - min(p[1] for p in o)))) for s, o in tl), default=9)
+    own_b = {s['index']: am._slot_geometry(s, resb['pieces'], resb['piece_errors'], True, mb['marker'])[2] for s, o in tl}
+    wrong = 0
+    for s, o in tl:
+        pl = dict(s); pl['tilt_deg'] = -s['tilt_deg']; q = am.transform(own_b[s['index']], pl, mb['marker']['frames'].get(s['piece'], 0))
+        if max(abs(s['home_x'] * 2 - (max(p[0] for p in q) - min(p[0] for p in q))), abs(s['home_y'] * 2 - (max(p[1] for p in q) - min(p[1] for p in q)))) > 0.03: wrong += 1
+    vals = sorted({round(s['tilt_deg'], 2) for s, o in tl})
+    if len(tl) != 19 or worst > 0.03 or vals != [-3.0, 1.5, 3.0]: bad.append(f'{len(tl)} tilted slots, worst home-box residual {worst:.3f}, tilts {vals}')
+    if wrong < 8: bad.append(f'inverting the tilt sign breaks only {wrong} of the tilted slots')
+print(f"   {'ok ' if not bad else 'FAIL'} ZZN-B4: {0 if mb is None else len(tl)} tilted slots ({vals if mb else ''} deg): home box = bounding box of the tilted shape (worst {worst:.3f} in); the wrong tilt sign misses it on {wrong} slots  {'; '.join(bad[:3])}")
+if bad: fails.append('ZZN-B4 tilts: ' + '; '.join(bad[:5]))
+
+# the home box is the piece's box AND its block buffer, the buffer turned with the piece (independent of the plot: it needs only the marker and its own buffer entries): the sleeve's Left 2.0 + Right 0.5 cm
+# add 0.984 in along x at 0 / 180 degrees and along y at 90 / 270; a collar tilted 10 degrees adds 2 x 0.1968 x (cos 10 + sin 10) on both; a piece with equal sides adds the same either way
+bad = []; n_par = {'SL x/y': 0, 'others': 0, 'tilted': 0}
+for nm_, dxf_ in EXPS:
+    res_ = am.place_marker(os.path.join(RDIR, nm_ + '.GT_mark')); m_ = res_['markers'][0]
+    for s_, n2_, sz_, o_, note_ in m_['placed']:
+        b_ = am._buffer_sides(m_['marker'], n2_); xs_ = [p[0] for p in o_]; ys_ = [p[1] for p in o_]
+        dx_ = s_['home_x'] * 2 - (max(xs_) - min(xs_)); dy_ = s_['home_y'] * 2 - (max(ys_) - min(ys_))
+        if s_['tilt_deg']:
+            t_ = math.radians(abs(s_['tilt_deg'])); ex_ = ey_ = (b_[0] + b_[1]) * (math.cos(t_) + math.sin(t_)); n_par['tilted'] += 1
+        else:
+            ex_, ey_ = (b_[0] + b_[1], b_[2] + b_[3]) if s_['placed_rot'] in (0, 180) else (b_[2] + b_[3], b_[0] + b_[1]); n_par['SL x/y' if n2_.endswith('SL') else 'others'] += 1
+        if abs(dx_ - ex_) > 0.01 or abs(dy_ - ey_) > 0.01: bad.append(f"{nm_} slot {s_['index']} {n2_[-5:]} rot {s_['placed_rot']}: box excess {dx_:.3f} x {dy_:.3f}, buffer says {ex_:.3f} x {ey_:.3f}")
+    oc_ = next((r_ for r_ in m_['checks'] if r_[0].startswith('placed shapes fill')), None)
+    if oc_ is None or not oc_[1]: bad.append(f'{nm_}: place_marker check {oc_}')
+print(f"   {'ok ' if not bad else 'FAIL'} home box = placed box + the piece's own buffer turned with it: {n_par['SL x/y']} sleeve slots (L 2.0 / R 0.5 cm on x at 0/180, on y at 90/270), {n_par['others']} others, {n_par['tilted']} tilted collars  {'; '.join(bad[:3])}")
+if bad: fails.append('buffer turns with the piece: ' + '; '.join(bad[:5]))
+
+# a laid marker read as a job (--as-job): the shapes are in the piece frame, so the stored box is the home box turned back - the four collars of TEST-2 no longer look 90 degrees off
+bad = []
+ztest2 = os.path.join(HERE, 'markers', 'misc-test-markers', 'LADIES-BLOUSE TEST-2.zip')
+if os.path.isfile(ztest2):
+    sj2 = ns.build_nest_spec(ztest2, units='in', as_job=True)[0]
+    row2 = next(r for r in sj2['checks'] if r['name'].startswith('outline fits'))
+    col_ = [sh for sh in sj2['shapes'] if sh['piece'].endswith('COL')]
+    if not row2['ok'] or not row2['detail'].startswith('20 of 20 exactly equal'): bad.append(f"stored-box check: {row2['ok']} {row2['detail']}")
+    if len(col_) != 4 or any(abs(sh['padding'][0]) > 2e-3 or abs(sh['padding'][1]) > 2e-3 for sh in col_): bad.append('a collar shape still has padding against its stored box')
+    inv2 = am.place_marker(ztest2, as_unlaid=True)['markers'][0]['inventory']['slots']
+    c2 = next(x for x in inv2 if x['piece'].endswith('COL'))
+    if not (c2['home_box_in'][0] > c2['home_box_in'][1] and c2['home_box_piece_in'][0] < c2['home_box_piece_in'][1]): bad.append(f"collar home box {c2['home_box_in']} / in the piece frame {c2['home_box_piece_in']}")
+    # the runtime check every place_marker result carries: each placed shape fills its stored home box - and it notices a wrong reading of one slot
+    rt2 = am.place_marker(ztest2); mt2 = rt2['markers'][0]
+    oc0 = next(r_ for r_ in mt2['checks'] if r_[0].startswith('placed shapes fill'))
+    pl_bad = []
+    for i_, (s_, n3_, sz3_, o3_, note3_) in enumerate(mt2['placed']):
+        if i_ == 5 and o3_: s2_ = dict(s_, placed_rot=90); pl_bad.append((s2_, n3_, sz3_, am.transform(am._slot_geometry(s_, rt2['pieces'], rt2['piece_errors'], True, mt2['marker'])[2], s2_, mt2['marker']['frames'].get(n3_, 0)), note3_))
+        else: pl_bad.append((s_, n3_, sz3_, o3_, note3_))
+    oc1 = am.orientation_check(mt2['marker'], pl_bad)
+    if not oc0[1] or oc1 is None or oc1[1]: bad.append(f'orientation_check: {oc0[1]} on the real marker, {oc1} with one slot turned 90 degrees')
+print(f"   {'ok ' if not bad else 'FAIL'} LADIES-BLOUSE TEST-2 as a job: stored box == outline box on 20 of 20 shapes (the 4 collars were flagged before v4.13); a collar's home box is 16.5 x 3.5 in as placed, 3.5 x 16.5 in in its piece frame  {'; '.join(bad[:3])}")
+if bad: fails.append('as-job stored box: ' + '; '.join(bad[:5]))
+
+# no laid marker of the corpus has two placed pieces on top of each other (bar the hand-placed slot 6 of three experiment copies); the pre-4.13 rule has 1700
+bad = []; ov_new = ov_old = 0; ov_by = {}
+try:
+    from shapely.geometry import Polygon as _PG2
+    from shapely.strtree import STRtree as _ST2
+    _shp = True
+except ImportError:
+    _shp = False
+if _shp:
+    def _n_ov(polys, thr=0.02):
+        ps = [_PG2(p).buffer(0) for p in polys]; tr_ = _ST2(ps); n_ = 0
+        for a_ in range(len(ps)):
+            for b_ in tr_.query(ps[a_]):
+                if b_ > a_ and ps[a_].intersection(ps[b_]).area > thr: n_ += 1
+        return n_
+    for zp_ in (zsa, os.path.join(HERE, 'markers', '2303-BD137-PLACED', '2303-BD 137 PLACED.zip'), os.path.join(HERE, 'markers', 'misc-test-markers', 'AD1234 TEST 134.zip'), os.path.join(HERE, 'markers', 'misc-test-markers', 'LADIES-BLOUSE TEST-2.zip')):
+        if not os.path.isfile(zp_): continue
+        rr_ = am.place_marker(zp_)
+        for m_ in rr_['markers']:
+            pl_ = [(s, o) for s, n_, sz_, o, note_ in m_['placed'] if o]
+            if len(pl_) < 2: continue
+            n_new = _n_ov([o for s, o in pl_])
+            n_old = _n_ov([am.transform(am._slot_geometry(s, rr_['pieces'], rr_['piece_errors'], True, m_['marker'])[2], dict(s, **_old_rule(s)), 0) for s, o in pl_])
+            ov_new += n_new; ov_old += n_old
+            if n_new: ov_by[(os.path.basename(zp_)[:12], m_['marker']['name'])] = n_new
+    if ov_by != {('ZZ-SCRATCH-A', 'ZZ-AM-1'): 6, ('ZZ-SCRATCH-A', 'ZZN-D1'): 6, ('ZZ-SCRATCH-A', 'LADIES-BLOUSE TEST-2'): 3}: bad.append(f'overlapping pairs by marker: {ov_by}')
+    if ov_old < 1000: bad.append(f'the pre-4.13 rule has only {ov_old} overlapping pairs: the test no longer discriminates')
+print(f"   {'ok ' if not bad else 'FAIL'} overlapping placed pieces over the laid markers of the corpus: {ov_new} with the L rule (all in the 3 experiment copies with a hand-placed slot 6: {ov_by}), {ov_old} with the pre-4.13 rule  {'; '.join(bad[:3])}" if _shp else '   skip corpus overlaps (needs shapely)')
+if bad: fails.append('corpus overlaps: ' + '; '.join(bad[:5]))
+
+# a marker straight from an AccuMark storage area (<area>\mark\<state>\NAME.GT_mark) reads like the export of the same marker; a half-laid one (NeedsApproval) reads as partial
+bad = []
+disk_m = am.parse_marker(am.read_storage_marker(os.path.join(RDIR, 'ZZC-M1.GT_mark')))
+exp_m = am.parse_marker(next(o for o in am.list_zip(zsa)['marker'] if o['name'] == 'ZZC-M1')['data']) if os.path.isfile(zsa) else None
+if exp_m is not None:
+    strip_ = lambda s_: {k: v for k, v in s_.items() if k != 'slot'}
+    if [strip_(s) for s in disk_m['slots']] != [strip_(s) for s in exp_m['slots']] or [r['text'] for r in disk_m['records']] != [r['text'] for r in exp_m['records']] or disk_m['tables'] != exp_m['tables']: bad.append('storage file and export of ZZC-M1 read differently')
+    if disk_m['laid_state'] != 'unlaid' or len(disk_m['slots']) != 18: bad.append(f"ZZC-M1 storage file: {disk_m['laid_state']}, {len(disk_m['slots'])} slots")
+pb = am.place_marker(os.path.join(RDIR, 'ZZROT-B.GT_mark'))['markers'][0]
+if pb['marker']['laid_state'] != 'partial' or len(pb['placed']) != 17 or len(pb['unplaced']) != 1: bad.append(f"ZZROT-B (NeedsApproval): {pb['marker']['laid_state']}, {len(pb['placed'])} placed, {len(pb['unplaced'])} unplaced")
+b_ = bytearray(am.read_storage_marker(os.path.join(RDIR, 'ZZROT-T.GT_mark'))); mt_ = am.parse_marker(bytes(b_)); struct.pack_into('<f', b_, mt_['slots'][3]['slot'] + 38, float('nan'))
+w0_ = am.marker_warnings(mt_); w1_ = am.marker_warnings(am.parse_marker(bytes(b_)))
+if any('tilt word' in x_ for x_ in w0_) or len(w1_) != len(w0_) + 1 or not any('tilt word that is not an angle' in x_ for x_ in w1_): bad.append(f'a NaN tilt word: {w0_} -> {w1_}')
+try: am.read_storage_marker(os.path.join(RDIR, 'ZZROT-90.DXF')); bad.append('a DXF was read as a marker storage file')
+except am.AccuMarkError: pass
+print(f"   {'ok ' if not bad else 'FAIL'} marker storage files (.GT_mark): ZZC-M1 reads as its export does (slots, records, tables), ZZROT-B (NeedsApproval) reads as partial, 17 placed + 1 unplaced  {'; '.join(bad[:3])}")
+if bad: fails.append('storage files: ' + '; '.join(bad[:5]))
 
 print('-- marker byte map (v4.4, see accumark_marker.marker_coverage)')
 # Every byte owned by a section a parser reads must be classified (identified /

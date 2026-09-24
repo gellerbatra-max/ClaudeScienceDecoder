@@ -29,12 +29,17 @@ The area rule picked an arbitrary size whenever sister sizes tie on area (77 of
 Section 10 is read as the length-prefixed chain it is, and section 14's records
 are walked from section 13's index instead of by regex.
 
+v4.13 (same label): a LAID marker's placed orientation is read from the low three bits of each slot's word (a quarter turn, mirrored or not) and a tilt float at slot
+byte +38 - not from the pre-set bits 0x2000 / 0x0080 - and one piece's stream frame (the LADIES-BLOUSE collar) is a quarter turn off the frame those codes refer to
+(frame_offsets); transform() places a slot with all of it, orientation_check() proves every placed shape fills its stored home box, and read_storage_marker() /
+place_marker() read a marker straight from an AccuMark storage area (`.GT_mark`). See MARKER_FORMAT_SPEC.md sections 20 - 21.
+
     import accumark_marker as am
     objs = am.list_zip('2303-BD 137 PLACED.zip')          # every object, typed
     mk   = am.parse_marker(objs['marker'][0]['data'])       # header + placements
     laid = am.place_marker('2303-BD 137 PLACED.zip')        # outlines in the marker frame
 """
-import math, re, struct, zipfile
+import math, os, re, struct, zipfile
 from collections import Counter
 import accumark_pds as ap
 from accumark_errors import (AccuMarkError, NotAnAccuMarkZip, NestedArchive,
@@ -148,6 +153,31 @@ def list_zip(path):
     if obj_errors: out['object_errors'] = obj_errors
     return out
 
+STORAGE_HEADER = 0x90      # a `.GT_*` file in an AccuMark storage area: 0x90 bytes of its own header, then the payload an export object carries from 0x8a
+
+def read_storage_marker(path):
+    """v4.13: a marker read straight from an AccuMark storage area - `<area>\\mark\\Made\\NAME.GT_mark` (or UnMade / Partial / NeedsApproval) - as the export-shaped
+    object parse_marker takes. The payload is the same bytes an export ZIP carries (verified: slots, records, tables and stream outlines read identically for
+    markers exported and read from disk), so the export envelope is rebuilt around it: the header (magic, name, type, payload length) and a zeroed trailer with the
+    created / modified stamps and user names of the file's own header (stamps at 0x6a / 0x6e, names at 0x86). No embedded mext object, none is needed."""
+    disk = open(path, 'rb').read()
+    if len(disk) < STORAGE_HEADER + DIR_SLOTS*4: raise TruncatedObject('storage file too short to hold a marker directory', source=str(path), actual=len(disk))
+    name = os.path.splitext(os.path.basename(path))[0]
+    hdr = bytearray(DIR_OFF)
+    hdr[:17] = MAGIC + b'1'; nm = name.encode('latin1')[:63]; hdr[0x15:0x15+len(nm)] = nm
+    struct.pack_into('<I', hdr, 0x60, 9); struct.pack_into('<H', hdr, 0x7a, 9); struct.pack_into('<I', hdr, 0x7e, len(disk) - STORAGE_HEADER)
+    tr = bytearray(TRAILER)
+    struct.pack_into('<II', tr, TRAILER_CREATED, u32(disk, 0x6a), u32(disk, 0x6e))
+    user = disk[0x86:0x86+31].split(b'\0')[0]; tr[0x110:0x110+len(user)] = user; tr[0x162:0x162+len(user)] = user
+    d = bytes(hdr) + disk[STORAGE_HEADER:] + bytes(tr)
+    if not (dirs := directory(d)) or dirs[1] in (0, 0xffffffff) or dirs[1] >= len(d): raise NotAnAccuMarkObject('%s is not a marker storage file (no section 1)' % path)
+    return d
+
+def list_storage_file(path):
+    """list_zip for a marker storage file: {'marker': [object]} (see read_storage_marker)."""
+    o = read_object(read_storage_marker(path)); o['member'] = os.path.basename(path)
+    return {'marker': [o]}
+
 # --------------------------------------------------------------- marker
 DIR_OFF, DIR_SLOTS = 0x8a, 42
 # v4.1: directory words 0..39 are section offsets; the last two are not.
@@ -160,6 +190,12 @@ SLOT_HEAD = 6       # a slot's (record index, piece index, bundle) u16s sit 6 by
 SEC_SCALARS, SEC_PIECES, SEC_MODELS, SEC_SIZES, SEC_INDEX, SEC_RECORDS, SEC_ORDER_COPY, SEC_SLOTS, SEC_GEOMETRY = 1, 10, 11, 12, 13, 14, 15, 21, 30
 SEC_BUFFERS = 6
 ROT180_BIT, MIRROR_BIT = 0x2000, 0x0080
+PLACED_BIT = 0x0200
+# v4.13: the LOW THREE BITS of a slot's orientation word are the PLACED orientation - (degrees counter-clockwise, mirrored top-to-bottom BEFORE the turn) - and a
+# signed float32 at slot byte +38 is a further tilt in radians (counter-clockwise). 0x2000 / 0x0080 are the PRE-SET pattern of the unlaid marker and stay as they were
+# when a nester lays the piece another way. Measured on AccuNest runs against their plotted DXFs (Rotation override 0/180/90/45, Flip enabled, tilt limits 10 deg):
+# 0/4/3/7 are the old rot0 / rot180 / rot180+flip / flip; 2, 6, 1, 5 are the quarter turns.
+ORIENT_L = {0: (0, False), 4: (180, False), 3: (180, True), 7: (0, True), 2: (90, False), 6: (270, False), 1: (90, True), 5: (270, True)}
 
 def directory(d):
     """42 u32 ABSOLUTE file offsets at 0x8a; 0xffffffff = section absent [V]."""
@@ -182,10 +218,11 @@ def _section(d, dirs, k):
     return a, (min(later) if later else len(d))
 
 def decode_orient(code):
-    """Orientation word -> dict(rot, flip_h, flip_v). Bit 0x2000 = rotate 180,
+    """Orientation word -> dict(rot, flip_h, flip_v): the PRE-SET pattern. Bit 0x2000 = rotate 180,
     bit 0x0080 = mirror; both together = flip about the vertical axis
     (dxfparser, verified on four DXF-drawn orientations; other bits are
-    vintage base data)."""
+    vintage base data). What a PLACED slot really is comes from its low three
+    bits (ORIENT_L) and its tilt float - see parse_slots (placed_rot, placed_flip, tilt_deg)."""
     r180 = bool(code & ROT180_BIT); mirror = bool(code & MIRROR_BIT)
     if r180 and mirror: return dict(rot=0, flip_h=True, flip_v=False)
     if mirror:          return dict(rot=0, flip_h=False, flip_v=True)
@@ -506,8 +543,13 @@ def parse_slots(d, lo, hi):
         px, py, hx, hy = struct.unpack_from('<dddd', d, s)
         h = s - SLOT_HEAD
         head = (u16(d, h), u16(d, h+2), u16(d, h+4)) if h >= 0 else (None, None, None)
+        tilt = struct.unpack_from('<f', d, s+38)[0]
+        tilt_ok = math.isfinite(tilt) and abs(tilt) <= 2 * math.pi
+        pr, pf = ORIENT_L[u16(d, s+32) & 7]
         out.append(dict(slot=s, index=i, x=px, y=py, home_x=hx, home_y=hy,
                         orient_code=u16(d, s+32), area=f64(d, s+42),
+                        orient_L=u16(d, s+32) & 7, placed_rot=pr, placed_flip=pf,
+                        tilt_deg=(math.degrees(tilt) + 0.0) if tilt_ok else None,
                         bundle=u32(d, s+64) & 0xffff, bundle_flags=u32(d, s+64) >> 16,
                         record_index=head[0], piece_index=head[1], bundle_head=head[2],
                         sig88=u16(d, s+88),
@@ -745,6 +787,8 @@ def marker_warnings(mk):
     sm = mk.get('sig88_model')
     if sm and sm['applicable'] and not sm['ok']:
         w.append('slot @88 is not (record head count + one constant per piece) for: ' + ', '.join(p for p, c in sm['constant'].items() if c is None))
+    n_tilt = [s['index'] for s in mk['slots'] if not s['empty'] and s['tilt_deg'] is None]
+    if n_tilt: w.append('%d placed slots carry a tilt word that is not an angle in radians (first: slot %d): their orientation is read without it' % (len(n_tilt), n_tilt[0]))
     return w
 
 # --- section 14 stream grammar (v4.7, see MARKER_FORMAT_SPEC.md section 8) --------------------
@@ -1448,20 +1492,50 @@ def parse_model(d):
     return dict(name=obj['name'], object=obj, pieces=pieces)
 
 # ------------------------------------------------------------ placement
-def transform(outline, pl):
-    """Piece outline (inches, its own frame) -> marker frame for one slot:
-    mirror/rotate about the outline's own bbox centre, translate to the
-    placed centre [V dxfparser, 4 DXF-drawn July markers here]."""
+def _turn(pts, deg):
+    deg = deg % 360
+    if not deg: return pts
+    if deg == 90: return [(-y, x) for x, y in pts]
+    if deg == 180: return [(-x, -y) for x, y in pts]
+    if deg == 270: return [(y, -x) for x, y in pts]
+    c, s = math.cos(math.radians(deg)), math.sin(math.radians(deg))
+    return [(c*x - s*y, s*x + c*y) for x, y in pts]
+
+def _orient(outline, pl, frame=0):
+    """The placed shape of a piece outline, centred on its own bounding box: quarter turn `frame` (the piece's stream frame -> the frame the orientation code is in),
+    mirror top-to-bottom if `placed_flip`, turn by `placed_rot`, then the slot's tilt."""
     xs = [p[0] for p in outline]; ys = [p[1] for p in outline]
     cx, cy = (min(xs)+max(xs))/2, (min(ys)+max(ys))/2
-    out = []
-    for x, y in outline:
-        dx, dy = x-cx, y-cy
-        if pl['rot'] == 180: dx, dy = -dx, -dy
-        if pl['flip_v']: dy = -dy
-        if pl['flip_h']: dx = -dx
-        out.append((pl['x']+dx, pl['y']+dy))
-    return out
+    pts = _turn([(x-cx, y-cy) for x, y in outline], frame)
+    if pl['placed_flip']: pts = [(x, -y) for x, y in pts]
+    return _turn(_turn(pts, pl['placed_rot']), pl.get('tilt_deg') or 0.0)
+
+def transform(outline, pl, frame=0):
+    """Piece outline (inches, its own frame) -> marker frame for one PLACED slot (v4.13): the slot's orientation (low three bits of its word: a quarter turn,
+    mirrored or not; plus its tilt) applied to the outline, the bounding box of the result centred on the slot's position - the home box is that bounding box.
+    `frame` = the quarter turn of the piece's stream frame against the frame the orientation code refers to (see frame_offsets; 0 for every piece but the
+    collar of the LADIES-BLOUSE set). Identical to the pre-v4.13 rule (rot180 / flips about the box centre) for the four orientations older markers use.
+    [V] against 6 AccuNest runs plotted to DXF (36 + 18 + 18 slots) and the home boxes of 20 tilted slots."""
+    pts = _orient(outline, pl, frame)
+    xs = [p[0] for p in pts]; ys = [p[1] for p in pts]
+    mx, my = (min(xs)+max(xs))/2, (min(ys)+max(ys))/2
+    return [(pl['x'] + x - mx, pl['y'] + y - my) for x, y in pts]
+
+def frame_offsets(items):
+    """{piece name: 0 | 90}: does a piece's stream outline sit a quarter turn away from the frame its slots' orientation codes refer to? Decided from the marker's
+    own home boxes (a slot's home box is the bounding box of its placed shape): the quarter turn that predicts the boxes better wins, only when it wins clearly
+    (0.25 in per slot on average) - a square-ish piece stays 0. `items` = [(slot, piece name, outline in its own frame or None)] for PLACED slots.
+    The collar of the LADIES-BLOUSE set (stream outline 3.48 x 16.47 in, placed 16.47 x 3.48 at every orientation code) is the one piece seen so far that needs 90
+    (+90 = counter-clockwise, measured; the collar is nearly symmetric under 180 degrees, so 90 and 270 cannot be told apart on it)."""
+    err = {}
+    for s, name, outline in items:
+        if not outline or not name: continue
+        for k in (0, 90):
+            pts = _orient(outline, s, k)
+            xs = [p[0] for p in pts]; ys = [p[1] for p in pts]
+            e = err.setdefault(name, {0: [0.0, 0], 90: [0.0, 0]})[k]
+            e[0] += abs(s['home_x']*2 - (max(xs)-min(xs))) + abs(s['home_y']*2 - (max(ys)-min(ys))); e[1] += 1
+    return {n: (90 if e[90][0] < e[0][0] - 0.25 * e[0][1] else 0) for n, e in err.items()}
 
 def _chain_lengths(pts):
     acc = [0.0]
@@ -1629,6 +1703,12 @@ def _buffer_sides(mk, piece_name):
 def _shoelace(p):
     return abs(sum(p[i][0]*p[(i+1) % len(p)][1] - p[(i+1) % len(p)][0]*p[i][1] for i in range(len(p)))) / 2
 
+def _piece_frame_box(s, frame):
+    """A PLACED slot's home box back in the piece's own frame: the two sides swap when the quarter turns (frame + placed_rot) are odd; None for a tilted slot (v4.13)."""
+    if s.get('tilt_deg'): return None
+    w, h = s['home_x']*2, s['home_y']*2
+    return (h, w) if (frame + s['placed_rot']) % 180 else (w, h)
+
 def unplaced_inventory(mk, pieces=None, piece_errors=None, use_grading=True, geometry=None):
     """v4.2: the CUT ORDER an unplaced (or part-placed) marker states - what
     is still to be laid, on what width, with nothing about where. Everything
@@ -1644,7 +1724,8 @@ def unplaced_inventory(mk, pieces=None, piece_errors=None, use_grading=True, geo
       slots       one per UNPLACED slot: ordinal, bundle, model, size, piece,
                   category, cut, copies, pair {group, part 'A'|'B'} (a `CUT X02`
                   piece is a mirrored pair), declared_area, perimeter,
-                  home_box_in (w, h: home x 2, as stored [V]), bbox_in (that minus the piece's
+                  home_box_in (w, h: home x 2, as stored [V]), home_box_piece_in (v4.13: the same in the
+                  piece's own frame - differs for a slot that was PLACED at a quarter turn; None when tilted), bbox_in (that minus the piece's
                   block buffer - an ESTIMATE [?]: the July CP 150 boxes fit it, but the
                   home box does not follow the buffer table on ZZC-M1 vs ZZC-BIG),
                   preset {rot180, mirror, pair_bit, other} - a PRE-SET lay
@@ -1669,6 +1750,9 @@ def unplaced_inventory(mk, pieces=None, piece_errors=None, use_grading=True, geo
         for part, s in zip('ABCDEFGH', ordered): pair_of[s['index']] = dict(group=g, part=part)
     piece_row = {p['name']: p for p in mk['pieces']}
     slots = []; n_geo = 0
+    # v4.13: a slot of a LAID marker read as a job (place_marker(as_unlaid=True)) still holds its placed centre and orientation; its home box is the box of the piece AS PLACED
+    was_placed = lambda s: not ((abs(s['x']) < 1e-9 and abs(s['y']) < 1e-9) or s['x'] < -900)
+    frames = frame_offsets([(s, pname, outline) for s, pname, size, outline, note in geometry if outline and was_placed(s)])
     for s, pname, size, outline, note in geometry:
         rec = s.get('record') or {}
         b = _buffer_sides(mk, pname)        # (b0, b1, b2, b3): x pair, then y pair [?]
@@ -1677,6 +1761,7 @@ def unplaced_inventory(mk, pieces=None, piece_errors=None, use_grading=True, geo
                      cut=rec.get('cut'), copies=len(groups[(s['bundle'], s['record_index'])]),
                      pair=pair_of.get(s['index']), declared_area=s['area'], perimeter=rec.get('perimeter'),
                      home_box_in=(s['home_x']*2, s['home_y']*2),
+                     home_box_piece_in=_piece_frame_box(s, frames.get(pname, 0)) if was_placed(s) else (s['home_x']*2, s['home_y']*2),
                      bbox_in=(s['home_x']*2 - (b[0] + b[1]), s['home_y']*2 - (b[2] + b[3])),
                      preset=dict(rot180=bool(s['orient_code'] & ROT180_BIT), mirror=bool(s['orient_code'] & MIRROR_BIT),
                                  pair_bit=bool(s['orient_code'] & 0x0040),
@@ -1693,10 +1778,13 @@ def unplaced_inventory(mk, pieces=None, piece_errors=None, use_grading=True, geo
             entry['drills'] = [l['points'][0] for l in ro_['lines'] if l['kind'] == 'drill']
             entry['sew_outline'] = ro_.get('sew')      # a fold piece with seam allowance: the STITCH line (the outline above is the cut line)
         if outline:
-            xs = [p[0] for p in outline]; ys = [p[1] for p in outline]
+            xs = [p[0] for p in outline]; ys = [p[1] for p in outline]; bx, by = b[0] + b[1], b[2] + b[3]
+            if was_placed(s):      # the box of the placed shape, its buffer turned with it [V: the sleeve's Left 2.0 / Right 0.5 cm land on x at 0 / 180 degrees, on y at 90 / 270]
+                pts = _orient(outline, s, frames.get(pname, 0)); xs = [p[0] for p in pts]; ys = [p[1] for p in pts]
+                if s['placed_rot'] in (90, 270): bx, by = by, bx
             entry.update(outline=outline, checks=dict(
-                bbox_dx=s['home_x']*2 - (max(xs)-min(xs)) - (b[0] + b[1]),
-                bbox_dy=s['home_y']*2 - (max(ys)-min(ys)) - (b[2] + b[3]),
+                bbox_dx=s['home_x']*2 - (max(xs)-min(xs)) - bx,
+                bbox_dy=s['home_y']*2 - (max(ys)-min(ys)) - by,
                 area_ratio=_shoelace(outline) / s['area'] if s['area'] else None))
             n_geo += 1
         slots.append(entry)
@@ -1743,25 +1831,20 @@ def place_marker(path, use_grading=True, as_unlaid=False):
 
     v4.11 `as_unlaid`: treat every slot of a LAID marker as still to be laid - its positions are ignored, `unplaced` / `inventory` then describe the whole job
     (used to benchmark a nesting engine against the lay AccuMark itself made of the same job; `check_marker` is taken before the change)."""
-    objs = list_zip(path)
+    objs = list_zip(path) if zipfile.is_zipfile(path) else list_storage_file(path)      # v4.13: or a marker storage file (.GT_mark)
     if 'marker' not in objs: raise NoSuchObject('no marker object in zip', source=str(path))
     pieces, piece_errors = load_pieces(objs)
     vocab = {n: [s['name'] for s in p['block']['meta']['sizes']] for n, p in pieces.items() if p}
     out = []
     for mo in objs['marker']:
         mk = parse_marker(mo['data'], vocab)
-        placed = []
-        for s in mk['placements']:
-            piece = pieces.get(s['piece']) if s['piece'] else None
-            if piece is None:
-                if s['piece'] in piece_errors:
-                    note = 'piece failed to decode: %s' % piece_errors[s['piece']]
-                else:
-                    note = 'piece not in ZIP' if s['piece'] else 'unbound slot'
-                placed.append((s, s['piece'], s['size'], None, note)); continue
-            outline, note = piece_outline(piece, s['size'] if use_grading else None)
-            placed.append((s, s['piece'], s['size'], transform(outline, s), note))
+        raw = [(s,) + _slot_geometry(s, pieces, piece_errors, use_grading, mk) for s in mk['placements']]     # v4.13: a marker-only ZIP places its slots by the stream outlines too
+        frames = frame_offsets([(s, name, outline) for s, name, size, outline, note in raw])
+        mk['frames'] = frames
+        placed = [(s, name, size, None if outline is None else transform(outline, s, frames.get(name, 0)), note) for s, name, size, outline, note in raw]
         checks = check_marker(mk)
+        oc = orientation_check(mk, placed)
+        if oc: checks.append(oc)
         if as_unlaid:
             for s in mk['slots']: s['empty'] = True
         unplaced = unplaced_slots(mk, pieces, piece_errors, use_grading)
@@ -1770,6 +1853,25 @@ def place_marker(path, use_grading=True, as_unlaid=False):
     have = sum(1 for p in pieces.values() if p)
     geo = 'none' if not have else ('all' if all(s.get('piece') in pieces and pieces[s['piece']] for m in out for s in m['marker']['slots']) else 'some')
     return dict(markers=out, pieces=pieces, piece_errors=piece_errors, objects=objs, geometry_available=geo)
+
+def orientation_check(mk, placed, tol=0.08):
+    """v4.13: does every PLACED shape, turned as its slot says (quarter turn, mirror, tilt, frame), fill the home box the slot stores? The home box is the shape's bounding box
+    plus its block buffer turned with it [V: 72 slots of 4 AccuNest runs; the sleeve's Left 2.0 / Right 0.5 cm land on x at 0 / 180 degrees and on y at 90 / 270]. A wrong
+    orientation reading of a slot - a code this reader has not seen the meaning of, a frame it does not know - shows here as a shape whose box misses the stored one by more than
+    `tol` in (0.08 = the curve band of the corpus). -> (name, ok, detail) like check_marker's rows, or None when no placed slot has an outline."""
+    rows = []
+    for s, name, size, outline, note in placed:
+        if not outline: continue
+        b = _buffer_sides(mk, name); bx, by = b[0] + b[1], b[2] + b[3]
+        xs = [p[0] for p in outline]; ys = [p[1] for p in outline]
+        t = math.radians(abs(s.get('tilt_deg') or 0.0))
+        if s['placed_rot'] in (90, 270): bx, by = by, bx
+        ex, ey = bx * math.cos(t) + by * math.sin(t), by * math.cos(t) + bx * math.sin(t)
+        rows.append((s['index'], max(abs(s['home_x']*2 - (max(xs)-min(xs)) - ex), abs(s['home_y']*2 - (max(ys)-min(ys)) - ey))))
+    if not rows: return None
+    off = [i for i, r in rows if r > tol]
+    return ('placed shapes fill their stored home boxes (orientation, tilt, buffer turned with the piece)', not off,
+            f'{len(rows) - len(off)} of {len(rows)} slots within {tol} in, worst {max(r for i, r in rows):.3f} in' + (f'; off: slots {off[:6]}' if off else ''))
 
 def bbox_check(place_result, buffer_in=0.0, which='placed'):
     """No-DXF geometry test: the slot's home centre is the bbox centre of
@@ -1783,8 +1885,7 @@ def bbox_check(place_result, buffer_in=0.0, which='placed'):
     for mkr in place_result['markers']:
         for s, name, size, outline, note in mkr[which]:
             if outline is None: continue
-            base, _ = piece_outline(place_result['pieces'][name], size)
-            xs = [p[0] for p in base]; ys = [p[1] for p in base]
+            xs = [p[0] for p in outline]; ys = [p[1] for p in outline]
             w, h = max(xs)-min(xs), max(ys)-min(ys)
             if which == 'unplaced':
                 b = _buffer_sides(mkr['marker'], name)
@@ -1862,8 +1963,8 @@ if __name__ == '__main__':
             for name, ok, detail in mkr['checks']:
                 print(f"   {'ok ' if ok else 'BAD'} {name}: {detail}")
             for s, name, size, outline, note in mkr['placed'][:8]:
-                o = 'rot180' if s['rot'] == 180 else ('flipH' if s['flip_h'] else ('flipV' if s['flip_v'] else 'rot0'))
-                print(f"   ({s['x']:8.3f},{s['y']:8.3f}) {o:6} bundle {s['bundle']:3}  {name} [{size}] {note}")
+                o = f"rot{s['placed_rot']}" + ('+flip' if s['placed_flip'] else '') + (f" tilt {s['tilt_deg']:+.1f}" if s.get('tilt_deg') else '')
+                print(f"   ({s['x']:8.3f},{s['y']:8.3f}) {o:14} bundle {s['bundle']:3}  {name} [{size}] {note}")
             if not mk['placements']:    # unlaid: nothing placed, so show what the marker does list
                 for r in mk['records'][:8]:
                     print(f"   {r['piece']} [{r['size']}] {r['cut']!r}  area {r['area']:.4f}  perimeter {r['perimeter']:.4f}")

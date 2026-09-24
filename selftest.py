@@ -2599,6 +2599,46 @@ if bind_ != {'BK': 'free', 'COL': 'free', 'CUFF': 'kept', 'FR': 'free', 'SL': 'k
 print(f"   {'ok ' if not bad else 'FAIL'} the marker keeps min(cw, ccw) of the tilt limits (cm and degrees, zero side = 0) on 10 rows of 2 tables; rows with S keep a slot's chirality on {kept_[(True, 'kept')]} of {kept_[(True, 'n')]} asymmetric placed slots, rows without S on {kept_[(False, 'kept')]} of {kept_[(False, 'n')]}; the nest spec names the binding per shape  {'; '.join(bad[:3])}")
 if bad: fails.append('tilt / S: ' + '; '.join(bad[:5]))
 
+print('-- a 45-degree placement (v4.22, MARKER_FORMAT_SPEC.md section 28): a tilt of exactly 45 degrees on top of the code; the frame a thin tilted piece hides')
+# deg45/: every row `MW` with the 45-degree flip codes, nested by AccuNest, plotted to DXF. The slot keeps the mirror and quarter turn in its low three bits and the 45 as the tilt float.
+D45 = os.path.join(HERE, 'deg45'); g45 = _json.load(open(os.path.join(D45, 'GROUND_TRUTH.json'))); bad = []
+mu_ = am.parse_marker(am.read_storage_marker(os.path.join(D45, 'ZZR-45.GT_mark')))
+if {p_['name']: p_['flip_code'] for p_ in mu_['pieces']} != g45['piece_rows'] or any(s_['tilt_deg'] for s_ in mu_['slots']) or mu_['laid_state'] != 'unlaid': bad.append('the unmade marker: flip codes in the piece rows, no tilt in the slots')
+res45 = am.place_marker(os.path.join(D45, 'ZZR-45-MADE.GT_mark')); m45 = res45['markers'][0]; mk45 = m45['marker']
+if mk45['nested_by'] != 'accunest' or len(mk45['slots']) != 18 or mk45['laid_state'] != 'laid': bad.append(f"made marker: {mk45['nested_by']}, {len(mk45['slots'])} slots")
+tl_ = __import__('collections').defaultdict(set)
+for s_ in mk45['slots']: tl_[s_['piece']].add(round(abs(s_['tilt_deg'] or 0.0), 3))
+if any(tl_[p_] != {45.0} for p_ in tl_ if not p_.endswith('-SL')) or tl_['LADIES-BLOUSE-SL'] != {0.0}: bad.append(f'tilts {dict(tl_)}')
+# the plot: each decoded outline against the plotted loops near it (the back piece is drawn twice: cut and stitch line)
+loops45 = _vm.dxf_marker(os.path.join(D45, 'ZZR-45.DXF'))[0]; placed45 = {s_['index']: (s_, o_) for s_, n_, sz_, o_, note_ in m45['placed'] if o_}
+own45 = {s_['index']: am._slot_geometry(s_, res45['pieces'], res45['piece_errors'], True, mk45)[2] for s_, o_ in placed45.values()}
+def _near(o_):
+    c_ = _cen(o_); return [l_ for l_ in loops45 if math.hypot(c_[0] - _cen(l_)[0], c_[1] - _cen(l_)[1]) < 3]
+worst_ = {'fixed': 0.0, 'tilt ignored': 0.0, 'tilt inverted': 0.0}; nfit_ = nfit0_ = nbad_ = 0
+for i_, (s_, o_) in placed45.items():
+    cand_ = _near(o_); fr_ = 90 if s_['piece'].endswith('COL') else 0
+    if not cand_: bad.append(f'slot {i_}: no plotted loop'); continue
+    fixed_ = min(_vm.hausdorff(am.transform(own45[i_], s_, fr_), l_) for l_ in cand_); worst_['fixed'] = max(worst_['fixed'], fixed_); nfit_ += fixed_ < 0.2
+    if s_['piece'].endswith('COL'): nfit0_ += min(_vm.hausdorff(am.transform(own45[i_], s_, 0), l_) for l_ in cand_) < 0.2
+    if s_['tilt_deg']:
+        nbad_ += min(_vm.hausdorff(am.transform(own45[i_], dict(s_, tilt_deg=0.0), fr_), l_) for l_ in cand_) > 1.0
+        nbad_ += min(_vm.hausdorff(am.transform(own45[i_], dict(s_, tilt_deg=-s_['tilt_deg']), fr_), l_) for l_ in cand_) > 1.0
+if nfit_ != 18 or worst_['fixed'] > 0.2 or nfit0_ != 0 or nbad_ < 24: bad.append(f'plot fit: {nfit_} of 18 within 0.2 in (worst {worst_["fixed"]:.3f}), collar without its frame {nfit0_} fit, mutations {nbad_}')
+# what the stored boxes cannot say: BACK / COLLAR / CUFF are thin shapes tilted 45 - flagged; earlier markers (no 45 degree tilt) are not
+if mk45['frames_ambiguous'] != ['LADIES-BLOUSE-BK', 'LADIES-BLOUSE-COL', 'LADIES-BLOUSE-CUFF'] or not any('quarter-turn frame' in w_ for w_ in m45['inventory']['warnings']): bad.append(f"frames_ambiguous {mk45['frames_ambiguous']}")
+for f_ in ('rotation/ZZROT-T.GT_mark', 'rotation/ZZROT-90.GT_mark', 'twoply/ZZQ-A-MADE.GT_mark', 'flipcount/ZZR-S-MADE.GT_mark'):
+    if am.place_marker(os.path.join(HERE, f_))['markers'][0]['marker']['frames_ambiguous']: bad.append(f'{f_}: a frame was called ambiguous')
+# section 1 @472 / @476 = the sums of record prefix words 3 / 4 over the slots (fixture folders; the tubular ZZQ-T is the known exception)
+n_pf = 0
+for dn_ in ('twoply', 'flipcount', 'spread', 'rotation', 'notchnum', 'blockarea', 'deg45', 'tilt'):
+    for fp_ in sorted(glob.glob(os.path.join(HERE, dn_, '*.GT_mark'))):
+        if os.path.basename(fp_) == 'ZZQ-T.GT_mark': continue
+        d_ = am.read_storage_marker(fp_); mk_ = am.parse_marker(d_); a_ = mk_['sections'][1][0]
+        w3_, w4_ = struct.unpack_from('<H', d_, a_ + 168)[0], struct.unpack_from('<H', d_, a_ + 172)[0]; n_pf += 1
+        if w3_ != sum(s_['record']['prefix'][3] for s_ in mk_['slots']) or w4_ != sum(s_['record']['prefix'][4] for s_ in mk_['slots']): bad.append(f'{os.path.basename(fp_)}: @472 {w3_} / @476 {w4_}')
+print(f"   {'ok ' if not bad else 'FAIL'} 45 degrees = a tilt of exactly 45.0 on top of the code (14 slots + the collar, {nfit_} of 18 on the plot, worst {worst_['fixed']:.3f} in; tilt ignored / inverted misses); the thin tilted pieces' frame is flagged ambiguous, no earlier marker is; @472 / @476 = sums of record prefix words 3 / 4 on {n_pf} fixture markers  {'; '.join(bad[:3])}")
+if bad: fails.append('45 degrees: ' + '; '.join(bad[:5]))
+
 print('-- marker byte map (v4.4, see accumark_marker.marker_coverage)')
 # Every byte owned by a section a parser reads must be classified (identified /
 # raw / zero_pad / opaque) - only the envelope, the header scalars, sections 2-5,

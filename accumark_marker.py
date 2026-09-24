@@ -1700,6 +1700,24 @@ def frame_offsets(items):
             e[0] += abs(s['home_x']*2 - (max(xs)-min(xs))) + abs(s['home_y']*2 - (max(ys)-min(ys))); e[1] += 1
     return {n: (90 if e[90][0] < e[0][0] - 0.25 * e[0][1] else 0) for n, e in err.items()}
 
+def frame_ambiguous(items, tol=0.02):
+    """v4.22: the pieces whose quarter-turn frame (frame_offsets) the stored home boxes CANNOT decide: both frames predict the box of every placed slot within `tol` in, and the outline is not square-ish
+    (aspect over 1.3). A thin piece tilted by 45 degrees is the case: its bounding box is the same from either frame, so frame_offsets keeps 0 - right for a cuff, wrong for the LADIES-BLOUSE collar (+90) - and the
+    plotted shape can be a quarter turn away. -> sorted piece names; place_marker keeps them in mk['frames_ambiguous'] and a warning names them."""
+    err = {}; box = {}
+    for s, name, outline in items:
+        if not outline or not name: continue
+        xs0 = [p[0] for p in outline]; ys0 = [p[1] for p in outline]; box[name] = (max(xs0) - min(xs0), max(ys0) - min(ys0))
+        for k in (0, 90):
+            pts = _orient(outline, s, k); xs = [p[0] for p in pts]; ys = [p[1] for p in pts]
+            e = err.setdefault(name, {0: [0.0, 0], 90: [0.0, 0]})[k]
+            e[0] += abs(s['home_x']*2 - (max(xs)-min(xs))) + abs(s['home_y']*2 - (max(ys)-min(ys))); e[1] += 1
+    out = []
+    for n, e in err.items():
+        w, h = box[n]; asp = max(w, h) / min(w, h) if min(w, h) > 1e-9 else 99
+        if asp > 1.3 and abs(e[0][0] - e[90][0]) <= 2 * tol * e[0][1]: out.append(n)
+    return sorted(out)
+
 def _chain_lengths(pts):
     acc = [0.0]
     for i in range(1, len(pts)):
@@ -2005,6 +2023,7 @@ def place_marker(path, use_grading=True, as_unlaid=False):
         raw = [(s,) + _slot_geometry(s, pieces, piece_errors, use_grading, mk) for s in mk['placements']]     # v4.13: a marker-only ZIP places its slots by the stream outlines too
         frames = frame_offsets([(s, name, outline) for s, name, size, outline, note in raw])
         mk['frames'] = frames
+        mk['frames_ambiguous'] = frame_ambiguous([(s, name, outline) for s, name, size, outline, note in raw])
         placed = [(s, name, size, None if outline is None else transform(outline, s, frames.get(name, 0)), note) for s, name, size, outline, note in raw]
         checks = check_marker(mk)
         oc = orientation_check(mk, placed)
@@ -2012,8 +2031,9 @@ def place_marker(path, use_grading=True, as_unlaid=False):
         if as_unlaid:
             for s in mk['slots']: s['empty'] = True
         unplaced = unplaced_slots(mk, pieces, piece_errors, use_grading)
-        out.append(dict(marker=mk, placed=placed, unplaced=unplaced, checks=checks,
-                        inventory=unplaced_inventory(mk, pieces, piece_errors, use_grading, geometry=unplaced)))
+        inv_ = unplaced_inventory(mk, pieces, piece_errors, use_grading, geometry=unplaced)
+        if mk['frames_ambiguous']: inv_['warnings'] = list(inv_['warnings']) + ['the quarter-turn frame of %s cannot be told from the stored home boxes (every placed slot of the piece is a thin shape tilted by about 45 degrees): a placed outline may lie a quarter turn away from the plot' % ', '.join(mk['frames_ambiguous'])]
+        out.append(dict(marker=mk, placed=placed, unplaced=unplaced, checks=checks, inventory=inv_))
     have = sum(1 for p in pieces.values() if p)
     geo = 'none' if not have else ('all' if all(s.get('piece') in pieces and pieces[s['piece']] for m in out for s in m['marker']['slots']) else 'some')
     return dict(markers=out, pieces=pieces, piece_errors=piece_errors, objects=objs, geometry_available=geo)

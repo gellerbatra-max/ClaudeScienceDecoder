@@ -79,8 +79,9 @@ at none (`0xffff`) [V]. Where every piece has its own definition the table has
 `[0.3937 x4]`, `[0.7874, 0.1968, 0, 0]` inches - with BK -> 0, COL -> 1, CUFF ->
 none, FR -> 2, SL -> 3. (An earlier reading, "entry k is piece k's, entry 0 the
 marker default", was an over-fit to the small corpus and is retracted.) **An entry is the static
-amounts of the block-buffer rule the piece's Lay Limits row names [V, v4.12: 81 entries on 5 markers]**, and its four doubles are ordered **Left, Right, Top / Bottom** - the sleeve's rule 4
-(Left 2.00 cm, Top 0, Right 0.50 cm, Bottom 0 in the table, section 19) is `[0.7874, 0.1968, 0, 0]`. Top vs Bottom is not yet separated (no corpus rule has them unequal and non-zero).
+amounts of the block-buffer rule the piece's Lay Limits row names [V, v4.12: 81 entries on 5 markers]**, and its four doubles are ordered **Left, Right, Top, Bottom** - the sleeve's rule 4
+(Left 2.00 cm, Top 0, Right 0.50 cm, Bottom 0 in the table, section 19) is `[0.7874, 0.1968, 0, 0]`, and a live run with a rule of four different amounts (Left .11, Top .22, Right .33, Bottom .44 cm; lay limits
+`ZZLL-BB9` pointing FRONT at rule 9, a copy of ZZC-M1's order with block buffer `ZZBB-X1`, Process, then the four doubles read from the marker file) gave `[0.0433, 0.1299, 0.0866, 0.1732]`.
 
 **The home box does NOT follow this table.** The same five pieces in ZZC-M1 (buffers
 0.5 cm / 1 cm / none / unequal) and ZZC-BIG (1 cm everywhere) have byte-identical
@@ -295,7 +296,7 @@ stream that verifies against its record's area + perimeter is identified up to i
 
 | open | evidence so far | method |
 |---|---|---|
-| Top vs Bottom in the marker's buffer entry (Left, Right, Top / Bottom is proved); what the buffer is for in the home box | home box ignores it (ZZC-M1 vs ZZC-BIG) | live: unequal buffers on a piece with real geometry |
+| what the buffer is for in the home box (the marker's entry order Left, Right, Top, Bottom is proved) | home box ignores it (ZZC-M1 vs ZZC-BIG) | live: unequal buffers on a piece with real geometry |
 | the laid `LADIES-BLOUSE TEST-2` shows its 4 COLLAR outlines turned 90 degrees against their stored home boxes (other pieces agree; unlaid markers never do) - does a laid marker's stream carry the piece as placed? | 4 shapes flagged by the box check with `--as-job`; `ZZC-M1` (unlaid) has no such case | a laid marker with a piece deliberately turned 90 degrees in Easy Marking |
 | notch numbers above 15 in a marker stream (the low nibble of the extra byte holds `type`; the table allows 99 numbers) | only numbers 1 and 5 occur in the corpus | a piece with notch number 20+ (PDS Add Standard Notch, Type 20) in a marker |
 | what order / model option sets the piece-row flag @+14 (= the slot 0x0040 bit); the pre-set rot180 alternation | 0x0040 == flag @+14 on 9,122 / 9,122 slots [V]; alternates per bundle | live: flip one order / model option per run (DATASET_DESIGN F5) |

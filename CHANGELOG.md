@@ -8,11 +8,13 @@
   percentages (rule 10) and a two-line comment were added and saved as `ZZBB-X1` / `-X2`; the bytes were read against the numbers typed. Only Left / Top / Right / Bottom accept input - the Segment cells are greyed out.
 * **Format** (MARKER_FORMAT_SPEC.md section 19): `u16 line1, u16 line2, u16 n` + comment (the AccuMark 9 `3MM`: 40 comment characters + `u16 n`), then `n` 70-byte entries `(u16 number, u16 type 0 buffer / 1 block, 11 x (i32 amount x 10000, u16 unit))`
   in the order static Left, Top, Right, Bottom, Segment, dynamic Left, Top, Right, Bottom, Segment (+ one slot that is always 0); a length is inches, a percentage of the repeat is unit 2 (50% = 500000); an optional zero dword.
-* **The marker's own buffer entries.** A piece's section-6 entry is the STATIC amounts of the rule its Lay Limits row names, four doubles in inches ordered **Left, Right, Top / Bottom** - the sleeve's rule 4 (Left 2.00, Right 0.50 cm)
-  is `[0.7874, 0.1968, 0, 0]`. 81 entries on 5 markers (ZZC-M1, ZZC-M3, the 2303 CP 150 set, the real 418T and 1825D) equal the table rule; the wrong table is contradicted. That settles the old "side order [?]" except Top vs Bottom.
+* **The marker's own buffer entries.** A piece's section-6 entry is the STATIC amounts of the rule its Lay Limits row names, four doubles in inches ordered **Left, Right, Top, Bottom** - the sleeve's rule 4 (Left 2.00, Right 0.50 cm)
+  is `[0.7874, 0.1968, 0, 0]`. 81 entries on 5 markers (ZZC-M1, ZZC-M3, the 2303 CP 150 set, the real 418T and 1825D) equal the table rule; the wrong table is contradicted. **Top vs Bottom settled by a live run:** lay limits
+  `ZZLL-BB9` (FRONT -> rule 9), a copy of ZZC-M1's order (`ZZBB-M9`: lay limits ZZLL-BB9, block buffer `ZZBB-X1` whose rule 9 is Left .11 / Top .22 / Right .33 / Bottom .44 cm, Mode Layrule Search), Process ->
+  the FRONT piece's entry in the marker file is `[0.0433, 0.1299, 0.0866, 0.1732]` = **Left, Right, Top, Bottom** (`blockbuffer/GROUND_TRUTH.json`, `selftest`). The old "side order [?]" is closed.
 * **Real values.** `3MM` (the user's, 418T / 1825D / ...): rule 1 = Buffer 0.15 cm on every side (0.0591 in, a 3 mm gap between pieces); `3MM-N` the same plus an empty rule 2.
 * **Nest spec.** `block_buffer` (bundled / supplied / named only) with `rules`, `rules_used`, `marker_entries`, a per-shape `buffer`, two checks, `--block-buffer`.
-* **Open.** Top vs Bottom in the marker entry; the always-zero eleventh slot; the Segment amounts (the editor does not let them be entered here); what a percentage of the repeat means for a marker without plaid.
+* **Open.** The always-zero eleventh slot; the Segment amounts (the editor does not let them be entered here); what a percentage of the repeat means for a marker without plaid.
 
 ## v4.11 (2026-09-24) - the reference nester: the spec is enough to nest
 

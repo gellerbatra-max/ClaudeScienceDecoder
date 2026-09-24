@@ -1,0 +1,20 @@
+{
+ "what": "v4.19: the area a Block rule adds. The LADIES-BLOUSE order with a copy of the ZZLL-1 table whose FRONT / BACK / COLLAR / CUFF / SLEEVE rows all use rule 9 of ZZBB-X1 (a BLOCK: left 0.0433, top 0.0866, right 0.1299, bottom 0.1732 in), placed by AutoMark.",
+ "marker_sides_order": "the marker keeps the sides as [left, right, top, bottom] = [0.0433, 0.1299, 0.0866, 0.1732] (x pair, then y pair)",
+ "totals_in": {
+  "x (left + right)": 0.1732,
+  "y (top + bottom)": 0.2598
+ },
+ "added_area_sq_in": {
+  "LADIES-BLOUSE-BK": 12.532,
+  "LADIES-BLOUSE-COL": 4.021,
+  "LADIES-BLOUSE-CUFF": 2.738,
+  "LADIES-BLOUSE-FR": 10.626,
+  "LADIES-BLOUSE-SL": 9.338
+ },
+ "rule": "slot declared area (+42) = record area + area(outline + R) - area(outline), R = (left + right) x (top + bottom) in the PIECE frame, turned with the piece; the home box = the placed outline box + the same totals (x pad 0.1732 at 0 / 180 degrees, 0.2598 at 90 / 270)",
+ "markers": {
+  "ZZR-K": "unmade (ZZLL-BLK, ZZBB-X1)",
+  "ZZR-KA": "AutoMark of ZZR-K: 18 placed slots (5 pieces, size 10)"
+ }
+}

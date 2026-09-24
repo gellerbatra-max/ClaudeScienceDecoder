@@ -1,5 +1,19 @@
 # Changelog
 
+## v4.19 (2026-09-25) - the area a Block adds; the side order of a block-buffer entry
+
+`__version__` stays `'3.0'`. New fixtures `blockarea/` (unmade + placed marker, the lay table copy, `GROUND_TRUTH.json`). Plan item 9 (PLAN_v4.13_onward.md), started offline and finished with one live round.
+
+* **Answer** (MARKER_FORMAT_SPEC.md section 25). A placed slot of a blocked piece stores its record's area plus the growth of the outline by a rectangle of (left + right) x (top + bottom) in the piece's own frame, turned with the piece. Offline the single corpus data point (BACK, 1 cm block, +44.095) already
+  matched the exact Minkowski sum with a square (44.09); a uniform offset (the v4.12 note's 652.9) does not. The live round used `ZZBB-X1` rule 9 (a block with unequal sides 0.0433 / 0.0866 / 0.1299 / 0.1732 in) on every row of a copy of the ZZLL-1 table, AutoMark: 18 placed slots of 5 pieces at
+  all four quarter turns and mirrored agree to 0.004 sq in; the home box pads follow the two totals, turned with the piece (the collar with its 90-degree stream frame).
+* **Side order settled:** a section-6 entry is `[left, right, top, bottom]`.
+* **Code.** `rect_growth` (pure Python, scanline over the piece and every edge swept by the rectangle), `_explain_block_areas` (runs in `parse_marker`: `binding['area_ok']` / `binding['block_added']`), `unplaced_inventory` `slots[].block_added`. The two failed check rows and the "declared area does not equal the bound record's" warning of `ZZC-M3` and
+  `ZZN-F1` disappear (`LIVE_ANOMALIES` updated: 0 failing rows, 0 warnings); a slot whose area is neither the record's nor the block's still fails.
+* **Checks.** `selftest` (new section): 18 slots explained to 0.01 sq in, the home box pads (18), the two earlier markers, swapped totals / a square / no block rejected, `rect_growth` against a closed form, byte patches (a slot area 1% off is noticed, one equal to its record is accepted as a buffer); mutation-tested (the decoder with the x and y pairs swapped fails).
+* **Scratch state:** `ZZLL-BLK`, order and markers `ZZR-K`, `ZZR-KA` removed; my Lay Limits, Order and AutoMark processes closed.
+* **Open.** Percentage amounts and the Segment amount on a placed marker; whether an unplaced slot's block appears anywhere before it is laid; plan items 4-8, 10 (item 1 waits for the user's table).
+
 ## v4.18 (2026-09-25) - flip counts up to 4 in every spread; the half turn of Y composes with the bundle direction
 
 `__version__` stays `'3.0'`. New fixtures `flipcount/` (4 markers + `GROUND_TRUTH.json`). Plan items 2 and 3 (PLAN_v4.13_onward.md), run as one live round after the user asked for the plan to be followed step by step.

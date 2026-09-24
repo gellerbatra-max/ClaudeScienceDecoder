@@ -666,6 +666,7 @@ def parse_marker(d, size_vocab=None, binding='structural'):
     mk['bundles'] = sorted({p['bundle'] for p in placements})
     mk['sum_slot_areas'] = sum(p['area'] for p in placements)
     _add_order_and_state(d, mk, sec)
+    _explain_block_areas(d, mk)
     mk['tables'] = parse_marker_tables(d, sec, mk['name'])
     mk['snapshots'] = parse_marker_snapshots(d, sec, mk['pieces'])
     return mk
@@ -1062,6 +1063,73 @@ def _header_sums(mk):
 
 def _area_ok(s, rec):
     return abs(rec['area'] - s['area']) <= max(0.05, 1e-3*s['area'])
+
+def _hull(points):
+    pts = sorted(set(points))
+    if len(pts) <= 2: return pts
+    def cross(o, a, b): return (a[0]-o[0])*(b[1]-o[1]) - (a[1]-o[1])*(b[0]-o[0])
+    lo = []
+    for p in pts:
+        while len(lo) >= 2 and cross(lo[-2], lo[-1], p) <= 0: lo.pop()
+        lo.append(p)
+    up = []
+    for p in reversed(pts):
+        while len(up) >= 2 and cross(up[-2], up[-1], p) <= 0: up.pop()
+        up.append(p)
+    return lo[:-1] + up[:-1]
+
+def rect_growth(points, wx, wy, lines=1500):
+    """v4.19: the area a BLOCK adds to a piece = area(P + R) - area(P) for the piece outline P and the rectangle R of `wx` x `wy` (the block's left + right
+    and top + bottom amounts, in the piece's own frame; only the two totals matter, the rectangle's position does not). P + R is P plus every edge swept by R
+    (a convex hull each), integrated by scanlines: the slot area AccuMark stores for a blocked piece is the record's area plus this [V: 18 placed slots of 5
+    pieces under an unequal block, and the BACK piece's 1 cm block on every earlier marker; MARKER_FORMAT_SPEC.md section 25]. Pure Python; `lines` scanlines give an error below 0.005 sq in on a 600 sq in piece."""
+    pts = [(float(x), float(y)) for x, y in points]
+    if len(pts) < 3 or (wx <= 0 and wy <= 0): return 0.0
+    hx, hy = wx / 2.0, wy / 2.0; n = len(pts)
+    corners = [(-hx, -hy), (hx, -hy), (hx, hy), (-hx, hy)]
+    polys = []
+    for i in range(n):
+        a, b = pts[i], pts[(i + 1) % n]
+        h = _hull([(p[0] + c[0], p[1] + c[1]) for p in (a, b) for c in corners])
+        if len(h) >= 3: polys.append(([(h[k], h[(k + 1) % len(h)]) for k in range(len(h))], min(p[1] for p in h), max(p[1] for p in h)))
+    edges = [(pts[i], pts[(i + 1) % n]) for i in range(n)]
+    y0 = min(p[1] for p in pts) - hy; y1 = max(p[1] for p in pts) + hy; dy = (y1 - y0) / lines; total = 0.0
+    for k in range(lines):
+        y = y0 + (k + 0.5) * dy; iv = []
+        xs = sorted(a[0] + (y - a[1]) * (b[0] - a[0]) / (b[1] - a[1]) for a, b in edges if (a[1] <= y) != (b[1] <= y))
+        iv.extend((xs[j], xs[j + 1]) for j in range(0, len(xs) - 1, 2))
+        for es, lo, hi in polys:
+            if y < lo or y > hi: continue
+            xc = [a[0] + (y - a[1]) * (b[0] - a[0]) / (b[1] - a[1]) for a, b in es if a[1] != b[1] and (a[1] <= y) != (b[1] <= y)]
+            if xc: iv.append((min(xc), max(xc)))
+        iv.sort(); cur_l, cur_r = None, None
+        for l, r in iv:
+            if cur_r is None or l > cur_r:
+                if cur_r is not None: total += (cur_r - cur_l) * dy
+                cur_l, cur_r = l, r
+            elif r > cur_r: cur_r = r
+        if cur_r is not None: total += (cur_r - cur_l) * dy
+    return total - _shoelace(pts)
+
+def _explain_block_areas(d, mk):
+    """v4.19: a PLACED slot of a piece whose block-buffer entry is a BLOCK carries its record's area plus the block's growth (rect_growth of the stream outline
+    by the entry's left + right / top + bottom): the area check then passes (`binding['area_ok']`, `binding['block_added']` = the growth in sq in). A slot whose
+    area differs from its record's for any other reason stays a failed check - the marker does not say whether a rule is a Block or a Buffer, the area does."""
+    cache = {}
+    for s in mk['slots']:
+        b = s.get('binding') or {}
+        if b.get('method') != 'structural' or b.get('area_ok') or not s.get('record') or s['area'] <= s['record']['area']: continue
+        sides = _buffer_sides(mk, s['piece'])
+        wx, wy = sides[0] + sides[1], sides[2] + sides[3]
+        if wx <= 0 and wy <= 0: continue
+        rid = s['record']['offset']
+        if ('pts', rid) not in cache:
+            ro = record_outline(d, s['record']); cache[('pts', rid)] = ro['points'] if ro and ro.get('verified') else None
+        if cache[('pts', rid)] is None: continue
+        key = (rid, round(wx, 4), round(wy, 4))
+        if key not in cache: cache[key] = rect_growth(cache[('pts', rid)], wx, wy)
+        if abs(s['record']['area'] + cache[key] - s['area']) <= max(0.02, 2e-4 * s['area']):
+            b['area_ok'] = True; b['block_added'] = cache[key]
 
 def _bind_by_area(mk, only_unbound=False):
     """The pre-v4.1 binding, dxfparser's rule: the record whose declared area
@@ -1839,7 +1907,7 @@ def unplaced_inventory(mk, pieces=None, piece_errors=None, use_grading=True, geo
         b = _buffer_sides(mk, pname)        # (b0, b1, b2, b3): x pair, then y pair [?]
         entry = dict(ordinal=s['index'], bundle=s['bundle'], model=s.get('model'), size=size, piece=pname,
                      category=(piece_row.get(pname) or {}).get('fabric'),
-                     cut=rec.get('cut'), copies=len(groups[(s['bundle'], s['record_index'])]),
+                     cut=rec.get('cut'), copies=len(groups[(s['bundle'], s['record_index'])]), block_added=(s.get('binding') or {}).get('block_added'),
                      pair=pair_of.get(s['index']), declared_area=s['area'], perimeter=rec.get('perimeter'),
                      home_box_in=(s['home_x']*2, s['home_y']*2),
                      home_box_piece_in=_piece_frame_box(s, frames.get(pname, 0)) if was_placed(s) else (s['home_x']*2, s['home_y']*2),

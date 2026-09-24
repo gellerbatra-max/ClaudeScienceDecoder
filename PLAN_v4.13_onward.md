@@ -57,7 +57,7 @@ Ranked by value to a nesting consumer and by cost. "Live" means an AccuMark roun
 | 6 | The marker's single tilt value: cw or ccw, and its unit for tables in degrees | Tilt limits in the spec | Live: a table with unequal cw / ccw limits | one round |
 | 7 | Section 1 counters beyond the four known (+168, +172, +180, +182, +184, +190 ...), trailer state words, section 5 (Annotation copy) | Byte-map coverage | Offline first: twin diffs on the fixtures I now have (`spread/`, `twoply/`, `rotation/`) | offline |
 | 8 | Notch numbers above 5 on a corner point; whether the cutter draws different shapes for numbers that read the same code | Notch fidelity | Live in PDS plus a marker plot | GUI-heavy |
-| 9 | The exact area a Block buffer adds (the 7.2% BACK-piece excess) | Area checks on blocked markers | Offline from the block-buffer fixtures | offline |
+| 9 | **DONE v4.19** (exact to 0.004 sq in on 18 slots, unequal block): the exact area a Block buffer adds (the 7.2% BACK-piece excess) | Area checks on blocked markers | Offline from the block-buffer fixtures | offline |
 | 10 | Why the collar needs +90 (+90 and +270 look identical), older-vintage multi-row lay limits | Robustness on older markers | Needs an asymmetric collar-like piece; older markers from the user | low priority |
 
 Recommended order: ~~2 and 3 together in one live round (v4.18)~~ done; next 7 and 9 offline while nothing else is waiting, then 4 and 6, then 5, then 8 and 10.

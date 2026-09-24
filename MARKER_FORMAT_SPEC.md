@@ -537,7 +537,11 @@ still `--`). Fifteen configurations (a, x, y, b) agree: (3,0,0,0) -> 3; (2,2,0,0
 (nothing to absorb them); (1,0,0,1) -> `--`; (1,1,0,1) -> `--`, X; (1,1,1,0) -> `--`, X; (1,0,1,1) -> `--`, X,Y; (2,1,0,1) -> `--`, `--`; (1,2,0,0) -> `--`, X. So **a piece cut once (`CUT1`, a back, a single collar) keeps
 one slot per garment in a two-ply marker** - nothing to absorb - and only a mirrored pair halves; there is no field for "pieces per garment" (the same section-10 word signature occurs for one-copy and two-copy pieces: e.g. 130 groups of each share the flags `0 / none / 0 0 0 0 / 1 / 0 0` on the single-ply markers of the corpus;
 the record's cut text is the piece's annotation, e.g. `1 SELF` on a piece that lays as a pair), the slots ARE the demand. The header counters, size rows and order copy do not change. A nester of a two-ply marker lays each listed slot once; `fabric.plies` = 2 and `fabric.plies_note` say what a slot stands for.
-[?] a piece cut three or more times as flips of the same kind (3 x X) and the count the ply height multiplies it by are not measured beyond the table above.
+**v4.18: larger counts agree** (`flipcount/`, 30 of 30 (bundle, piece) cases on the single-ply baseline, face to face and book fold, counts up to 4): (0,3,0,0) -> X, X, X; (2,3,0,0) -> `--`, `--`, X; (1,0,3,0) -> `--`, Y, Y;
+(2,2,2,2) -> `--`, `--`, X, X, X,Y, X,Y (both Y absorbed first); (4,1,1,1) -> four `--` (all three flipped absorbed). [?] the number of plies a ply height multiplies a slot by is not stored in the marker.
 
-**What is still open here.** The 0x2000 composition with a Y flip is derived from the placed directions above, not from a separate experiment on a rotating row; whether AccuNest's chirality swaps are its S-row / pair balancing or a
-choice of the Draft engine; the tubular spread differs from face to face only in its slot words (no 0x0040 bit here: the table's row has no `M`).
+**The composition with the bundle direction is proved (v4.18).** A rotating row hides the retrieval direction (the nester may turn the piece), so the test is a no-rotation row inside an alternating table: ZZLL-1's FRONT is `MW`, the model gave
+the front piece (2,2,2,2) and AccuNest placed all 16 instances (`flipcount/`) at the rotation `turn = 180 x (0x2000 XOR flip in {Y, X,Y})` - every (bundle, flip) combination twice: `--` 0 / 180, X 0 / 180, Y 180 / **0**, X,Y 180 / **0** (bundle 0 / bundle 1). On this piece the
+per-instance chirality was kept on 10 of 16 slots (the Y and X,Y instances of the alternating bundle came out swapped, as-is instances of a direction interchanged with mirrored ones).
+
+**What is still open here.** Whether AccuNest's chirality swaps are its S-row / pair balancing or a choice of the Draft engine (the `S` option's role); the tubular spread differs from face to face only in its slot words (no 0x0040 bit here: the table's row has no `M`).

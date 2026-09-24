@@ -179,7 +179,7 @@ def parse_lay_limits(source, name=None):
 
 def parse_snapshot_rows(s4, buffer_rules=None):
     """v4.14: the Lay Limits ROWS a marker carries as its own section 4 (a copy taken when the marker was made): 12 bytes per row, `u16 flip code, f64 tilt limit, b2, b3` - the option bytes
-    exactly as in the table, the tilt in the table's own unit (inches; the two directions are not separate here - both were equal on the only corpus rows that have one). No names, no buffer rule
+    exactly as in the table, the tilt in the table's own unit (inches, or degrees with the b2 bit 0x20; ONE value = the smaller of the table's clockwise and counter-clockwise limits, 0 when either is 0 [V v4.21]). No names, no buffer rule
     (that is on the piece rows, see accumark_marker: `lay_row`, `buffer_rule`), no spread, no bundling. Verified against the bundled table on 76 rows of 56 markers.
     `buffer_rules` = {row index: rule number} from the pieces. -> [row dicts shaped like a table's rows: category '(row i)', options, flip_code, flip, tilt_*, buffer_rule, raw]"""
     s4 = bytes(s4)
@@ -216,6 +216,7 @@ def orientation_rules(row, table=None):
     tilt = None
     if row['tilt_cw'] or row['tilt_ccw']:
         tilt = dict(unit=row['tilt_unit'], cw=row['tilt_cw'], ccw=row['tilt_ccw'])
+        if row.get('tilt_directions_separate') is False: tilt['note'] = "the marker's copy: the SMALLER of the table's clockwise and counter-clockwise limits (0 when either is 0), shown for both directions"
     return dict(allowed_deg=sorted(set(rot)), flip_x_axis_allowed='S' not in o, locked=('W' in o and 'S' in o),
                 initial_orientation=dict(code=row['flip_code'], **(fl or {})), tilt_limit=tilt, weft_skew_deg=row.get('weft_skew_deg'),
                 buffer_rule=row['buffer_rule'], group=row.get('group'), options=row['options'],

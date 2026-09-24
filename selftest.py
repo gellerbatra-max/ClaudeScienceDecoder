@@ -2542,6 +2542,63 @@ for who_, fl_ in ENG_.items():
 print(f"   {'ok ' if not bad else 'FAIL'} {n_c_ok} of {n_c} markers: @486 = pieces + 1, @496 = lay-limit rows, @498 = block-buffer entries; @472 = the attribute points on {n_a_ok} of {n_a - 1} fixture markers (+ the tubular exception); a broken counter is noticed; @568 / @674 name the engine on {n_e} fixtures  {'; '.join(bad[:3])}")
 if bad: fails.append('section 1 counters: ' + '; '.join(bad[:5]))
 
+print('-- tilt limits and the S option (v4.21, MARKER_FORMAT_SPEC.md section 27): the marker keeps the smaller tilt; S keeps the chirality of a slot')
+# tilt/: a copy of ZZLL-1 with unequal clockwise / counter-clockwise limits (centimetres and degrees) and the markers made from it. The Piece Options checklist of the editor gives every option's meaning
+# (W = "Flip in X-axis. No Rotation", S = "Allow 180 degree rotation. No Flip"); the placed fixtures show S is what pins a slot's chirality.
+TLD = os.path.join(HERE, 'tilt'); tgt_ = _json.load(open(os.path.join(TLD, 'GROUND_TRUTH.json'))); bad = []
+import accumark_laylimits as _ll2
+for nm_ in ('ZZR-T', 'ZZR-T2'):
+    mk_ = am.parse_marker(am.read_storage_marker(os.path.join(TLD, nm_ + '.GT_mark'))); rows_ = mk_['snapshots']['lay_limits']['rows']
+    want_ = tgt_['piece_row_tilt_x1e4'][nm_]
+    for p_ in mk_['pieces']:
+        if p_['tilt_raw'] != want_[p_['name'].split('-')[-1]]: bad.append(f"{nm_} {p_['name'][-5:]}: tilt word {p_['tilt_raw']}, expected {want_[p_['name'].split('-')[-1]]}")
+    tab_ = tgt_['table_v1_ZZR_T' if nm_ == 'ZZR-T' else 'table_v2_ZZR_T2']
+    for cat_, row_i_ in (('FRONT', 1), ('BACK', 2), ('COLLAR', 3), ('CUFF', 4), ('SLEEVE', 5)):
+        t_ = tab_[cat_]; r_ = rows_[row_i_]; unit_in = 2.54 if t_['unit'] == 'cm' else 1.0
+        exp_ = min(t_['cw'], t_['ccw']) / unit_in
+        if abs(r_['tilt_cw'] - exp_) > 1.5e-4 or r_['tilt_unit'] != ('degrees' if t_['unit'] == 'degrees' else 'length') or r_['tilt_cw'] != r_['tilt_ccw']: bad.append(f"{nm_} {cat_}: marker tilt {r_['tilt_cw']} {r_['tilt_unit']}, expected {exp_:.4f} {t_['unit']}")
+# the table file holds the second version: the second marker agrees with it, the first differs on the CUFF row (the SLEEVE row stores 0 in both: min(0.30, 0) = min(0, 0))
+tb_ = _ll2.parse_lay_limits(os.path.join(TLD, 'ZZLL-TLT.GT_lay'))
+d2_ = ns._snapshot_diff(am.parse_marker(am.read_storage_marker(os.path.join(TLD, 'ZZR-T2.GT_mark')))['snapshots']['lay_limits'], tb_)
+d1_ = ns._snapshot_diff(am.parse_marker(am.read_storage_marker(os.path.join(TLD, 'ZZR-T.GT_mark')))['snapshots']['lay_limits'], tb_)
+if d2_ or len(d1_) != 1 or 'CUFF' not in d1_[0]: bad.append(f'snapshot vs table: {d2_} / {d1_}')
+sp_ = ns.build_nest_spec(os.path.join(TLD, 'ZZR-T.GT_mark'))[0]
+if not any((sh_.get('rotation') or {}).get('tilt_limit', {}) and 'SMALLER' in (sh_['rotation']['tilt_limit'].get('note') or '') for sh_ in sp_['shapes']): bad.append('the tilt note is missing from the nest spec')
+# S keeps a slot's chirality (fixture folders): asymmetric pieces only, rows with S against rows without
+def _c_sym(pts):
+    import math as _m
+    def dn(pp, st=0.08):
+        o_ = []
+        for i_ in range(len(pp)):
+            (x0_, y0_), (x1_, y1_) = pp[i_], pp[(i_ + 1) % len(pp)]; L_ = _m.hypot(x1_ - x0_, y1_ - y0_); k_ = max(1, int(L_ / st))
+            o_ += [(x0_ + (x1_ - x0_) * j_ / k_, y0_ + (y1_ - y0_) * j_ / k_) for j_ in range(k_)]
+        return o_
+    def nm(pp):
+        xs_ = [q[0] for q in pp]; ys_ = [q[1] for q in pp]; cx_, cy_ = (min(xs_) + max(xs_)) / 2, (min(ys_) + max(ys_)) / 2
+        return [(q[0] - cx_, q[1] - cy_) for q in pp]
+    a_ = dn(nm(am._orient(pts, dict(placed_flip=False, placed_rot=0, tilt_deg=0.0), 0))); b_ = dn(nm(am._orient(pts, dict(placed_flip=True, placed_rot=0, tilt_deg=0.0), 0)))
+    dd_ = lambda p1, p2: max(min(_m.hypot(x - u, y - v) for u, v in p2) for x, y in p1)
+    return max(dd_(a_, b_), dd_(b_, a_)) < 0.06
+kept_ = Counter(); n_ch = 0
+for dn_ in ('twoply', 'flipcount', 'blockarea'):        # not rotation/: those AccuNest runs ticked the Flip: Enable override, which lifts the row's S (7 of 57 S-row slots came out flipped there)
+    for fp_ in sorted(glob.glob(os.path.join(HERE, dn_, '*.GT_mark'))):
+        d_ = am.read_storage_marker(fp_); mk_ = am.parse_marker(d_); rw_ = ((mk_.get('snapshots') or {}).get('lay_limits') or {}).get('rows')
+        if mk_['laid_state'] == 'unlaid' or not rw_: continue
+        pr_ = {p_['name']: p_ for p_ in mk_['pieces']}; sc_ = {}
+        for s_ in mk_['slots']:
+            if s_['empty'] or not (s_['orient_code'] & 0x200) or not s_.get('record'): continue
+            rid_ = s_['record']['offset']
+            if rid_ not in sc_: sc_[rid_] = _c_sym(am.record_outline(d_, s_['record'])['points'])
+            if sc_[rid_]: continue
+            opt_ = rw_[pr_[s_['piece']]['lay_row']]['options']; k_ = 'S' in opt_
+            kept_[(k_, 'n')] += 1; kept_[(k_, 'kept')] += (s_['placed_flip'] == s_['preset_mirrored']); n_ch += 1
+if kept_[(True, 'n')] < 30 or kept_[(True, 'kept')] != kept_[(True, 'n')] or kept_[(False, 'n')] < 30 or kept_[(False, 'kept')] > 0.75 * kept_[(False, 'n')]: bad.append(f'S rows kept {kept_[(True, "kept")]} of {kept_[(True, "n")]}, other rows {kept_[(False, "kept")]} of {kept_[(False, "n")]}')
+# the nest spec says which rows keep it
+spb_ = ns.build_nest_spec(os.path.join(HERE, 'flipcount', 'ZZR-S.GT_mark'))[0]; bind_ = {sh_['piece'].split('-')[-1]: next(d_['mirror_binding'] for d_ in spb_['demand'] if d_['shape'] == sh_['id']) for sh_ in spb_['shapes']}
+if bind_ != {'BK': 'free', 'COL': 'free', 'CUFF': 'kept', 'FR': 'free', 'SL': 'kept'}: bad.append(f'mirror_binding {bind_}')
+print(f"   {'ok ' if not bad else 'FAIL'} the marker keeps min(cw, ccw) of the tilt limits (cm and degrees, zero side = 0) on 10 rows of 2 tables; rows with S keep a slot's chirality on {kept_[(True, 'kept')]} of {kept_[(True, 'n')]} asymmetric placed slots, rows without S on {kept_[(False, 'kept')]} of {kept_[(False, 'n')]}; the nest spec names the binding per shape  {'; '.join(bad[:3])}")
+if bad: fails.append('tilt / S: ' + '; '.join(bad[:5]))
+
 print('-- marker byte map (v4.4, see accumark_marker.marker_coverage)')
 # Every byte owned by a section a parser reads must be classified (identified /
 # raw / zero_pad / opaque) - only the envelope, the header scalars, sections 2-5,

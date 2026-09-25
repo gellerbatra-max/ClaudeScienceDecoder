@@ -1129,7 +1129,7 @@ def record_outline(data, rec):
         if not ok and len(c0) >= 3:
             full = _unfold_contour(c0); ok2, a2, pr2 = verify_stream_outline(full, rec['area'], rec['perimeter'])
             if ok2: c0, ok, a, pr, unfolded = full, True, a2, pr2, True; k0 = k0 + [k0[i] for i in range(len(k0) - 2, 0, -1)]
-        if best is None or (ok and not best[0]): best = (ok, d, c0, k0, unfolded, a, pr, pm)
+        if best is None or (ok and not best[0]) or (not ok and not best[0] and len(c0) > len(best[2])): best = (ok, d, c0, k0, unfolded, a, pr, pm)      # v4.34: when nothing verifies, the longest first contour (the split that keeps the outline whole) is the better guess
         if ok: break
     if best is None: return None
     ok, d, c0, k0, unfolded, a, pr, pm = best

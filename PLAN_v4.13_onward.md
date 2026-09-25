@@ -53,6 +53,7 @@ Every claim carries a status tag in the specs: **[V]** proved (live experiment o
 | v4.32 | Plaid Y offset; can the collar's frame rule be found live? | Y offset verified (live, 6 markers / 240 instances); PDS rotation is not stored, so a vertical-grain piece cannot be made: the grain hypothesis stays open | `plaid/` (ZZPQ-M, ZZ-PLAID-Y2) | branch `v4.32-plaid-notch-collar` |
 | v4.33 | What flags the collar's quarter turn in the engine? | bit 0x0200 of the slot word @+60 (14 of 14 turned pieces, 119 of 119 others; works unplaced; decides the 45-degree collar); the sign of the turn is not stored | `engine/FRAME_TURNS.json` | branch `v4.33-legacy-frames` |
 | v4.34 | Notch numbers above 5 on a corner point | corner notches were dropped by the stream read and the nest spec: now `corner_notches` (piece == stream 201 of 201 + 86 records); the streams of six unverified records show a corner type 9 (not clamped: a hint), an edge notch is clamped to 5; a live PDS corner notch above 15 not run | none new | branch `v4.34-corner-notches` |
+| v4.35 | Corner notch numbers, live | a DCU-imported corner notch is code 5 in piece and stream (clamped like an edge notch); the raw 9 of a real style is another creation path [?]; an unverified record (head area 101.364 vs polygon 93.000) is open | `notchnum/ZZCN*` | branch `v4.35-corner-notch-live` |
 
 Unknown bytes per marker fell from 1,111-1,753 to about 1,031-1,280 (roughly 1.06%) over v4.13-v4.16.
 

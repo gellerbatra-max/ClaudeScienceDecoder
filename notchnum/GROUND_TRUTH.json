@@ -38,5 +38,42 @@
   "NN-PIECE.GT_piece": "the piece as PDS saved it (two blocks: the edited piece and PDS's 'original' copy)",
   "NN-MARKER.GT_mark": "the unmade marker Process made from it (S / M / L, 9 notches each)"
  },
- "not_understood": "Editing the number / code bytes of a piece FILE by hand (the perimeter point, its line-table twin, the child TLV; numbers 16 / 25 and 15 / 14) made the order's Process fail with 'Error processing, missing components'; rewriting the identical bytes, and the PDS route, work. Use PDS to make test pieces."
+ "not_understood": "Editing the number / code bytes of a piece FILE by hand (the perimeter point, its line-table twin, the child TLV; numbers 16 / 25 and 15 / 14) made the order's Process fail with 'Error processing, missing components'; rewriting the identical bytes, and the PDS route, work. Use PDS to make test pieces.",
+ "v4.34_corner_notches": {
+  "what": "ZZCN: a 30 x 20 cm rectangle (spec ZZCN_spec.json -> DXF with notch points on two vertices and one on an edge) imported by the DCU (notch table P-NOTCH, all three notches number 6), an Easy Order of the model, Process -> the unmade marker ZZCN.GT_mark; piece ZZCN-RECT.GT_piece as imported",
+  "piece": {
+   "corner_notch_types": [
+    5,
+    5
+   ],
+   "edge_notch_types": [
+    5
+   ],
+   "edge_notch_number": 6,
+   "note": "corner notch = the point's f1 high byte 5 (is_corner_notch); the number 6 is only found on the edge notch (notch_numbers = [6])"
+  },
+  "stream_kinds_pen_move_20": [
+   [
+    "turn",
+    null
+   ],
+   [
+    "turn",
+    5
+   ],
+   [
+    "notch",
+    5
+   ],
+   [
+    "turn",
+    null
+   ],
+   [
+    "turn",
+    5
+   ]
+  ],
+  "known_limitation": "the record head says area 101.364 sq in / perimeter 39.677 in, the stream's polygon is the 30 x 20 cm rectangle (93.000 / 39.370): verification fails, the nest spec says 'no outline' (loud). Cause unknown; a control without notches could not be run"
+ }
 }

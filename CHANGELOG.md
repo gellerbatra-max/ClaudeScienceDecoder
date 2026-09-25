@@ -1,5 +1,13 @@
 # Changelog
 
+## v4.35 (2026-09-25) - live: a DCU-imported corner notch; an unverified record
+
+`__version__` stays `'3.0'`. New fixtures `notchnum/ZZCN.GT_mark`, `ZZCN-RECT.GT_piece`, `ZZCN_spec.json` (+ a GROUND_TRUTH entry). Live round of my own: DXF -> DCU import -> Easy Order Process -> unmade marker (plan item 8).
+
+* **A corner notch made by import is clamped like an edge notch:** two notch points on vertices and one on an edge (all number 6) came out as code 5 in the piece (f1 0x0500 / 0x0501) and as `turn 5` / `notch 5` in the stream. The raw 9 of the real style is another creation path [?] (MARKER_FORMAT_SPEC.md section 37). `@472` = 18 = 6 x 3 attribute points confirms that corner notches count.
+* **`record_outline` on an unverified record** now returns the split with the longest first contour instead of the first attempt's (here the 5-point outline with its notches instead of a single point).
+* **Open:** that record's head (area 101.364 / perimeter 39.677) does not match its own polygon (93.000 / 39.370) - the nest spec is loud (`no outline`); the cause is unknown and a no-notch control was not run (the second DCU process was refused by the safety classifier). A stray `Open With` chooser from a mistaken click in a DCU results window is still on the screen (the guard override was refused).
+
 ## v4.34 (2026-09-25) - notches ON a turn point were dropped from the stream read and the nest spec (plan item 8)
 
 `__version__` stays `'3.0'`. No new fixture (the blouse ZIPs of `markers-live/` carry a type-1 corner notch on the back, collar and sleeve); offline evidence over every marker and piece of the machine's storage areas, read-only.

@@ -2968,6 +2968,12 @@ for s_ in m6_['slots']:
     if s_['piece'] in r6_: continue
     ro_ = am.record_outline(d6_, s_['record']); r6_[s_['piece']] = (ro_['verified'], round(s_['area'], 3), [n_[1] for n_ in ro_['corner_notches']], [n_[1] for n_ in ro_['notches']])
 if r6_ != {'ZZCN6-A': (True, 93.0, [], []), 'ZZCN6-B': (True, 93.001, [], [5]), 'ZZCN6-C': (True, 93.0, [5, 5], [])}: bad.append(f'ZZCN6 clean control {r6_}')
+# a PDS-made piece with corner notches of the numbers 12 / 16 / 25 / 9 and an edge notch 20 (notchnum/ZZCN7-A, live 2026-09-25, 25-row notch table): every corner and the edge read CODE 5 in the piece and in the marker's stream (the
+# number lives in the piece's line table only, and on this graded rectangle only two of the five notches kept one); v4.42: the first perimeter point carrying a corner notch used to make the point-table locator land late
+pc7_ = ap.decode(am.read_storage_piece(os.path.join(HERE, 'notchnum', 'ZZCN7-A.GT_piece')))['blocks'][0]
+if [(p_['id'], p_.get('notch_type'), bool(p_.get('is_corner_notch'))) for p_ in pc7_['perimeter']] != [(5, 5, True), (4, 5, True), (3, 5, True), (-1, 5, False), (2, 5, True)] or ap.notch_numbers(pc7_) != {(118110, 0): 25, (58894, 0): 20}: bad.append('ZZCN7-A piece: corner notch codes / numbers')
+d7_ = am.read_storage_marker(os.path.join(HERE, 'notchnum', 'ZZCN7.GT_mark')); m7_ = am.parse_marker(d7_); s7_ = next(s_ for s_ in m7_['slots'] if s_['piece'] == 'ZZCN6-A'); ro7_ = am.record_outline(d7_, s7_['record'])
+if not ro7_['verified'] or [n_[1] for n_ in ro7_['corner_notches']] != [5, 5, 5, 5] or [n_[1] for n_ in ro7_['notches']] != [5]: bad.append(f"ZZCN7 marker: corner {[n_[1] for n_ in ro7_['corner_notches']]}, edge {[n_[1] for n_ in ro7_['notches']]}")
 print(f"   {'ok ' if not bad else 'FAIL'} {n_cn} corner notches in the spec of a blouse marker (back, collar, sleeve: each a vertex of its outline, mirrored with it); piece == stream on {n_eq} of {n_rec} records; a patched type is read  {'; '.join(bad[:3])}")
 if bad: fails.append('corner notches: ' + '; '.join(bad[:5]))
 

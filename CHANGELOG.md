@@ -1,5 +1,13 @@
 # Changelog
 
+## v4.42 (2026-09-25) - corner notches above 15, made in PDS (plan item 8); a piece-decoder bug
+
+`__version__` stays `'3.0'`. New fixtures `notchnum/ZZCN7-A.GT_piece`, `notchnum/ZZCN7.GT_mark`. Live round of my own (PDS with the 25-row notch table as scratch `P-NOTCH`, Easy Order, unmade marker).
+
+* **A corner notch is clamped to code 5, like an edge notch:** notches of the numbers 12, 16, 25 and 9 on the four corners and 20 on an edge all read code 5 in the piece and in the marker's stream, and the record verifies. The raw corner types 9 / 10 of the earlier hint were artifacts of unverified streams (MARKER_FORMAT_SPEC.md section 37). Only two of the five numbers survive in the piece's line table (25, 20); the others (12, 16, 9 on graded corners) are stored nowhere found [?].
+* **Bug fixed in `accumark_pds.find_point_table`:** when the FIRST perimeter point carries a corner notch (f1 = 0x0500) the locator rejected the true table start and landed 8 bytes late, so the perimeter of such a PDS-made piece read as garbage (and the notch numbers as `{}`). It now accepts f1 with a zero low byte. Regression test: the ZZCN7-A piece.
+* Selftest: the ZZCN7 piece (5 notches, codes 5, numbers `{(118110, 0): 25, (58894, 0): 20}`) and its marker (4 corner + 1 edge notch, all 5, verified).
+
 ## v4.41 (2026-09-25) - trying to make a turned piece in V17 (plan item 10; the user asked to try again)
 
 `__version__` stays `'3.0'`. Documentation only; own PDS, scratch pieces `ZZV-R0 / R1 / T1 / T2`.

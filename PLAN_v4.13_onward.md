@@ -57,6 +57,7 @@ Every claim carries a status tag in the specs: **[V]** proved (live experiment o
 | v4.36 | Is the ZZCN area gap the corner notches? | yes: the no-notch and edge-notch controls verify, the two-corner-notch piece has +8.364 sq in, +0.307 in and a +1.092 in taller stored box; the dimension behind it is open | `notchnum/ZZCN2*` | branch `v4.36-corner-notch-control` |
 | v4.37 | What decides the engine's quarter turn? | offline: not aspect, grain, internal lines, fold or the piece meta words (86 pieces, one turned); open | none | branch `v4.37-turn-negatives` |
 | v4.38 | The section 1 residue again | no rule from any count / sum (221 markers); documentation only | none | branch `v4.38-residue-negatives` |
+| v4.39 | What does the engine see of the corner-notch piece? | its own polygon has an arched top edge (12 points) that stream and piece lack: the front end builds it from the code-5 corner notch; open why | `engine/ZZCN2.frommed.mra` | branch `v4.39-corner-notch-engine` |
 
 Unknown bytes per marker fell from 1,111-1,753 to about 1,031-1,280 (roughly 1.06%) over v4.13-v4.16.
 

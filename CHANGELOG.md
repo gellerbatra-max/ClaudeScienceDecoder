@@ -1,5 +1,9 @@
 # Changelog
 
+## v4.39 (2026-09-25) - the engine's own polygon of the corner-notch control (AccuNest job 302)
+
+`__version__` stays `'3.0'`. New fixture `engine/ZZCN2.frommed.mra`. My own Queue Submit nested the v4.36 control marker; the engine's `frommed.mra` shows why its corner-notch piece does not verify: **the engine's polygon has an arched top edge (12 points, box 8.966 in, AM_AREA 101,364 = the record head)** that neither the stream nor the piece object carries. The pieces without a notch or with an edge notch equal the stream. So AccuMark builds that arch itself from a code-5 corner notch (undefined row in the scratch table); what a nester should do with such a record is open (the spec says `no outline`, loudly). Selftest: the control's engine polygons.
+
 ## v4.38 (2026-09-25) - the section 1 residue, tried again (plan item 7)
 
 `__version__` stays `'3.0'`. Documentation only: the unidentified words of section 1 (@484, @488, @494, @504, @506, @522, @530, @588, @592, @604) were correlated with every count and sum the decoder has (221 markers): no rule found (MARKER_FORMAT_SPEC.md section 38). None feeds the engine's job file; section 5 (the Annotation table copy) not attempted. Item 7 stays open at low value.

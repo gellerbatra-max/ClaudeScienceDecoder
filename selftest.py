@@ -2955,6 +2955,13 @@ for s_ in mc_['slots']:
     ro_ = am.record_outline(dc_, s_['record']); xs_ = [p_[0] for p_ in ro_['points']]; ys_ = [p_[1] for p_ in ro_['points']]
     cz_res[s_['piece']] = (ro_['verified'], round(s_['area'], 3), round(ro_['area'], 3), round(s_['home_y'] * 2 - (max(ys_) - min(ys_)), 3), round(s_['home_x'] * 2 - (max(xs_) - min(xs_)), 3), len(ro_['corner_notches']), len(ro_['notches']))
 if cz_res.get('ZZCN2-A') != (True, 93.0, 93.0, 0.0, 0.0, 0, 0) or cz_res.get('ZZCN2-B')[0] is not True or cz_res['ZZCN2-B'][5:] != (0, 1) or cz_res.get('ZZCN2-C') != (False, 101.364, 93.0, 1.092, 0.0, 2, 0): bad.append(f'ZZCN2 control {cz_res}')
+# the engine's own polygons of that control (AccuNest job 302, engine/ZZCN2.frommed.mra): A / B equal the stream's, C has a 12-point ARCHED top edge (box 8.966 in, AM_AREA = the record head's 101.364) that the stream and the piece object do not carry
+ecn_ = ae.read_engine_file(os.path.join(HERE, 'engine', 'ZZCN2.frommed.mra')); ecz_ = {}
+for s_, p_ in zip(mc_['slots'], ecn_['pieces']):
+    if s_['piece'] in ecz_: continue
+    ys_ = [q_[1] for q_ in p_['points_in']]; xs_ = [q_[0] for q_ in p_['points_in']]
+    ecz_[s_['piece']] = (len(p_['points_in']), round(max(xs_) - min(xs_), 3), round(max(ys_) - min(ys_), 3), p_['am_area'])
+if ecz_ != {'ZZCN2-A': (5, 11.811, 7.874, 93000), 'ZZCN2-B': (6, 11.811, 7.874, 93001), 'ZZCN2-C': (12, 11.811, 8.966, 101364)} or ecz_['ZZCN2-C'][3] != round(cz_res['ZZCN2-C'][1] * 1000): bad.append(f'ZZCN2 engine polygons {ecz_}')
 print(f"   {'ok ' if not bad else 'FAIL'} {n_cn} corner notches in the spec of a blouse marker (back, collar, sleeve: each a vertex of its outline, mirrored with it); piece == stream on {n_eq} of {n_rec} records; a patched type is read  {'; '.join(bad[:3])}")
 if bad: fails.append('corner notches: ' + '; '.join(bad[:5]))
 

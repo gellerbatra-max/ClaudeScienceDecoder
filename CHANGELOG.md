@@ -1,5 +1,14 @@
 # Changelog
 
+## v4.31 (2026-09-25) - live: the engine's tilt limits come from the table; the order's Target Length / Target Utilization
+
+`__version__` stays `'3.0'`. Two AccuNest jobs and three orders of my own (Order Editor, Lay Limits table `ZZLL-TLT`, Queue Submit; my own processes). New fixtures `engine/ZZR-TL2.GT_mark`, `engine/ZZR-TL3.GT_mark`, `engine/TILT_JOBS.json`. Plan item 12, live.
+
+* **Result** (MARKER_FORMAT_SPEC.md section 35): the engine takes its tilt limits from the Lay Limits TABLE, each side on its own: `CW = -round(10 cw)`, `CCW = +round(10 ccw)` with the table's inches (length tilt) or degrees as they stand, independent of the fabric width (10 of 10 categories of two jobs). Section 1 @404 / @438 are the order's Target Length (inches) and Target Utilization (% x 10) - 79 of 79 pairs and two
+  live values; the engine's `TARGET_LENGTH` = area / (width x utilization), else the target length (80 jobs). The three `MWS` jobs of v4.30 are explained too: they ran BEFORE the table gained `S` (job 216-221 at 03:01-03:11, the table saved at 03:22:32; jobs 224 / 227 after it show `FLIP_GROUP` 2).
+* **Code.** `mk['order_targets']`, the byte map (@404 / @438), the nest spec's `fabric.target_length` / `target_utilization_pct` / `target_length_at_utilization`, `accumark_engine.engine_tilt_from_table`, `engine_target_length`. **Checks.** `selftest` (new section): the tilt of 10 categories, the targets, a patch.
+* **Open:** the same table read for the other Piece Options (F, P, O, Z) needs one job each.
+
 ## v4.30 (2026-09-25) - the job's Nest Markers settings decide the engine's flags; the units of the fabric cost / weight
 
 `__version__` stays `'3.0'`. `accumark_engine` 1.1 (`parse_job_settings`, `engine_flags(options, overrides)`, `engine_tilt_limits`). New fixtures `engine/*.job_settings.txt` (the `Job Settings` block of nine jobs) and `engine/ZZROT-*.frommed.mra` (four override jobs). Plan item 12, offline.

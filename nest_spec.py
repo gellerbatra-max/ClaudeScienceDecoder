@@ -393,7 +393,10 @@ def build_nest_spec(path, units='cm', marker=None, lay_limits=None, notch_table=
                         plaid_stripe=({kk: [v * k for v in vv] for kk, vv in mk['plaid_stripe'].items()} if mk.get('has_plaid_stripe') else None),      # v4.23: the order's plaid / stripe repeats and offsets, in the spec's units
                         fabric_types=inv['marker']['fabric_types'],
                         block_buffer_in=[list(b) for b in inv['marker']['block_buffers']] or None,
-                        min_length=(area_all / W) if W else None, min_length_note='total piece area / width: a 100%-efficient lay; not a nesting result'),
+                        min_length=(area_all / W) if W else None, min_length_note='total piece area / width: a 100%-efficient lay; not a nesting result',
+                        # v4.31: the order's nest targets (Easy Order / Order Editor): a Target Length and / or a Target Utilization; the engine's own TARGET_LENGTH = area / (width x utilization) when there is a utilization, else the target length
+                        target_length=((mk.get('order_targets') or {}).get('length_in') or 0) * k or None, target_utilization_pct=(mk.get('order_targets') or {}).get('utilization_pct') or None,
+                        target_length_at_utilization=(area_all / (W * mk['order_targets']['utilization_pct'] / 100.0) if W and (mk.get('order_targets') or {}).get('utilization_pct') else None)),
             rotation=dflt, lay_limits=lay, notch_table=notch, block_buffer=buf, matching=_matching_block(mk, k),
             order_lines=[dict(model=o['model'], size=o['size'], quantity=o['quantity']) for o in inv['order_lines'] if o['quantity']],      # v4.23: not the sizes the order lists at 0
             shapes=[_public(s) for s in sorted(shapes.values(), key=lambda s: s['id'])], demand=demand,

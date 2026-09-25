@@ -2832,6 +2832,28 @@ if n_u != 5: bad.append(f'fabric cost / weight units: {n_u} of 5')
 print(f"   {'ok ' if not bad else 'FAIL'} {n_sp} style pieces of 8 jobs: Piece Options + the job's overrides (Rotation 45 / 90, Flip: Enable, tilt 10 degrees) give the engine's flags on all {n_ok} (without the overrides only {n_no_ov}); the fabric cost / weight of 5 jobs are the dialog's per metre / gsm x 0.9144 / 0.029493  {'; '.join(bad[:3])}")
 if bad: fails.append('engine overrides: ' + '; '.join(bad[:5]))
 
+print("-- the engine's tilt limits from the table, and the order's Target Length / Utilization (v4.31, MARKER_FORMAT_SPEC.md section 35): two live AccuNest jobs")
+# live round 2026-09-25: a copy of an order with the table tilt/ZZLL-TLT (unequal clockwise / counter-clockwise tilts, cm and degrees) submitted to AccuNest at two fabric widths; an order with a Target Length, one with a Target Utilization
+TJ = _json.load(open(os.path.join(HERE, 'engine', 'TILT_JOBS.json')))['jobs']; bad = []; n_t = n_w = n_min = 0
+tab_ = ll.parse_lay_limits(os.path.join(HERE, 'tilt', 'ZZLL-TLT.GT_lay')); rowc_ = {r_['category']: r_ for r_ in tab_['rows']}
+for nm_, j_ in TJ.items():
+    for sp1_ in j_['style_pieces']:
+        r_ = rowc_[sp1_['PIECE_NAME']]; want_ = ae.engine_tilt_from_table(r_['tilt_cw'], r_['tilt_ccw']); n_t += want_ == (sp1_['CW_TILT_LIMIT'], sp1_['CCW_TILT_LIMIT'])
+        n_min += ae.engine_tilt_from_table(min(r_['tilt_cw'], r_['tilt_ccw']), min(r_['tilt_cw'], r_['tilt_ccw'])) != (sp1_['CW_TILT_LIMIT'], sp1_['CCW_TILT_LIMIT'])      # the marker's single (smaller) value would NOT give the engine's numbers
+        n_w += ae.engine_flags(r_['options']) == {k_: sp1_[k_] for k_ in ('NAP_GROUP', 'FLIP_GROUP', 'ROTATE_INCR')}
+if n_t != 10 or n_w != 10 or n_min < 6 or ae.engine_tilt_from_table(0.1574, 0.1574) != (-2, 2) or TJ['ZZR-TL1']['MARKER_WIDTH'] == TJ['ZZR-TL2']['MARKER_WIDTH']: bad.append(f'tilt: {n_t} of 10, flags {n_w}, min-only differs on {n_min}')
+# the order's targets: marker section 1 @404 (Target Length, in) and @438 (Target Utilization, % x 10), and the engine's TARGET_LENGTH
+tl2_ = am.parse_marker(am.read_storage_marker(os.path.join(HERE, 'engine', 'ZZR-TL2.GT_mark'))); tl3_ = am.parse_marker(am.read_storage_marker(os.path.join(HERE, 'engine', 'ZZR-TL3.GT_mark'))); qw_ = am.parse_marker(am.read_storage_marker(os.path.join(HERE, 'twoply', 'ZZQ-W.GT_mark')))
+if abs(tl2_['order_targets']['length_in'] - 630 / 2.54) > 1e-3 or tl2_['order_targets']['utilization_pct'] != 0 or tl3_['order_targets'] != dict(length_in=0.0, utilization_pct=91.5) or qw_['order_targets']['utilization_pct'] != 85.0: bad.append(f"order targets {tl2_['order_targets']} {tl3_['order_targets']} {qw_['order_targets']}")
+eq_ = ae.read_engine_file(os.path.join(HERE, 'engine', 'ZZQ-W.frommed.mra'))['header']
+if abs(ae.engine_target_length(qw_['total_area'], qw_['width'], 85.0) - eq_['TARGET_LENGTH'] / 1e4) > 2e-3 or ae.engine_target_length(0, 55, 0, 248.0314) != 248.0314 or TJ['ZZR-TL2']['TARGET_LENGTH'] != int(630 / 2.54 * 1e4) or TJ['ZZR-TL1']['TARGET_LENGTH'] != 0: bad.append(f"TARGET_LENGTH: {eq_['TARGET_LENGTH']}")
+sq_ = ns.build_nest_spec(os.path.join(HERE, 'twoply', 'ZZQ-W.GT_mark'))[0]['fabric']; s2_ = ns.build_nest_spec(os.path.join(HERE, 'engine', 'ZZR-TL2.GT_mark'), as_job=True)[0]['fabric']
+if sq_['target_utilization_pct'] != 85.0 or abs(sq_['target_length_at_utilization'] - 189.7674 * 2.54) > 0.05 or sq_['target_length'] is not None or abs(s2_['target_length'] - 630) > 0.01 or s2_['target_utilization_pct'] is not None: bad.append(f'nest spec targets {sq_["target_utilization_pct"]} {sq_["target_length_at_utilization"]} {s2_["target_length"]}')
+b3_ = bytearray(am.read_storage_marker(os.path.join(HERE, 'engine', 'ZZR-TL3.GT_mark'))); struct.pack_into('<d', b3_, tl3_['sections'][1][0] + 134, 700.0)
+if am.parse_marker(bytes(b3_))['order_targets']['utilization_pct'] != 70.0: bad.append('utilization patch not read')
+print(f"   {'ok ' if not bad else 'FAIL'} the engine's tilt limits are the TABLE's two sides x 10 (inches or degrees; 10 of 10 categories of 2 jobs, widths 55.1 / 39.4 in), not the marker's single smaller value; the order's Target Length (@404) and Target Utilization (@438) read back, the engine's TARGET_LENGTH = area / (width x utilization)  {'; '.join(bad[:3])}")
+if bad: fails.append('tilt / targets: ' + '; '.join(bad[:5]))
+
 print('-- marker byte map (v4.4, see accumark_marker.marker_coverage)')
 # Every byte owned by a section a parser reads must be classified (identified /
 # raw / zero_pad / opaque) - only the envelope, the header scalars, sections 2-5,

@@ -2705,9 +2705,9 @@ print(f"   {'ok ' if not bad else 'FAIL'} frommed.mra of 4 jobs: {tot_i} instanc
 if bad: fails.append('engine input file: ' + '; '.join(bad[:5]))
 
 print("-- plaid / stripe MATCHING rules (v4.25, MARKER_FORMAT_SPEC.md section 31): sections 9 / 23 / 24 against the engine's own per-piece rules")
-# plaid/: five markers made with Matching tables (a fabric rule + three piece rules; two piece rules only; a relative offset; a stale extra point; ten bundles), each with the frommed.mra of its AccuNest job.
+# plaid/: six markers made with Matching tables (a fabric rule + three piece rules; two piece rules only; a relative offset; a stale extra point; ten bundles), each with the frommed.mra of its AccuNest job.
 PL = os.path.join(HERE, 'plaid'); bad = []; MTYPE = {'relative': 0, 'none': 1, 'same': 2}
-MJOBS = (('ZZP1-M', 4, 6, 7), ('ZZPU-M', 2, 6, 4), ('ZZPY-M', 3, 6, 5), ('ZZP2-M', 4, 6, 8), ('ZZC20-STD', 2, 10, 4))
+MJOBS = (('ZZP1-M', 4, 6, 7), ('ZZPU-M', 2, 6, 4), ('ZZPY-M', 3, 6, 5), ('ZZP2-M', 4, 6, 8), ('ZZC20-STD', 2, 10, 4), ('ZZPQ-M', 2, 6, 4))
 def _mcmp(d_, mk_, ef_):
     """(instances, instances whose rules equal the engine's, rule points, points on the engine's vertex, worst distance in)"""
     m_ = mk_['matching']; ni = nok = np_ = npok = 0; wd = 0.0
@@ -2732,7 +2732,7 @@ for nm_, nr_, nb_, nbl_ in MJOBS:
     r_ = _mcmp(d_, mk_, ef_); tot_ = [a_ + b_ for a_, b_ in zip(tot_, r_[:4])]; worst_m = max(worst_m, r_[4]); okfx += 1
     if r_[0] != r_[1] or r_[2] != r_[3]: bad.append(f'{nm_}: {r_}')
     if any('MATCHING' in x_ for x_ in am.marker_warnings(mk_)) or any(k_ in (9, 23, 24) for a_, b_, k_ in am.marker_coverage(d_, mk_)['unknown_runs']): bad.append(f'{nm_}: warning or unknown bytes')
-if tot_[0] != 204 or tot_[0] != tot_[1] or tot_[2] != tot_[3] or worst_m > 0.001: bad.append(f'instances {tot_[:2]}, rule points {tot_[2:]}, worst {worst_m:.5f}')
+if tot_[0] != 240 or tot_[0] != tot_[1] or tot_[2] != tot_[3] or worst_m > 0.001: bad.append(f'instances {tot_[:2]}, rule points {tot_[2:]}, worst {worst_m:.5f}')
 # the rules themselves (ZZP1-M = the ZZ-PLAID table of plaid/GROUND_TRUTH.json): fabric rule MARKER 2 - PFRONT 2 (same, same); PFRONT 3 - PBACK 3 (same, none); PFRONT 5 - PSLEEVE 2 (relative 3 cm, none); PFRONT 4 - PPOCKET 1 (same, same)
 d1_ = am.read_storage_marker(os.path.join(PL, 'ZZP1-M.GT_mark')); mk1_ = am.parse_marker(d1_); rs_ = [(r_['kind'], r_['first_category'], r_['first_point'], r_['second_category'], r_['second_point'], r_['type_x'], r_['type_y'], round(r_['offset_x_in'] * 2.54, 3)) for r_ in mk1_['matching']['rules']]
 if rs_ != [('fabric', None, 2, 'PFRONT', 2, 'same', 'same', 0.0), ('piece', 'PFRONT', 3, 'PBACK', 3, 'same', 'none', 0.0), ('piece', 'PFRONT', 5, 'PSLEEVE', 2, 'relative', 'none', 3.0), ('piece', 'PFRONT', 4, 'PPOCKET', 1, 'same', 'same', 0.0)]: bad.append(f'ZZP1-M rules {rs_}')

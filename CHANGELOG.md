@@ -1,5 +1,13 @@
 # Changelog
 
+## v4.40 (2026-09-25) - the odd record was my DXF: a curve point at a vertex (corrects v4.35 / v4.36 / v4.39)
+
+`__version__` stays `'3.0'`. New fixture `notchnum/ZZCN6.GT_mark` (+ spec). Live rounds: the same control under a fully defined 25-row notch table (identical odd record: the table is irrelevant), then with the notch points on layer 4 only.
+
+* **Correction:** v4.36 said corner notches add something to a record's area / perimeter / box, and v4.39 that AccuMark builds an arch from a code-5 corner notch. **Wrong.** `make_aama_dxf.py` wrote every notch as a layer 4 point and a layer 3 (curve) point; at a vertex the DCU bent the edge into an arch. Without the layer 3 point the corner-notch piece imports plain and **verifies exactly** (93.000 / 39.370, corner notches code 5 in piece and stream). The generator is fixed.
+* **What stays true:** the marker's stream holds such an arched edge STRAIGHT while the engine and the declared area / perimeter / box have the arch (12-point engine polygon), so a record with a curve point at a corner fails verification (loud: `no outline`). Corner notches themselves are read correctly (v4.34).
+* Selftest: `ZZCN6` (all three pieces verify, the corner-notch piece reads [5, 5]). The v4.36 / v4.39 test rows stay as the artifact case.
+
 ## v4.39 (2026-09-25) - the engine's own polygon of the corner-notch control (AccuNest job 302)
 
 `__version__` stays `'3.0'`. New fixture `engine/ZZCN2.frommed.mra`. My own Queue Submit nested the v4.36 control marker; the engine's `frommed.mra` shows why its corner-notch piece does not verify: **the engine's polygon has an arched top edge (12 points, box 8.966 in, AM_AREA 101,364 = the record head)** that neither the stream nor the piece object carries. The pieces without a notch or with an edge notch equal the stream. So AccuMark builds that arch itself from a code-5 corner notch (undefined row in the scratch table); what a nester should do with such a record is open (the spec says `no outline`, loudly). Selftest: the control's engine polygons.

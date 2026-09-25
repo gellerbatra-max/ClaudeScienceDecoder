@@ -83,5 +83,14 @@
    "ZZCN2-B": "verifies (93.001, edge notch 5)",
    "ZZCN2-C": "does not verify: declared area 101.364 / perimeter 39.677 against the polygon's 93.000 / 39.370, stored box height 8.966 in against the outline's 7.874 (+1.092), width equal; stream turn points carry type 5"
   }
+ },
+ "v4.40_clean": {
+  "what": "ZZCN6 (ZZCN6_spec.json, generator fixed: notch points on layer 4 only): A none / B edge notch / C two corner notches on vertices",
+  "result": {
+   "ZZCN6-A": "verifies 93.000",
+   "ZZCN6-B": "verifies 93.001, edge notch code 5",
+   "ZZCN6-C": "verifies 93.000 / 39.370, corner notches [5, 5] (piece f1 0x0500)"
+  },
+  "correction": "the odd record of ZZCN / ZZCN2 was a curve point (layer 3) at a vertex in my DXF"
  }
 }

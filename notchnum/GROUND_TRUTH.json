@@ -75,5 +75,13 @@
    ]
   ],
   "known_limitation": "the record head says area 101.364 sq in / perimeter 39.677 in, the stream's polygon is the 30 x 20 cm rectangle (93.000 / 39.370): verification fails, the nest spec says 'no outline' (loud). Cause unknown; a control without notches could not be run"
+ },
+ "v4.36_control": {
+  "what": "ZZCN2 (ZZCN2_spec.json): the same 30 x 20 cm rectangle three times - A no notch, B one edge notch, C two corner notches (notch points on two vertices) - DCU import, Easy Order Process, unmade marker ZZCN2.GT_mark",
+  "result": {
+   "ZZCN2-A": "verifies (area 93.000, box = outline)",
+   "ZZCN2-B": "verifies (93.001, edge notch 5)",
+   "ZZCN2-C": "does not verify: declared area 101.364 / perimeter 39.677 against the polygon's 93.000 / 39.370, stored box height 8.966 in against the outline's 7.874 (+1.092), width equal; stream turn points carry type 5"
+  }
  }
 }

@@ -1,5 +1,9 @@
 # Changelog
 
+## v4.37 (2026-09-25) - what the engine's quarter turn does not follow (plan item 10)
+
+`__version__` stays `'3.0'`. Documentation only. The slot bit of v4.33 is in every marker, so it was correlated with the features of every piece on the machine that has a piece file (86 pieces; the jacket sleeve is the only turned one): aspect, grain direction, internal lines, fold line and the piece object's meta words all fail to separate it from the unturned pieces (MARKER_FORMAT_SPEC.md section 36). Open: what does decide it.
+
 ## v4.36 (2026-09-25) - the control: corner notches make a record disagree with its polygon
 
 `__version__` stays `'3.0'`. New fixture `notchnum/ZZCN2.GT_mark` (+ spec). Live round (DCU import, Easy Order, unmade marker) of my own, the no-notch control the v4.35 note asked for.

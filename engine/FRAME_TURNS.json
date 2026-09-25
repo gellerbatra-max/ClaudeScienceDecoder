@@ -1,0 +1,1202 @@
+{
+ "note": "v4.33: for each piece x size of five jobs the engine's own outline (frommed.mra points, inches) compared with the marker's stream outline turned by 0 / 90 / 180 / 270 about the middle of its box (largest distance of either polygon's vertices from the other's boundary, inches). `word` = the u16 at slot +60; `turn` = the quarter turn with the smallest distance (counter-clockwise), `second` = the next best, both in inches. Jobs: ZZLG-S / ZZLG-F / ZZLG-L = a legacy 9-size jacket set (S, F, L fabric rows), ZZN-1 = LADIES-BLOUSE collar sizes, ZZQ-W = the LADIES-BLOUSE marker of the twoply fixtures.",
+ "rows": [
+  {
+   "marker": "ZZLG-S",
+   "piece": "ID1002 FRONT",
+   "size": "2",
+   "word": 257,
+   "turn": 0,
+   "dist": 0.057,
+   "second": 2.622
+  },
+  {
+   "marker": "ZZLG-S",
+   "piece": "ID1002 SLEEVE",
+   "size": "2",
+   "word": 769,
+   "turn": 90,
+   "dist": 0.064,
+   "second": 2.087
+  },
+  {
+   "marker": "ZZLG-S",
+   "piece": "ID1002 SLV BAND",
+   "size": "2",
+   "word": 257,
+   "turn": 0,
+   "dist": 0.0,
+   "second": 0.0
+  },
+  {
+   "marker": "ZZLG-S",
+   "piece": "ID1002 FRONT FACING",
+   "size": "2",
+   "word": 257,
+   "turn": 0,
+   "dist": 0.02,
+   "second": 2.855
+  },
+  {
+   "marker": "ZZLG-S",
+   "piece": "ID1002 BACK FACING",
+   "size": "2",
+   "word": 385,
+   "turn": 0,
+   "dist": 0.031,
+   "second": 1.284
+  },
+  {
+   "marker": "ZZLG-S",
+   "piece": "ID1002 TOP COLLAR",
+   "size": "2",
+   "word": 385,
+   "turn": 0,
+   "dist": 0.047,
+   "second": 1.533
+  },
+  {
+   "marker": "ZZLG-S",
+   "piece": "ID1002 UNDER COLLAR",
+   "size": "2",
+   "word": 385,
+   "turn": 0,
+   "dist": 0.046,
+   "second": 1.536
+  },
+  {
+   "marker": "ZZLG-S",
+   "piece": "ID1002 PKT FLAP",
+   "size": "2",
+   "word": 257,
+   "turn": 0,
+   "dist": 0.012,
+   "second": 0.423
+  },
+  {
+   "marker": "ZZLG-S",
+   "piece": "ID1002 FRONT",
+   "size": "4",
+   "word": 257,
+   "turn": 0,
+   "dist": 0.057,
+   "second": 2.641
+  },
+  {
+   "marker": "ZZLG-S",
+   "piece": "ID1002 SLEEVE",
+   "size": "4",
+   "word": 769,
+   "turn": 90,
+   "dist": 0.065,
+   "second": 2.225
+  },
+  {
+   "marker": "ZZLG-S",
+   "piece": "ID1002 SLV BAND",
+   "size": "4",
+   "word": 257,
+   "turn": 0,
+   "dist": 0.0,
+   "second": 0.0
+  },
+  {
+   "marker": "ZZLG-S",
+   "piece": "ID1002 FRONT FACING",
+   "size": "4",
+   "word": 257,
+   "turn": 0,
+   "dist": 0.02,
+   "second": 2.918
+  },
+  {
+   "marker": "ZZLG-S",
+   "piece": "ID1002 BACK FACING",
+   "size": "4",
+   "word": 385,
+   "turn": 0,
+   "dist": 0.032,
+   "second": 1.347
+  },
+  {
+   "marker": "ZZLG-S",
+   "piece": "ID1002 TOP COLLAR",
+   "size": "4",
+   "word": 385,
+   "turn": 0,
+   "dist": 0.048,
+   "second": 1.521
+  },
+  {
+   "marker": "ZZLG-S",
+   "piece": "ID1002 UNDER COLLAR",
+   "size": "4",
+   "word": 385,
+   "turn": 0,
+   "dist": 0.048,
+   "second": 1.526
+  },
+  {
+   "marker": "ZZLG-S",
+   "piece": "ID1002 PKT FLAP",
+   "size": "4",
+   "word": 257,
+   "turn": 0,
+   "dist": 0.012,
+   "second": 0.423
+  },
+  {
+   "marker": "ZZLG-S",
+   "piece": "ID1002 FRONT",
+   "size": "6",
+   "word": 257,
+   "turn": 0,
+   "dist": 0.057,
+   "second": 2.659
+  },
+  {
+   "marker": "ZZLG-S",
+   "piece": "ID1002 SLEEVE",
+   "size": "6",
+   "word": 769,
+   "turn": 90,
+   "dist": 0.067,
+   "second": 2.373
+  },
+  {
+   "marker": "ZZLG-S",
+   "piece": "ID1002 SLV BAND",
+   "size": "6",
+   "word": 257,
+   "turn": 0,
+   "dist": 0.0,
+   "second": 0.0
+  },
+  {
+   "marker": "ZZLG-S",
+   "piece": "ID1002 FRONT FACING",
+   "size": "6",
+   "word": 257,
+   "turn": 0,
+   "dist": 0.02,
+   "second": 2.981
+  },
+  {
+   "marker": "ZZLG-S",
+   "piece": "ID1002 BACK FACING",
+   "size": "6",
+   "word": 385,
+   "turn": 0,
+   "dist": 0.033,
+   "second": 1.41
+  },
+  {
+   "marker": "ZZLG-S",
+   "piece": "ID1002 TOP COLLAR",
+   "size": "6",
+   "word": 385,
+   "turn": 0,
+   "dist": 0.05,
+   "second": 1.507
+  },
+  {
+   "marker": "ZZLG-S",
+   "piece": "ID1002 UNDER COLLAR",
+   "size": "6",
+   "word": 385,
+   "turn": 0,
+   "dist": 0.049,
+   "second": 1.514
+  },
+  {
+   "marker": "ZZLG-S",
+   "piece": "ID1002 PKT FLAP",
+   "size": "6",
+   "word": 257,
+   "turn": 0,
+   "dist": 0.012,
+   "second": 0.423
+  },
+  {
+   "marker": "ZZLG-S",
+   "piece": "ID1002 FRONT",
+   "size": "8",
+   "word": 257,
+   "turn": 0,
+   "dist": 0.058,
+   "second": 2.676
+  },
+  {
+   "marker": "ZZLG-S",
+   "piece": "ID1002 SLEEVE",
+   "size": "8",
+   "word": 769,
+   "turn": 90,
+   "dist": 0.069,
+   "second": 2.521
+  },
+  {
+   "marker": "ZZLG-S",
+   "piece": "ID1002 SLV BAND",
+   "size": "8",
+   "word": 257,
+   "turn": 0,
+   "dist": 0.0,
+   "second": 0.0
+  },
+  {
+   "marker": "ZZLG-S",
+   "piece": "ID1002 FRONT FACING",
+   "size": "8",
+   "word": 257,
+   "turn": 0,
+   "dist": 0.02,
+   "second": 3.044
+  },
+  {
+   "marker": "ZZLG-S",
+   "piece": "ID1002 BACK FACING",
+   "size": "8",
+   "word": 385,
+   "turn": 0,
+   "dist": 0.034,
+   "second": 1.473
+  },
+  {
+   "marker": "ZZLG-S",
+   "piece": "ID1002 TOP COLLAR",
+   "size": "8",
+   "word": 385,
+   "turn": 0,
+   "dist": 0.051,
+   "second": 1.491
+  },
+  {
+   "marker": "ZZLG-S",
+   "piece": "ID1002 UNDER COLLAR",
+   "size": "8",
+   "word": 385,
+   "turn": 0,
+   "dist": 0.051,
+   "second": 1.501
+  },
+  {
+   "marker": "ZZLG-S",
+   "piece": "ID1002 PKT FLAP",
+   "size": "8",
+   "word": 257,
+   "turn": 0,
+   "dist": 0.012,
+   "second": 0.423
+  },
+  {
+   "marker": "ZZLG-S",
+   "piece": "ID1002 FRONT",
+   "size": "10",
+   "word": 257,
+   "turn": 0,
+   "dist": 0.06,
+   "second": 2.773
+  },
+  {
+   "marker": "ZZLG-S",
+   "piece": "ID1002 SLEEVE",
+   "size": "10",
+   "word": 769,
+   "turn": 270,
+   "dist": 0.07,
+   "second": 2.669
+  },
+  {
+   "marker": "ZZLG-S",
+   "piece": "ID1002 SLV BAND",
+   "size": "10",
+   "word": 257,
+   "turn": 0,
+   "dist": 0.0,
+   "second": 0.0
+  },
+  {
+   "marker": "ZZLG-S",
+   "piece": "ID1002 FRONT FACING",
+   "size": "10",
+   "word": 257,
+   "turn": 0,
+   "dist": 0.02,
+   "second": 3.107
+  },
+  {
+   "marker": "ZZLG-S",
+   "piece": "ID1002 BACK FACING",
+   "size": "10",
+   "word": 385,
+   "turn": 0,
+   "dist": 0.034,
+   "second": 1.536
+  },
+  {
+   "marker": "ZZLG-S",
+   "piece": "ID1002 TOP COLLAR",
+   "size": "10",
+   "word": 385,
+   "turn": 0,
+   "dist": 0.053,
+   "second": 1.474
+  },
+  {
+   "marker": "ZZLG-S",
+   "piece": "ID1002 UNDER COLLAR",
+   "size": "10",
+   "word": 385,
+   "turn": 0,
+   "dist": 0.052,
+   "second": 1.486
+  },
+  {
+   "marker": "ZZLG-S",
+   "piece": "ID1002 PKT FLAP",
+   "size": "10",
+   "word": 257,
+   "turn": 0,
+   "dist": 0.012,
+   "second": 0.423
+  },
+  {
+   "marker": "ZZLG-S",
+   "piece": "ID1002 FRONT",
+   "size": "12",
+   "word": 257,
+   "turn": 0,
+   "dist": 0.06,
+   "second": 2.791
+  },
+  {
+   "marker": "ZZLG-S",
+   "piece": "ID1002 SLEEVE",
+   "size": "12",
+   "word": 769,
+   "turn": 270,
+   "dist": 0.072,
+   "second": 2.866
+  },
+  {
+   "marker": "ZZLG-S",
+   "piece": "ID1002 SLV BAND",
+   "size": "12",
+   "word": 257,
+   "turn": 0,
+   "dist": 0.0,
+   "second": 0.0
+  },
+  {
+   "marker": "ZZLG-S",
+   "piece": "ID1002 FRONT FACING",
+   "size": "12",
+   "word": 257,
+   "turn": 0,
+   "dist": 0.021,
+   "second": 3.17
+  },
+  {
+   "marker": "ZZLG-S",
+   "piece": "ID1002 BACK FACING",
+   "size": "12",
+   "word": 385,
+   "turn": 0,
+   "dist": 0.035,
+   "second": 1.604
+  },
+  {
+   "marker": "ZZLG-S",
+   "piece": "ID1002 TOP COLLAR",
+   "size": "12",
+   "word": 385,
+   "turn": 0,
+   "dist": 0.049,
+   "second": 1.46
+  },
+  {
+   "marker": "ZZLG-S",
+   "piece": "ID1002 UNDER COLLAR",
+   "size": "12",
+   "word": 385,
+   "turn": 0,
+   "dist": 0.049,
+   "second": 1.474
+  },
+  {
+   "marker": "ZZLG-S",
+   "piece": "ID1002 PKT FLAP",
+   "size": "12",
+   "word": 257,
+   "turn": 0,
+   "dist": 0.012,
+   "second": 0.423
+  },
+  {
+   "marker": "ZZLG-S",
+   "piece": "ID1002 FRONT",
+   "size": "14",
+   "word": 257,
+   "turn": 0,
+   "dist": 0.06,
+   "second": 2.809
+  },
+  {
+   "marker": "ZZLG-S",
+   "piece": "ID1002 SLEEVE",
+   "size": "14",
+   "word": 769,
+   "turn": 270,
+   "dist": 0.081,
+   "second": 3.057
+  },
+  {
+   "marker": "ZZLG-S",
+   "piece": "ID1002 SLV BAND",
+   "size": "14",
+   "word": 257,
+   "turn": 0,
+   "dist": 0.0,
+   "second": 0.0
+  },
+  {
+   "marker": "ZZLG-S",
+   "piece": "ID1002 FRONT FACING",
+   "size": "14",
+   "word": 257,
+   "turn": 0,
+   "dist": 0.021,
+   "second": 3.233
+  },
+  {
+   "marker": "ZZLG-S",
+   "piece": "ID1002 BACK FACING",
+   "size": "14",
+   "word": 385,
+   "turn": 0,
+   "dist": 0.036,
+   "second": 1.667
+  },
+  {
+   "marker": "ZZLG-S",
+   "piece": "ID1002 TOP COLLAR",
+   "size": "14",
+   "word": 385,
+   "turn": 0,
+   "dist": 0.045,
+   "second": 1.446
+  },
+  {
+   "marker": "ZZLG-S",
+   "piece": "ID1002 UNDER COLLAR",
+   "size": "14",
+   "word": 385,
+   "turn": 0,
+   "dist": 0.045,
+   "second": 1.462
+  },
+  {
+   "marker": "ZZLG-S",
+   "piece": "ID1002 PKT FLAP",
+   "size": "14",
+   "word": 257,
+   "turn": 0,
+   "dist": 0.012,
+   "second": 0.423
+  },
+  {
+   "marker": "ZZLG-S",
+   "piece": "ID1002 FRONT",
+   "size": "16",
+   "word": 257,
+   "turn": 0,
+   "dist": 0.06,
+   "second": 2.827
+  },
+  {
+   "marker": "ZZLG-S",
+   "piece": "ID1002 SLEEVE",
+   "size": "16",
+   "word": 769,
+   "turn": 270,
+   "dist": 0.094,
+   "second": 3.293
+  },
+  {
+   "marker": "ZZLG-S",
+   "piece": "ID1002 SLV BAND",
+   "size": "16",
+   "word": 257,
+   "turn": 0,
+   "dist": 0.0,
+   "second": 0.0
+  },
+  {
+   "marker": "ZZLG-S",
+   "piece": "ID1002 FRONT FACING",
+   "size": "16",
+   "word": 257,
+   "turn": 0,
+   "dist": 0.021,
+   "second": 3.296
+  },
+  {
+   "marker": "ZZLG-S",
+   "piece": "ID1002 BACK FACING",
+   "size": "16",
+   "word": 385,
+   "turn": 0,
+   "dist": 0.037,
+   "second": 1.731
+  },
+  {
+   "marker": "ZZLG-S",
+   "piece": "ID1002 TOP COLLAR",
+   "size": "16",
+   "word": 385,
+   "turn": 0,
+   "dist": 0.045,
+   "second": 1.435
+  },
+  {
+   "marker": "ZZLG-S",
+   "piece": "ID1002 UNDER COLLAR",
+   "size": "16",
+   "word": 385,
+   "turn": 0,
+   "dist": 0.044,
+   "second": 1.452
+  },
+  {
+   "marker": "ZZLG-S",
+   "piece": "ID1002 PKT FLAP",
+   "size": "16",
+   "word": 257,
+   "turn": 0,
+   "dist": 0.012,
+   "second": 0.423
+  },
+  {
+   "marker": "ZZLG-S",
+   "piece": "ID1002 FRONT",
+   "size": "18",
+   "word": 257,
+   "turn": 0,
+   "dist": 0.06,
+   "second": 2.859
+  },
+  {
+   "marker": "ZZLG-S",
+   "piece": "ID1002 SLEEVE",
+   "size": "18",
+   "word": 769,
+   "turn": 270,
+   "dist": 0.105,
+   "second": 3.528
+  },
+  {
+   "marker": "ZZLG-S",
+   "piece": "ID1002 SLV BAND",
+   "size": "18",
+   "word": 257,
+   "turn": 0,
+   "dist": 0.0,
+   "second": 0.0
+  },
+  {
+   "marker": "ZZLG-S",
+   "piece": "ID1002 FRONT FACING",
+   "size": "18",
+   "word": 257,
+   "turn": 0,
+   "dist": 0.021,
+   "second": 3.359
+  },
+  {
+   "marker": "ZZLG-S",
+   "piece": "ID1002 BACK FACING",
+   "size": "18",
+   "word": 385,
+   "turn": 0,
+   "dist": 0.038,
+   "second": 1.794
+  },
+  {
+   "marker": "ZZLG-S",
+   "piece": "ID1002 TOP COLLAR",
+   "size": "18",
+   "word": 385,
+   "turn": 0,
+   "dist": 0.049,
+   "second": 1.432
+  },
+  {
+   "marker": "ZZLG-S",
+   "piece": "ID1002 UNDER COLLAR",
+   "size": "18",
+   "word": 385,
+   "turn": 0,
+   "dist": 0.048,
+   "second": 1.451
+  },
+  {
+   "marker": "ZZLG-S",
+   "piece": "ID1002 PKT FLAP",
+   "size": "18",
+   "word": 257,
+   "turn": 0,
+   "dist": 0.012,
+   "second": 0.423
+  },
+  {
+   "marker": "ZZLG-F",
+   "piece": "ID1002 FRONT FACING",
+   "size": "2",
+   "word": 257,
+   "turn": 0,
+   "dist": 0.02,
+   "second": 2.855
+  },
+  {
+   "marker": "ZZLG-F",
+   "piece": "ID1002 BACK FACING",
+   "size": "2",
+   "word": 385,
+   "turn": 0,
+   "dist": 0.031,
+   "second": 1.284
+  },
+  {
+   "marker": "ZZLG-F",
+   "piece": "ID1002 UNDER COLLAR",
+   "size": "2",
+   "word": 385,
+   "turn": 0,
+   "dist": 0.046,
+   "second": 1.536
+  },
+  {
+   "marker": "ZZLG-F",
+   "piece": "ID1002 FRONT FACING",
+   "size": "4",
+   "word": 257,
+   "turn": 0,
+   "dist": 0.02,
+   "second": 2.918
+  },
+  {
+   "marker": "ZZLG-F",
+   "piece": "ID1002 BACK FACING",
+   "size": "4",
+   "word": 385,
+   "turn": 0,
+   "dist": 0.032,
+   "second": 1.347
+  },
+  {
+   "marker": "ZZLG-F",
+   "piece": "ID1002 UNDER COLLAR",
+   "size": "4",
+   "word": 385,
+   "turn": 0,
+   "dist": 0.048,
+   "second": 1.526
+  },
+  {
+   "marker": "ZZLG-F",
+   "piece": "ID1002 FRONT FACING",
+   "size": "6",
+   "word": 257,
+   "turn": 0,
+   "dist": 0.02,
+   "second": 2.981
+  },
+  {
+   "marker": "ZZLG-F",
+   "piece": "ID1002 BACK FACING",
+   "size": "6",
+   "word": 385,
+   "turn": 0,
+   "dist": 0.033,
+   "second": 1.41
+  },
+  {
+   "marker": "ZZLG-F",
+   "piece": "ID1002 UNDER COLLAR",
+   "size": "6",
+   "word": 385,
+   "turn": 0,
+   "dist": 0.049,
+   "second": 1.514
+  },
+  {
+   "marker": "ZZLG-F",
+   "piece": "ID1002 FRONT FACING",
+   "size": "8",
+   "word": 257,
+   "turn": 0,
+   "dist": 0.02,
+   "second": 3.044
+  },
+  {
+   "marker": "ZZLG-F",
+   "piece": "ID1002 BACK FACING",
+   "size": "8",
+   "word": 385,
+   "turn": 0,
+   "dist": 0.034,
+   "second": 1.473
+  },
+  {
+   "marker": "ZZLG-F",
+   "piece": "ID1002 UNDER COLLAR",
+   "size": "8",
+   "word": 385,
+   "turn": 0,
+   "dist": 0.051,
+   "second": 1.501
+  },
+  {
+   "marker": "ZZLG-F",
+   "piece": "ID1002 FRONT FACING",
+   "size": "10",
+   "word": 257,
+   "turn": 0,
+   "dist": 0.02,
+   "second": 3.107
+  },
+  {
+   "marker": "ZZLG-F",
+   "piece": "ID1002 BACK FACING",
+   "size": "10",
+   "word": 385,
+   "turn": 0,
+   "dist": 0.034,
+   "second": 1.536
+  },
+  {
+   "marker": "ZZLG-F",
+   "piece": "ID1002 UNDER COLLAR",
+   "size": "10",
+   "word": 385,
+   "turn": 0,
+   "dist": 0.052,
+   "second": 1.486
+  },
+  {
+   "marker": "ZZLG-F",
+   "piece": "ID1002 FRONT FACING",
+   "size": "12",
+   "word": 257,
+   "turn": 0,
+   "dist": 0.021,
+   "second": 3.17
+  },
+  {
+   "marker": "ZZLG-F",
+   "piece": "ID1002 BACK FACING",
+   "size": "12",
+   "word": 385,
+   "turn": 0,
+   "dist": 0.035,
+   "second": 1.604
+  },
+  {
+   "marker": "ZZLG-F",
+   "piece": "ID1002 UNDER COLLAR",
+   "size": "12",
+   "word": 385,
+   "turn": 0,
+   "dist": 0.049,
+   "second": 1.474
+  },
+  {
+   "marker": "ZZLG-F",
+   "piece": "ID1002 FRONT FACING",
+   "size": "14",
+   "word": 257,
+   "turn": 0,
+   "dist": 0.021,
+   "second": 3.233
+  },
+  {
+   "marker": "ZZLG-F",
+   "piece": "ID1002 BACK FACING",
+   "size": "14",
+   "word": 385,
+   "turn": 0,
+   "dist": 0.036,
+   "second": 1.667
+  },
+  {
+   "marker": "ZZLG-F",
+   "piece": "ID1002 UNDER COLLAR",
+   "size": "14",
+   "word": 385,
+   "turn": 0,
+   "dist": 0.045,
+   "second": 1.462
+  },
+  {
+   "marker": "ZZLG-F",
+   "piece": "ID1002 FRONT FACING",
+   "size": "16",
+   "word": 257,
+   "turn": 0,
+   "dist": 0.021,
+   "second": 3.296
+  },
+  {
+   "marker": "ZZLG-F",
+   "piece": "ID1002 BACK FACING",
+   "size": "16",
+   "word": 385,
+   "turn": 0,
+   "dist": 0.037,
+   "second": 1.731
+  },
+  {
+   "marker": "ZZLG-F",
+   "piece": "ID1002 UNDER COLLAR",
+   "size": "16",
+   "word": 385,
+   "turn": 0,
+   "dist": 0.044,
+   "second": 1.452
+  },
+  {
+   "marker": "ZZLG-F",
+   "piece": "ID1002 FRONT FACING",
+   "size": "18",
+   "word": 257,
+   "turn": 0,
+   "dist": 0.021,
+   "second": 3.359
+  },
+  {
+   "marker": "ZZLG-F",
+   "piece": "ID1002 BACK FACING",
+   "size": "18",
+   "word": 385,
+   "turn": 0,
+   "dist": 0.038,
+   "second": 1.794
+  },
+  {
+   "marker": "ZZLG-F",
+   "piece": "ID1002 UNDER COLLAR",
+   "size": "18",
+   "word": 385,
+   "turn": 0,
+   "dist": 0.048,
+   "second": 1.451
+  },
+  {
+   "marker": "ZZLG-L",
+   "piece": "ID1002 POCKET",
+   "size": "2",
+   "word": 257,
+   "turn": 0,
+   "dist": 0.0,
+   "second": 0.0
+  },
+  {
+   "marker": "ZZLG-L",
+   "piece": "ID1002 POCKET",
+   "size": "4",
+   "word": 257,
+   "turn": 0,
+   "dist": 0.0,
+   "second": 0.0
+  },
+  {
+   "marker": "ZZLG-L",
+   "piece": "ID1002 POCKET",
+   "size": "6",
+   "word": 257,
+   "turn": 0,
+   "dist": 0.0,
+   "second": 0.0
+  },
+  {
+   "marker": "ZZLG-L",
+   "piece": "ID1002 POCKET",
+   "size": "8",
+   "word": 257,
+   "turn": 0,
+   "dist": 0.0,
+   "second": 0.0
+  },
+  {
+   "marker": "ZZLG-L",
+   "piece": "ID1002 POCKET",
+   "size": "10",
+   "word": 257,
+   "turn": 0,
+   "dist": 0.0,
+   "second": 0.0
+  },
+  {
+   "marker": "ZZLG-L",
+   "piece": "ID1002 POCKET",
+   "size": "12",
+   "word": 257,
+   "turn": 0,
+   "dist": 0.0,
+   "second": 0.0
+  },
+  {
+   "marker": "ZZLG-L",
+   "piece": "ID1002 POCKET",
+   "size": "14",
+   "word": 257,
+   "turn": 0,
+   "dist": 0.0,
+   "second": 0.0
+  },
+  {
+   "marker": "ZZLG-L",
+   "piece": "ID1002 POCKET",
+   "size": "16",
+   "word": 257,
+   "turn": 0,
+   "dist": 0.0,
+   "second": 0.0
+  },
+  {
+   "marker": "ZZLG-L",
+   "piece": "ID1002 POCKET",
+   "size": "18",
+   "word": 257,
+   "turn": 0,
+   "dist": 0.0,
+   "second": 0.0
+  },
+  {
+   "marker": "ZZN-1",
+   "piece": "LADIES-BLOUSE-BK",
+   "size": "10",
+   "word": 385,
+   "turn": 0,
+   "dist": 0.025,
+   "second": 2.023
+  },
+  {
+   "marker": "ZZN-1",
+   "piece": "LADIES-BLOUSE-COL",
+   "size": "10",
+   "word": 897,
+   "turn": 90,
+   "dist": 0.016,
+   "second": 0.776
+  },
+  {
+   "marker": "ZZN-1",
+   "piece": "LADIES-BLOUSE-CUFF",
+   "size": "10",
+   "word": 257,
+   "turn": 0,
+   "dist": 0.0,
+   "second": 0.0
+  },
+  {
+   "marker": "ZZN-1",
+   "piece": "LADIES-BLOUSE-FR",
+   "size": "10",
+   "word": 257,
+   "turn": 0,
+   "dist": 0.052,
+   "second": 2.528
+  },
+  {
+   "marker": "ZZN-1",
+   "piece": "LADIES-BLOUSE-SL",
+   "size": "10",
+   "word": 257,
+   "turn": 0,
+   "dist": 0.041,
+   "second": 3.244
+  },
+  {
+   "marker": "ZZN-1",
+   "piece": "LADIES-BLOUSE-BK",
+   "size": "12",
+   "word": 385,
+   "turn": 0,
+   "dist": 0.027,
+   "second": 2.159
+  },
+  {
+   "marker": "ZZN-1",
+   "piece": "LADIES-BLOUSE-COL",
+   "size": "12",
+   "word": 897,
+   "turn": 90,
+   "dist": 0.017,
+   "second": 0.772
+  },
+  {
+   "marker": "ZZN-1",
+   "piece": "LADIES-BLOUSE-CUFF",
+   "size": "12",
+   "word": 257,
+   "turn": 0,
+   "dist": 0.0,
+   "second": 0.0
+  },
+  {
+   "marker": "ZZN-1",
+   "piece": "LADIES-BLOUSE-FR",
+   "size": "12",
+   "word": 257,
+   "turn": 0,
+   "dist": 0.054,
+   "second": 2.667
+  },
+  {
+   "marker": "ZZN-1",
+   "piece": "LADIES-BLOUSE-SL",
+   "size": "12",
+   "word": 257,
+   "turn": 0,
+   "dist": 0.042,
+   "second": 3.328
+  },
+  {
+   "marker": "ZZN-1",
+   "piece": "LADIES-BLOUSE-BK",
+   "size": "14",
+   "word": 385,
+   "turn": 0,
+   "dist": 0.028,
+   "second": 2.3
+  },
+  {
+   "marker": "ZZN-1",
+   "piece": "LADIES-BLOUSE-COL",
+   "size": "14",
+   "word": 897,
+   "turn": 90,
+   "dist": 0.017,
+   "second": 0.769
+  },
+  {
+   "marker": "ZZN-1",
+   "piece": "LADIES-BLOUSE-CUFF",
+   "size": "14",
+   "word": 257,
+   "turn": 0,
+   "dist": 0.0,
+   "second": 0.0
+  },
+  {
+   "marker": "ZZN-1",
+   "piece": "LADIES-BLOUSE-FR",
+   "size": "14",
+   "word": 257,
+   "turn": 0,
+   "dist": 0.055,
+   "second": 2.795
+  },
+  {
+   "marker": "ZZN-1",
+   "piece": "LADIES-BLOUSE-SL",
+   "size": "14",
+   "word": 257,
+   "turn": 0,
+   "dist": 0.042,
+   "second": 3.412
+  },
+  {
+   "marker": "ZZN-1",
+   "piece": "LADIES-BLOUSE-BK",
+   "size": "16",
+   "word": 385,
+   "turn": 0,
+   "dist": 0.029,
+   "second": 2.45
+  },
+  {
+   "marker": "ZZN-1",
+   "piece": "LADIES-BLOUSE-COL",
+   "size": "16",
+   "word": 897,
+   "turn": 90,
+   "dist": 0.018,
+   "second": 0.766
+  },
+  {
+   "marker": "ZZN-1",
+   "piece": "LADIES-BLOUSE-CUFF",
+   "size": "16",
+   "word": 257,
+   "turn": 0,
+   "dist": 0.0,
+   "second": 0.0
+  },
+  {
+   "marker": "ZZN-1",
+   "piece": "LADIES-BLOUSE-FR",
+   "size": "16",
+   "word": 257,
+   "turn": 0,
+   "dist": 0.056,
+   "second": 2.93
+  },
+  {
+   "marker": "ZZN-1",
+   "piece": "LADIES-BLOUSE-SL",
+   "size": "16",
+   "word": 257,
+   "turn": 0,
+   "dist": 0.043,
+   "second": 3.497
+  },
+  {
+   "marker": "ZZQ-W",
+   "piece": "LADIES-BLOUSE-BK",
+   "size": "10",
+   "word": 401,
+   "turn": 0,
+   "dist": 0.557,
+   "second": 2.417
+  },
+  {
+   "marker": "ZZQ-W",
+   "piece": "LADIES-BLOUSE-COL",
+   "size": "10",
+   "word": 913,
+   "turn": 90,
+   "dist": 0.557,
+   "second": 1.179
+  },
+  {
+   "marker": "ZZQ-W",
+   "piece": "LADIES-BLOUSE-CUFF",
+   "size": "10",
+   "word": 273,
+   "turn": 0,
+   "dist": 0.557,
+   "second": 0.557
+  },
+  {
+   "marker": "ZZQ-W",
+   "piece": "LADIES-BLOUSE-FR",
+   "size": "10",
+   "word": 273,
+   "turn": 0,
+   "dist": 0.557,
+   "second": 3.084
+  },
+  {
+   "marker": "ZZQ-W",
+   "piece": "LADIES-BLOUSE-SL",
+   "size": "10",
+   "word": 273,
+   "turn": 0,
+   "dist": 0.558,
+   "second": 3.717
+  }
+ ]
+}

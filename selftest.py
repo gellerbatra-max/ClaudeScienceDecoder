@@ -2624,10 +2624,15 @@ for i_, (s_, o_) in placed45.items():
         nbad_ += min(_vm.hausdorff(am.transform(own45[i_], dict(s_, tilt_deg=0.0), fr_), l_) for l_ in cand_) > 1.0
         nbad_ += min(_vm.hausdorff(am.transform(own45[i_], dict(s_, tilt_deg=-s_['tilt_deg']), fr_), l_) for l_ in cand_) > 1.0
 if nfit_ != 18 or worst_['fixed'] > 0.2 or nfit0_ != 0 or nbad_ < 24: bad.append(f'plot fit: {nfit_} of 18 within 0.2 in (worst {worst_["fixed"]:.3f}), collar without its frame {nfit0_} fit, mutations {nbad_}')
-# what the stored boxes cannot say: BACK / COLLAR / CUFF are thin shapes tilted 45 - flagged; earlier markers (no 45 degree tilt) are not
-if mk45['frames_ambiguous'] != ['LADIES-BLOUSE-BK', 'LADIES-BLOUSE-COL', 'LADIES-BLOUSE-CUFF'] or not any('quarter-turn frame' in w_ for w_ in m45['inventory']['warnings']): bad.append(f"frames_ambiguous {mk45['frames_ambiguous']}")
+# what the stored boxes cannot say: BACK / COLLAR / CUFF are thin shapes tilted 45 - the box method flags all three and puts the collar at 0 (wrong: the plot above needs 90); since v4.33 the slot's own bit
+# (word @+60, 0x0200) decides: collar 90, no piece ambiguous
+items45_ = [(s_, s_['piece'], own45[i_]) for i_, (s_, o_) in placed45.items()]
+if am.frame_ambiguous(items45_) != ['LADIES-BLOUSE-BK', 'LADIES-BLOUSE-COL', 'LADIES-BLOUSE-CUFF'] or am.frame_offsets(items45_).get('LADIES-BLOUSE-COL') != 0: bad.append('the box method no longer shows the 45-degree ambiguity')
+if {p_: v_ for p_, v_ in mk45['frames'].items() if v_} != {'LADIES-BLOUSE-COL': 90}: bad.append(f"frames {mk45['frames']}")
+if mk45['frames_ambiguous'] or mk45['frames_box_disagree'] != ['LADIES-BLOUSE-COL']: bad.append(f"frames_ambiguous {mk45['frames_ambiguous']}, box method disagrees on {mk45['frames_box_disagree']}")
 for f_ in ('rotation/ZZROT-T.GT_mark', 'rotation/ZZROT-90.GT_mark', 'twoply/ZZQ-A-MADE.GT_mark', 'flipcount/ZZR-S-MADE.GT_mark'):
-    if am.place_marker(os.path.join(HERE, f_))['markers'][0]['marker']['frames_ambiguous']: bad.append(f'{f_}: a frame was called ambiguous')
+    mf_ = am.place_marker(os.path.join(HERE, f_))['markers'][0]['marker']
+    if mf_['frames_ambiguous'] or mf_['frames_box_disagree']: bad.append(f'{f_}: a frame was called ambiguous, or the slot bit and the boxes disagree ({mf_["frames_ambiguous"]}, {mf_["frames_box_disagree"]})')
 # section 1 @472 / @476 = the sums of record prefix words 3 / 4 over the slots (fixture folders; the tubular ZZQ-T is the known exception)
 n_pf = 0
 for dn_ in ('twoply', 'flipcount', 'spread', 'rotation', 'notchnum', 'blockarea', 'deg45', 'tilt'):
@@ -2636,7 +2641,7 @@ for dn_ in ('twoply', 'flipcount', 'spread', 'rotation', 'notchnum', 'blockarea'
         d_ = am.read_storage_marker(fp_); mk_ = am.parse_marker(d_); a_ = mk_['sections'][1][0]
         w3_, w4_ = struct.unpack_from('<H', d_, a_ + 168)[0], struct.unpack_from('<H', d_, a_ + 172)[0]; n_pf += 1
         if w3_ != sum(s_['record']['prefix'][3] for s_ in mk_['slots']) or w4_ != sum(s_['record']['prefix'][4] for s_ in mk_['slots']): bad.append(f'{os.path.basename(fp_)}: @472 {w3_} / @476 {w4_}')
-print(f"   {'ok ' if not bad else 'FAIL'} 45 degrees = a tilt of exactly 45.0 on top of the code (14 slots + the collar, {nfit_} of 18 on the plot, worst {worst_['fixed']:.3f} in; tilt ignored / inverted misses); the thin tilted pieces' frame is flagged ambiguous, no earlier marker is; @472 / @476 = sums of record prefix words 3 / 4 on {n_pf} fixture markers  {'; '.join(bad[:3])}")
+print(f"   {'ok ' if not bad else 'FAIL'} 45 degrees = a tilt of exactly 45.0 on top of the code (14 slots + the collar, {nfit_} of 18 on the plot, worst {worst_['fixed']:.3f} in; tilt ignored / inverted misses); the thin tilted pieces' frame is what the boxes cannot say and the slot bit does (v4.33); @472 / @476 = sums of record prefix words 3 / 4 on {n_pf} fixture markers  {'; '.join(bad[:3])}")
 if bad: fails.append('45 degrees: ' + '; '.join(bad[:5]))
 
 print('-- plaid / stripe markers and the real-marker scan (v4.23, MARKER_FORMAT_SPEC.md section 29): section 1 doubles, matching sections, the relaxed @88 rule')
@@ -2767,7 +2772,7 @@ print("-- what the engine does with the block buffer and the frame (v4.26, MARKE
 # the engine's outline of every piece = the marker's stream outline grown by the section-6 rectangle (all sizes seen: 0.15 mm .. 1 cm, unequal sides, none), about the middle of the box, in the frame of the engine (one piece is turned +90)
 EJ2 = (('twoply', 'ZZQ-W', 'engine/ZZQ-W.frommed.mra'), ('twoply', 'ZZQ-A', 'engine/ZZQ-A.frommed.mra'), ('deg45', 'ZZR-45', 'engine/ZZR-45.frommed.mra'),
        ('engine', 'ZZPV-M', 'engine/ZZPV-M.frommed.mra'), ('engine', 'ZZPS-M', 'engine/ZZPS-M.frommed.mra'), ('plaid', 'ZZP1-M', 'plaid/ZZP1-M-frommed.mra'))
-bad = []; n_pc = n_grow = n_box = n_frame = 0; sides_seen = set(); worst_c = None
+bad = []; n_pc = n_grow = n_box = n_frame = n_bit_ = 0; sides_seen = set(); worst_c = None
 def _rot_(pts_, deg_, c_):
     a_ = math.radians(deg_); ca_, sa_ = math.cos(a_), math.sin(a_)
     return [((x_ - c_[0]) * ca_ - (y_ - c_[1]) * sa_, (x_ - c_[0]) * sa_ + (y_ - c_[1]) * ca_) for x_, y_ in pts_]
@@ -2784,10 +2789,10 @@ for dn_, nm_, ep_ in EJ2:
             r_ = _rot_(pts_, t_, c_); rx_ = [q_[0] for q_ in r_]; ry_ = [q_[1] for q_ in r_]
             gx_, gy_ = (wx_, wy_) if t_ in (0, 180) else (wy_, wx_)
             return max(abs(min(ex_) - (min(rx_) - gx_ / 2)), abs(max(ex_) - (max(rx_) + gx_ / 2)), abs(min(ey_) - (min(ry_) - gy_ / 2)), abs(max(ey_) - (max(ry_) + gy_ / 2)))
-        best_ = min((0, 90), key=_miss_); n_box += _miss_(best_) < 0.003; want_ = 90 if s_['piece'].endswith('-COL') else 0; n_frame += best_ == want_
+        best_ = min((0, 90), key=_miss_); n_box += _miss_(best_) < 0.003; want_ = 90 if s_['piece'].endswith('-COL') else 0; n_frame += best_ == want_; n_bit_ += bool(s_['frame_turned']) == (best_ == 90)
         if best_ == 90 and nm_ == 'ZZQ-A':
             worst_c = (max(_vm._pt_poly(q_, _rot_(pts_, 90, c_)) for q_ in p_['points_in']), max(_vm._pt_poly(q_, _rot_(pts_, 270, c_)) for q_ in p_['points_in']))
-if n_pc != 27 or n_grow != n_pc or n_box != n_pc or n_frame != n_pc or len(sides_seen) < 5 or not worst_c or worst_c[1] < 2 * worst_c[0]: bad.append(f'{n_pc} pieces: growth {n_grow}, box {n_box}, frame {n_frame}, sides {sorted(sides_seen)}, collar {worst_c}')
+if n_pc != 27 or n_grow != n_pc or n_box != n_pc or n_frame != n_pc or n_bit_ != n_pc or len(sides_seen) < 5 or not worst_c or worst_c[1] < 2 * worst_c[0]: bad.append(f'{n_pc} pieces: growth {n_grow}, box {n_box}, frame {n_frame}, sides {sorted(sides_seen)}, collar {worst_c}')
 print(f"   {'ok ' if not bad else 'FAIL'} {n_pc} pieces of 6 jobs, {len(sides_seen)} buffer patterns (0 .. 1 cm, one unequal): the engine's outline = the stream outline grown by the rectangle (area within 1.5%, box within 0.003 in, symmetric about the middle of the box); only the COLLAR is turned, +90 (its outline is {worst_c and round(worst_c[0], 2)} in from the +90 turn, {worst_c and round(worst_c[1], 2)} from 270)  {'; '.join(bad[:3])}")
 if bad: fails.append('engine outline: ' + '; '.join(bad[:5]))
 
@@ -2853,6 +2858,47 @@ b3_ = bytearray(am.read_storage_marker(os.path.join(HERE, 'engine', 'ZZR-TL3.GT_
 if am.parse_marker(bytes(b3_))['order_targets']['utilization_pct'] != 70.0: bad.append('utilization patch not read')
 print(f"   {'ok ' if not bad else 'FAIL'} the engine's tilt limits are the TABLE's two sides x 10 (inches or degrees; 10 of 10 categories of 2 jobs, widths 55.1 / 39.4 in), not the marker's single smaller value; the order's Target Length (@404) and Target Utilization (@438) read back, the engine's TARGET_LENGTH = area / (width x utilization)  {'; '.join(bad[:3])}")
 if bad: fails.append('tilt / targets: ' + '; '.join(bad[:5]))
+
+print("-- which pieces the engine turns: bit 0x0200 of the slot word @+60 (v4.33, MARKER_FORMAT_SPEC.md section 36)")
+# live round 2026-09-25: the engine's own outlines (frommed.mra) of 5 jobs (a legacy 9-size jacket set in 3 fabric rows, LADIES-BLOUSE collar sizes, the twoply blouse) against the streams: 14 turned pieces set the bit, 119 others clear it
+FT = _json.load(open(os.path.join(HERE, 'engine', 'FRAME_TURNS.json')))['rows']; bad = []
+turned_ = [r_ for r_ in FT if r_['turn']]
+if len(FT) != 133 or len(turned_) != 14 or any(bool(r_['word'] & 0x200) != bool(r_['turn']) for r_ in FT): bad.append(f'{len(FT)} rows, {len(turned_)} turned, the bit disagrees on {sum(bool(r_["word"] & 0x200) != bool(r_["turn"]) for r_ in FT)}')
+if min(r_['second'] - r_['dist'] for r_ in turned_) < 0.5 or {r_['turn'] for r_ in turned_} != {90, 270} or {r_['piece'] for r_ in turned_} != {'ID1002 SLEEVE', 'LADIES-BLOUSE-COL'}: bad.append('the fitted turns of the evidence rows changed')
+# the corpus: every marker file of the fixture folders - the bit is all-or-nothing per piece, only the collar sets it, the box method agrees except on the 45-degree collar, nothing is left ambiguous
+n_mk = n_col = 0; box_dis = []
+for fp_ in sorted(glob.glob(os.path.join(HERE, '**', '*.GT_mark'), recursive=True)):
+    try: rm_ = am.place_marker(fp_)['markers'][0]['marker']
+    except Exception as ex_: bad.append(f'{os.path.basename(fp_)}: {ex_}'); continue
+    n_mk += 1; by_ = {}
+    for s_ in rm_['slots']: by_.setdefault(s_['piece'], set()).add(s_['frame_turned'])
+    if any(len(v_) > 1 for v_ in by_.values()) or any(v_ == {True} and not p_.endswith('-COL') for p_, v_ in by_.items()): bad.append(f'{os.path.basename(fp_)}: bit per piece {by_}')
+    n_col += sum(v_ == {True} for v_ in by_.values())
+    if rm_['frames_ambiguous']: bad.append(f'{os.path.basename(fp_)}: ambiguous {rm_["frames_ambiguous"]}')
+    if rm_['frames_box_disagree']: box_dis.append((os.path.basename(fp_), rm_['frames_box_disagree']))
+    if any(rm_['frames'].get(p_, 0) != (90 if v_ == {True} else 0) for p_, v_ in by_.items()): bad.append(f'{os.path.basename(fp_)}: frames {rm_["frames"]}')
+if n_mk < 40 or n_col < 30 or box_dis != [('ZZR-45-MADE.GT_mark', ['LADIES-BLOUSE-COL'])]: bad.append(f'{n_mk} markers, {n_col} collars, box method disagrees on {box_dis}')
+# an UNPLACED marker has no home boxes to ask: the bit alone gives the collar's frame, in the inventory and in the nest spec
+uz_ = am.place_marker(os.path.join(HERE, 'twoply', 'ZZQ-W.GT_mark'))['markers'][0]
+turns_ = {e_['piece']: e_['frame_turn_deg'] for e_ in uz_['inventory']['slots']}
+spz_ = ns.build_nest_spec(os.path.join(HERE, 'twoply', 'ZZQ-W.GT_mark'))[0]
+if uz_['marker']['laid_state'] != 'unlaid' or turns_.get('LADIES-BLOUSE-COL') != 90 or sum(turns_.values()) != 90 or {s_['piece']: s_['engine_frame_turn_deg'] for s_ in spz_['shapes']} != turns_: bad.append(f'unplaced marker: {turns_}')
+# mutations: without the bit an unplaced collar is not turned; a placed marker whose bit is cleared on ALL collars falls back to the boxes (the bit rules: 0 on the 45-degree job); on ONE of them the piece is mixed and the boxes decide
+def _patch_bit(path_, pick_, name_):
+    d_ = bytearray(open(path_, 'rb').read()); m_ = am.parse_marker(am.read_storage_marker(path_)); n_ = 0      # the disk file: its payload starts 6 bytes after the export object's
+    for s_ in m_['slots']:
+        if s_['piece'].endswith('-COL') and pick_(n_): struct.pack_into('<H', d_, s_['slot'] + 6 + 60, struct.unpack_from('<H', d_, s_['slot'] + 6 + 60)[0] & ~0x200)
+        if s_['piece'].endswith('-COL'): n_ += 1
+    with tempfile.TemporaryDirectory() as td_:
+        fp_ = os.path.join(td_, name_ + '.GT_mark'); open(fp_, 'wb').write(bytes(d_)); return am.place_marker(fp_)['markers'][0]
+mu_ = _patch_bit(os.path.join(HERE, 'twoply', 'ZZQ-W.GT_mark'), lambda n: True, 'ZZQ-W')
+m4_ = _patch_bit(os.path.join(HERE, 'deg45', 'ZZR-45-MADE.GT_mark'), lambda n: True, 'ZZR-45-MADE')
+m1_ = _patch_bit(os.path.join(HERE, 'blockarea', 'ZZR-KA.GT_mark'), lambda n: n == 0, 'ZZR-KA')
+if mu_['marker']['frames'].get('LADIES-BLOUSE-COL', 0) != 0 or any(e_['frame_turn_deg'] for e_ in mu_['inventory']['slots']): bad.append('the cleared bit still turns an unplaced collar')
+if m4_['marker']['frames']['LADIES-BLOUSE-COL'] != 0 or m4_['marker']['frames_ambiguous'] or m4_['marker']['frames_box_disagree']: bad.append(f"cleared bit on the 45-degree job: {m4_['marker']['frames']} {m4_['marker']['frames_ambiguous']}")      # the bit rules: the collar reads 0 (wrong on this job, and no longer called ambiguous)
+if m1_['marker']['frames'].get('LADIES-BLOUSE-COL') != 90 or m1_['marker']['frames_box_disagree']: bad.append(f"one collar slot without the bit: {m1_['marker']['frames']}")
+print(f"   {'ok ' if not bad else 'FAIL'} the bit = the engine turns the piece a quarter turn: 14 of 14 turned pieces (sleeve of a 9-size jacket set, +90 on sizes 2-8 and -90 on 10-18, and the collar, +90) set it, 119 of 119 others clear it; {n_mk} marker files, {n_col} collars, the box method agrees except on the 45-degree collar it cannot decide; an unplaced marker has its frames; 3 bit mutations behave  {'; '.join(bad[:3])}")
+if bad: fails.append('frame bit: ' + '; '.join(bad[:5]))
 
 print('-- marker byte map (v4.4, see accumark_marker.marker_coverage)')
 # Every byte owned by a section a parser reads must be classified (identified /

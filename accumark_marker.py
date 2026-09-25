@@ -204,6 +204,7 @@ ROT180_BIT, MIRROR_BIT = 0x2000, 0x0080
 FLIP_Y_BIT = 0x0100
 FLIP_LABELS = {0: '--', MIRROR_BIT: 'X', FLIP_Y_BIT: 'Y', MIRROR_BIT | FLIP_Y_BIT: 'X,Y'}
 PLACED_BIT = 0x0200
+FRAME_TURN_BIT = 0x0200      # v4.33: bit of the slot's u16 @+60 - the piece's engine frame is a quarter turn from its stream frame (see frame_from_slots)
 # v4.13: the LOW THREE BITS of a slot's orientation word are the PLACED orientation - (degrees counter-clockwise, mirrored top-to-bottom BEFORE the turn) - and a
 # signed float32 at slot byte +38 is a further tilt in radians (counter-clockwise). 0x2000 / 0x0080 are the PRE-SET pattern of the unlaid marker and stay as they were
 # when a nester lays the piece another way. Measured on AccuNest runs against their plotted DXFs (Rotation override 0/180/90/45, Flip enabled, tilt limits 10 deg):
@@ -571,7 +572,7 @@ def parse_slots(d, lo, hi):
                         tilt_deg=(math.degrees(tilt) + 0.0) if tilt_ok else None,
                         bundle=u32(d, s+64) & 0xffff, bundle_flags=u32(d, s+64) >> 16,
                         record_index=head[0], piece_index=head[1], bundle_head=head[2],
-                        sig88=u16(d, s+88),
+                        sig88=u16(d, s+88), engine_word=u16(d, s+60), frame_turned=bool(u16(d, s+60) & FRAME_TURN_BIT),
                         raw=d[s:s+SLOT].hex(), **decode_orient(u16(d, s+32))))
     return out
 
@@ -1572,7 +1573,7 @@ def marker_coverage(d, mk=None):
         for s in mk['slots']:
             b = s['slot']
             mark(b - SLOT_HEAD, b - SLOT_HEAD + 6, 'identified'); mark(b, b + SLOT, 'raw')
-            mark(b, b + 32, 'identified'); mark(b + 32, b + 34, 'identified'); mark(b + 42, b + 50, 'identified'); mark(b + 64, b + 68, 'identified'); mark(b + 88, b + 90, 'identified')
+            mark(b, b + 32, 'identified'); mark(b + 32, b + 34, 'identified'); mark(b + 42, b + 50, 'identified'); mark(b + 60, b + 62, 'identified'); mark(b + 64, b + 68, 'identified'); mark(b + 88, b + 90, 'identified')
         if mk['slots']: mark(mk['slots'][-1]['slot'] + SLOT - SLOT_HEAD, mk['slots'][-1]['slot'] + SLOT, 'raw')
     # -- section 30: the embedded type-10 object (topology-only scratch): bounded, not chased
     if sec[SEC_GEOMETRY]: mark(sec[SEC_GEOMETRY][0] - _LEAD, tr0, 'opaque')
@@ -1835,6 +1836,24 @@ def frame_ambiguous(items, tol=0.02):
         if asp > 1.3 and abs(e[0][0] - e[90][0]) <= 2 * tol * e[0][1]: out.append(n)
     return sorted(out)
 
+def frame_from_slots(slots):
+    """v4.33: {piece name: 90 | 0} read straight from the slots: bit 0x0200 of the u16 at slot +60 says the piece's frame in the engine (the one the orientation code, ANGLE and tilt refer to)
+    is a quarter turn from the frame of the marker's outline stream. [V: 14 of 14 turned pieces set it and 119 of 119 unturned ones clear it - the engine's own outlines of 5 legacy / V17 jobs compared with the streams;
+    on the 162 marker files of the corpus it agrees with frame_offsets on all 36 collars it can decide, and names the collar of the 45-degree job that frame_offsets gets wrong.] It needs no placement, so it works on unplaced markers.
+    Only the size of the turn is stored, not its sign: +90 (counter-clockwise) was measured on the LADIES-BLOUSE collar, the sleeve of a legacy jacket set fitted +90 on sizes 2-8 and -90 on 10-18.
+    A piece whose slots disagree on the bit is left out (frame_offsets then decides)."""
+    seen = {}
+    for s in slots:
+        if s.get('piece'): seen.setdefault(s['piece'], set()).add(bool(s.get('frame_turned')))
+    return {n: (90 if v == {True} else 0) for n, v in seen.items() if len(v) == 1}
+
+def piece_frames(slots, items):
+    """-> (frames {piece: 0 | 90}, ambiguous [piece], box_disagree [piece]): the slots' bit (frame_from_slots) wins, the home-box method (frame_offsets, placed slots only) fills the pieces the bit does not decide.
+    `ambiguous` = frame_ambiguous() less the pieces the bit decided; `box_disagree` = the pieces where the two methods differ (the thin 45-degree collar: boxes say 0, the bit 90)."""
+    by_box = frame_offsets(items); by_bit = frame_from_slots(slots)
+    frames = dict(by_box); frames.update(by_bit)
+    return frames, [n for n in frame_ambiguous(items) if n not in by_bit], sorted(n for n in by_bit if n in by_box and by_box[n] != by_bit[n])
+
 def _chain_lengths(pts):
     acc = [0.0]
     for i in range(1, len(pts)):
@@ -2050,7 +2069,7 @@ def unplaced_inventory(mk, pieces=None, piece_errors=None, use_grading=True, geo
     slots = []; n_geo = 0
     # v4.13: a slot of a LAID marker read as a job (place_marker(as_unlaid=True)) still holds its placed centre and orientation; its home box is the box of the piece AS PLACED
     was_placed = lambda s: not ((abs(s['x']) < 1e-9 and abs(s['y']) < 1e-9) or s['x'] < -900)
-    frames = frame_offsets([(s, pname, outline) for s, pname, size, outline, note in geometry if outline and was_placed(s)])
+    frames = piece_frames(mk['slots'], [(s, pname, outline) for s, pname, size, outline, note in geometry if outline and was_placed(s)])[0]
     for s, pname, size, outline, note in geometry:
         rec = s.get('record') or {}
         b = _buffer_sides(mk, pname)        # (b0, b1, b2, b3): x pair, then y pair [?]
@@ -2059,6 +2078,7 @@ def unplaced_inventory(mk, pieces=None, piece_errors=None, use_grading=True, geo
                      cut=rec.get('cut'), copies=len(groups[(s['bundle'], s['record_index'])]), block_added=(s.get('binding') or {}).get('block_added'),
                      pair=pair_of.get(s['index']), declared_area=s['area'], perimeter=rec.get('perimeter'),
                      home_box_in=(s['home_x']*2, s['home_y']*2),
+                     frame_turn_deg=frames.get(pname, 0),
                      home_box_piece_in=_piece_frame_box(s, frames.get(pname, 0)) if was_placed(s) else (s['home_x']*2, s['home_y']*2),
                      bbox_in=(s['home_x']*2 - (b[0] + b[1]), s['home_y']*2 - (b[2] + b[3])),
                      preset=dict(rot180=bool(s['orient_code'] & ROT180_BIT), mirror=bool(s['orient_code'] & MIRROR_BIT),
@@ -2138,9 +2158,8 @@ def place_marker(path, use_grading=True, as_unlaid=False):
     for mo in objs['marker']:
         mk = parse_marker(mo['data'], vocab)
         raw = [(s,) + _slot_geometry(s, pieces, piece_errors, use_grading, mk) for s in mk['placements']]     # v4.13: a marker-only ZIP places its slots by the stream outlines too
-        frames = frame_offsets([(s, name, outline) for s, name, size, outline, note in raw])
+        frames, mk['frames_ambiguous'], mk['frames_box_disagree'] = piece_frames(mk['slots'], [(s, name, outline) for s, name, size, outline, note in raw])
         mk['frames'] = frames
-        mk['frames_ambiguous'] = frame_ambiguous([(s, name, outline) for s, name, size, outline, note in raw])
         placed = [(s, name, size, None if outline is None else transform(outline, s, frames.get(name, 0)), note) for s, name, size, outline, note in raw]
         checks = check_marker(mk)
         oc = orientation_check(mk, placed)

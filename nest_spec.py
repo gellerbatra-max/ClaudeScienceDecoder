@@ -19,7 +19,9 @@ is reported). Nothing about WHERE a piece goes is guessed: an unlaid marker has 
 a lay pattern, not a constraint.
 
 Coordinates: every shape has its own frame - the lower-left corner of its cut outline's bounding box is (0, 0), x is the grain direction -
-in `--units` (default cm); outlines are closed polygons without a repeated last point, counter-clockwise. The grain line is horizontal in
+in `--units` (default cm); outlines are closed polygons without a repeated last point, counter-clockwise. `engine_frame_turn_deg` (v4.33) is 90 for a shape whose frame in the AccuMark engine is a quarter turn from
+the frame of its outline here (a wide collar stored tall; the flag is bit 0x0200 of the slot word @+60): the `retrieval_deg_by_slot` / `allowed_deg_by_slot` angles refer to the ENGINE frame, so a nester turns the outline by
+`engine_frame_turn_deg` first - the sign is not stored (+90, counter-clockwise, on the collar; some legacy sleeve sizes fit -90), which only matters for a piece pinned to one direction. The grain line is horizontal in
 every piece object of the corpus; where the marker stores it in the layout that was verified against piece objects its `basis` is `stream`,
 for the older 1825D / 5683D / 2591A / 418T vintage it is `inferred` (see MARKER_FORMAT_SPEC.md).
 
@@ -316,7 +318,7 @@ def build_nest_spec(path, units='cm', marker=None, lay_limits=None, notch_table=
                 ol = e.get('outline')
                 shp = dict(id='S%03d' % (len(shapes) + 1), piece=e['piece'], model=e['model'], size=e['size'], cut=e['cut'], category=e['category'],
                            fabric_types=(rows.get(e['piece']) or {}).get('fabric_types', []), declared_area=e['declared_area'] * k * k, perimeter=(e['perimeter'] or 0) * k,
-                           outline=None, complete=False)
+                           engine_frame_turn_deg=e.get('frame_turn_deg', 0), outline=None, complete=False)
                 if ol and len(ol) >= 3:
                     pts = _dedupe([(x, y) for x, y in ol]); x0 = min(p[0] for p in pts); y0 = min(p[1] for p in pts); y1 = max(p[1] for p in pts)
                     def loc(seq): return [((x - x0) * k, (y - y0) * k) for x, y in seq]

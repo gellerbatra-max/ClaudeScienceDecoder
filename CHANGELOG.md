@@ -1,5 +1,9 @@
 # Changelog
 
+## v4.38 (2026-09-25) - the section 1 residue, tried again (plan item 7)
+
+`__version__` stays `'3.0'`. Documentation only: the unidentified words of section 1 (@484, @488, @494, @504, @506, @522, @530, @588, @592, @604) were correlated with every count and sum the decoder has (221 markers): no rule found (MARKER_FORMAT_SPEC.md section 38). None feeds the engine's job file; section 5 (the Annotation table copy) not attempted. Item 7 stays open at low value.
+
 ## v4.37 (2026-09-25) - what the engine's quarter turn does not follow (plan item 10)
 
 `__version__` stays `'3.0'`. Documentation only. The slot bit of v4.33 is in every marker, so it was correlated with the features of every piece on the machine that has a piece file (86 pieces; the jacket sleeve is the only turned one): aspect, grain direction, internal lines, fold line and the piece object's meta words all fail to separate it from the unturned pieces (MARKER_FORMAT_SPEC.md section 36). Open: what does decide it.

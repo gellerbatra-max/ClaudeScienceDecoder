@@ -2948,6 +2948,13 @@ if sorted(p_['notch_type'] for p_ in pz_ if isinstance(p_, dict) and p_.get('is_
 dz2_ = am.read_storage_marker(os.path.join(HERE, 'notchnum', 'ZZCN.GT_mark')); mz2_ = am.parse_marker(dz2_); r2_ = mz2_['slots'][0]['record']; st2_ = dz2_[r2_['offset'] + len(r2_['text']):][:r2_['stream_len']]
 if am.decode_record_stream(st2_, 20)['kinds'][0] != [('turn', None), ('turn', 5), ('notch', 5), ('turn', None), ('turn', 5)]: bad.append(f"ZZCN stream kinds {am.decode_record_stream(st2_, 20)['kinds'][0]}")
 if am.record_outline(dz2_, r2_)['verified'] or ns.build_nest_spec(os.path.join(HERE, 'notchnum', 'ZZCN.GT_mark'))[0]['complete']: bad.append('ZZCN: the unverified record is no longer reported (known limitation, see notchnum/GROUND_TRUTH.json)')
+# the control (notchnum/ZZCN2: three pieces of the same rectangle - no notch / one edge notch / two corner notches): only the corner notches make the record disagree with its polygon, and its stored box grows
+dc_ = am.read_storage_marker(os.path.join(HERE, 'notchnum', 'ZZCN2.GT_mark')); mc_ = am.parse_marker(dc_); cz_res = {}
+for s_ in mc_['slots']:
+    if s_['piece'] in cz_res: continue
+    ro_ = am.record_outline(dc_, s_['record']); xs_ = [p_[0] for p_ in ro_['points']]; ys_ = [p_[1] for p_ in ro_['points']]
+    cz_res[s_['piece']] = (ro_['verified'], round(s_['area'], 3), round(ro_['area'], 3), round(s_['home_y'] * 2 - (max(ys_) - min(ys_)), 3), round(s_['home_x'] * 2 - (max(xs_) - min(xs_)), 3), len(ro_['corner_notches']), len(ro_['notches']))
+if cz_res.get('ZZCN2-A') != (True, 93.0, 93.0, 0.0, 0.0, 0, 0) or cz_res.get('ZZCN2-B')[0] is not True or cz_res['ZZCN2-B'][5:] != (0, 1) or cz_res.get('ZZCN2-C') != (False, 101.364, 93.0, 1.092, 0.0, 2, 0): bad.append(f'ZZCN2 control {cz_res}')
 print(f"   {'ok ' if not bad else 'FAIL'} {n_cn} corner notches in the spec of a blouse marker (back, collar, sleeve: each a vertex of its outline, mirrored with it); piece == stream on {n_eq} of {n_rec} records; a patched type is read  {'; '.join(bad[:3])}")
 if bad: fails.append('corner notches: ' + '; '.join(bad[:5]))
 

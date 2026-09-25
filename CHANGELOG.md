@@ -1,5 +1,12 @@
 # Changelog
 
+## v4.36 (2026-09-25) - the control: corner notches make a record disagree with its polygon
+
+`__version__` stays `'3.0'`. New fixture `notchnum/ZZCN2.GT_mark` (+ spec). Live round (DCU import, Easy Order, unmade marker) of my own, the no-notch control the v4.35 note asked for.
+
+* **Result:** one rectangle three times: no notch and one edge notch verify exactly; two corner notches do not - head area / perimeter 101.364 / 39.677 against the polygon's 93.000 / 39.370, stored box 8.966 x 11.811 in against the outline's 7.874 x 11.811. AccuMark's declared numbers and box include something a corner notch adds that the stream's outline lacks (MARKER_FORMAT_SPEC.md section 37); what it is stays open [?]. Real styles' corner notches of codes 1, 2, 5 verify (390 records); the 90 records with corner types 9 / 10 do not verify, so those types are a hint only.
+* Selftest: the control row (A / B verify, C does not, box +1.092 in y).
+
 ## v4.35 (2026-09-25) - live: a DCU-imported corner notch; an unverified record
 
 `__version__` stays `'3.0'`. New fixtures `notchnum/ZZCN.GT_mark`, `ZZCN-RECT.GT_piece`, `ZZCN_spec.json` (+ a GROUND_TRUTH entry). Live round of my own: DXF -> DCU import -> Easy Order Process -> unmade marker (plan item 8).

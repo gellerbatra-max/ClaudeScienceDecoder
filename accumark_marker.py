@@ -620,6 +620,7 @@ def parse_marker(d, size_vocab=None, binding='structural'):
     # [V: 56 of 56 markers that bundle their table, and four markers made from one order with one table of each spread]
     mk['spread'] = u16(d, 520) if len(d) > 522 else None
     mk['piece_names'] = declared_piece_names(d)
+    mk['annotation'] = parse_annotation_copy(d, sec[5])      # v4.43
     mk['pieces'] = parse_pieces_section(d, *sec[SEC_PIECES]) if sec[SEC_PIECES] else []
     # v4: sections 11 and 12 are one length-prefixed chain - see
     # parse_model_list / parse_sizes_section. table_ends = (where each walk
@@ -694,6 +695,51 @@ def parse_marker(d, size_vocab=None, binding='structural'):
     return mk
 
 MATCH_TYPES = {0: 'relative', 1: 'none', 2: 'same'}          # the X / Y matching type of a rule (the engine's MATCHING_TYPE_X / _Y)
+
+# ----------------------------------------------------------- section 5: the annotation table (v4.43)
+ANNOT_TOKENS = {0x01: ('MK', 'p'), 0x02: ('ON', 'p'), 0x03: ('OD', 'p'), 0x04: ('MD', 'p'), 0x05: ('PD', 'p'), 0x06: ('PN', 'p'), 0x07: ('SZ', 'p'), 0x08: ('LR', ''), 0x09: ('BD', 'p'), 0x0a: ('CONST', 's'),
+                0x0b: ('/', ''), 0x0c: ('SP', ''), 0x0d: ('DT', ''), 0x0e: ('LBA', ''), 0x0f: ('SY', ''), 0x10: ('LT1', ''), 0x11: ('PE', ''), 0x12: ('PC', 'p'), 0x13: ('MS', 'p'), 0x14: ('MSQ', ''),
+                0x15: ('L', ''), 0x16: ('U', ''), 0x17: ('WI', ''), 0x18: ('AP', ''), 0x19: ('LBB', ''), 0x1b: ('LT2', ''), 0x1c: ('PS', ''), 0x1d: ('PA', ''), 0x1e: ('PP', ''), 0x1f: ('NP', ''),
+                0x22: ('MM', ''), 0x23: ('CN', 'p'), 0x24: ('BG', 'p'), 0x25: ('FC', 'p')}      # the Annotation editor's `Annotation Format` types (its abbreviations); 'p' = one length-prefixed value (the last column: PN1-50), 's' = u16 length + text; 0x1a is seen (LABELS / LABELI rows), 0x20 / 0x21 unassigned [?]
+
+def _annot_tokens(b, p, n):
+    out = []
+    for _ in range(n):
+        code = b[p]; p += 1; name, kind = ANNOT_TOKENS.get(code, ('?%02x' % code, ''))
+        if kind == 'p': ln = b[p]; out.append((name, int.from_bytes(b[p+1:p+1+ln], 'little'))); p += 1 + ln
+        elif kind == 's': ln = u16(b, p); out.append((name, b[p+2:p+2+ln].decode('latin1'))); p += 2 + ln
+        else: out.append((name, None))
+    return out, p
+
+def parse_annotation_copy(d, sec):
+    """v4.43: section 5 = the marker's copy of its ANNOTATION TABLE - rows of `<u16 name length><u16 flags><u16 token count><name><tokens>` (the table object of the Annotation editor holds the same rows behind a 4-zero-byte header
+    and a u16 row count; the oldest vintage pads each name to 20 bytes and puts the flags / count after it). A token = a code byte plus a value where the type takes one: PN1-50 = `06 01 32`, a constant text = `0a <u16 length> text`. The
+    flags of a `Symbol` row hold its two parameters (`SY0105` = 01 05). Rows: DEFAULT, MARKER, LABELD ... and one `-PDSTEXT-` row per piece with the piece's PDS annotation text as a constant.
+    [V: closes on the byte for every marker of this machine that has a section 5 (224 compact + 1 padded) and on the tables the Annotation editor wrote (30 token codes read off one row that holds every type)]. -> dict(ok, rows [name, flags, tokens],
+    end, padded) or None"""
+    if not sec: return None
+    lo, hi = sec; p = lo - _LEAD; rows = []; padded = False
+    try:
+        padded = d[p:p+1].isalpha()
+        while p + 6 < hi - 6:
+            if padded:
+                name = d[p:p+20].rstrip(b'\x00 ')
+                if not name or not all(32 <= c < 127 for c in name): break
+                fl, n = u16(d, p+20), u16(d, p+22); toks, q = _annot_tokens(d, p+24, n)
+            else:
+                nl, fl, n = u16(d, p), u16(d, p+2), u16(d, p+4)
+                if not 0 < nl <= 60: break
+                name = d[p+6:p+6+nl]; toks, q = _annot_tokens(d, p+6+nl, n)
+            rows.append(dict(name=name.decode('latin1'), flags=fl, tokens=toks)); p = q
+    except (IndexError, struct.error): return dict(ok=False, rows=rows, end=p, padded=padded)
+    return dict(ok=bool(rows) and p == hi - 6, rows=rows, end=p, padded=padded)
+
+def annotation_table_rows(data):
+    """the rows of an Annotation table OBJECT payload (a `.GT_annot` file from offset 0x90): 4 zero bytes, u16 row count, then the compact rows of parse_annotation_copy."""
+    t = bytes(data); n = u16(t, 4); p = 6; rows = []
+    for _ in range(n):
+        nl, fl, k = u16(t, p), u16(t, p+2), u16(t, p+4); name = t[p+6:p+6+nl].decode('latin1'); toks, p = _annot_tokens(t, p+6+nl, k); rows.append(dict(name=name, flags=fl, tokens=toks))
+    return rows
 
 def parse_matching(d, mk):
     """v4.25: the plaid / stripe MATCHING rules of a marker made with a Matching table (directory slots 9, 23, 24; None without one).
@@ -1504,10 +1550,13 @@ def marker_coverage(d, mk=None):
             for _, o in TABLE_LENS: mark(sec[2][0] + o, sec[2][0] + o + 2, 'identified')
             a0 = sec[2][0] + TABLE_STRINGS; mark(a0, a0 + sum(len(tb[k]) for k, _ in TABLE_LENS), 'identified')
     if sec[5]:
-        for m in re.finditer(rb'-PDSTEXT-', d[sec[5][0]-_LEAD:sec[5][1]-_LEAD]):
-            a = sec[5][0] - _LEAD + m.start(); mark(a, a + 9, 'identified')
-            name = re.split(rb'[^\x20-\x7e]', d[a+12:a+140])[0]
-            mark(a + 12, a + 12 + len(name) + 1, 'identified')
+        an_ = mk.get('annotation')
+        if an_ and an_['ok']: mark(sec[5][0] - _LEAD, an_['end'], 'identified')      # v4.43: the annotation table copy closes on the byte
+        else:
+            for m in re.finditer(rb'-PDSTEXT-', d[sec[5][0]-_LEAD:sec[5][1]-_LEAD]):
+                a = sec[5][0] - _LEAD + m.start(); mark(a, a + 9, 'identified')
+                name = re.split(rb'[^\x20-\x7e]', d[a+12:a+140])[0]
+                mark(a + 12, a + 12 + len(name) + 1, 'identified')
     # -- section 6: the block-buffer table, (pieces + 1) x 102 bytes
     sn = mk.get('snapshots') or {}                              # v4.14: sections 3 and 4 are the marker's copies of its notch table and its lay-limits rows
     if sec[3] and sn.get('notch') is not None and 'error' not in sn['notch']: mark(sec[3][0] - _LEAD, sec[3][1] - _LEAD, 'identified')

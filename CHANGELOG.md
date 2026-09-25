@@ -1,5 +1,14 @@
 # Changelog
 
+## v4.43 (2026-09-25) - section 5 = the annotation table copy, decoded (plan item 7)
+
+`__version__` stays `'3.0'`. New fixtures `annotation/ZZANN-1.GT_annot` (a table my own Annotation editor wrote: an every-type row, a constant, line types, a symbol) and `annotation/ZZAN-M.GT_mark` (a marker made with it). The user asked me to make patterns for the leftovers and test.
+
+* **Section 5 reads on the byte** (MARKER_FORMAT_SPEC.md section 39): rows of `<name length><flags><token count><name><tokens>`, 30 token codes read off one editor row that holds every annotation type in list order, a constant text = `0a <length> text`, a Symbol's parameters in the row flags. A marker copies only the rows it uses (DEFAULT, MARKER, LABEL rows and one `-PDSTEXT-` row per piece with the piece's text). `mk['annotation']`; closes on **225 of 225** markers of this machine.
+* Byte map: the section 5 span is identified (`marker_coverage`); it was the largest single block of unidentified bytes (up to 9.6 KB) on real markers.
+* Open: token `0x1a` (the `LABELS` / `LABELI` rows), 0x20 / 0x21 unassigned.
+* Selftest: the editor's tables read back, 50 of 50 fixture markers close, the ZZAN-M rows, a damaged count is noticed.
+
 ## v4.42 (2026-09-25) - corner notches above 15, made in PDS (plan item 8); a piece-decoder bug
 
 `__version__` stays `'3.0'`. New fixtures `notchnum/ZZCN7-A.GT_piece`, `notchnum/ZZCN7.GT_mark`. Live round of my own (PDS with the 25-row notch table as scratch `P-NOTCH`, Easy Order, unmade marker).

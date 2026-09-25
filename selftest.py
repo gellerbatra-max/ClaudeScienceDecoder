@@ -2977,6 +2977,37 @@ if not ro7_['verified'] or [n_[1] for n_ in ro7_['corner_notches']] != [5, 5, 5,
 print(f"   {'ok ' if not bad else 'FAIL'} {n_cn} corner notches in the spec of a blouse marker (back, collar, sleeve: each a vertex of its outline, mirrored with it); piece == stream on {n_eq} of {n_rec} records; a patched type is read  {'; '.join(bad[:3])}")
 if bad: fails.append('corner notches: ' + '; '.join(bad[:5]))
 
+print("-- section 5 = the annotation table copy (v4.43, MARKER_FORMAT_SPEC.md section 39): rows of category + tokens, read off tables the Annotation editor wrote")
+# annotation/ZZANN-1.GT_annot (my own Annotation editor, scratch): DEFAULT (empty), MARKER = MSQ,/,AP,/,WI,L,U,PS, TEST1 = every annotation type in list order (30 tokens), TEST2 = "ABC",SZ1-30, TEST3 = LT1,SY0105,LT2
+bad = []; tb_ = am.annotation_table_rows(open(os.path.join(HERE, 'annotation', 'ZZANN-1.GT_annot'), 'rb').read()[0x90:]); nm_ = [(r_['name'], len(r_['tokens'])) for r_ in tb_]
+if nm_ != [('DEFAULT', 0), ('MARKER', 8), ('TEST1', 30), ('TEST2', 2), ('TEST3', 3)]: bad.append(f'rows {nm_}')
+want1_ = ['MK', 'MS', 'ON', 'OD', 'MD', 'PS', '/', 'MSQ', 'L', 'U', 'WI', 'AP', 'DT', 'SZ', 'BD', 'PN', 'PD', 'PC', 'SP', 'PE', 'LR', 'LBA', 'LBB', 'PA', 'PP', 'NP', 'MM', 'CN', 'BG', 'FC']
+if [t_ for t_, v_ in tb_[2]['tokens']] != want1_ or dict(tb_[2]['tokens'][:1]) != {'MK': 50} or dict(t_ for t_ in tb_[2]['tokens'] if t_[0] in ('SZ', 'BD', 'BG', 'FC')) != {'SZ': 30, 'BD': 3, 'BG': 10, 'FC': 10}: bad.append('TEST1 tokens')
+if tb_[3]['tokens'] != [('CONST', 'ABC'), ('SZ', 30)] or [t_ for t_, v_ in tb_[4]['tokens']] != ['LT1', 'SY', 'LT2'] or tb_[4]['flags'] != 0x0501 or [t_ for t_, v_ in tb_[1]['tokens']] != ['MSQ', '/', 'AP', '/', 'WI', 'L', 'U', 'PS']: bad.append('TEST2 / TEST3 / MARKER')
+# a marker made with that table (annotation/ZZAN-M: an order whose Annotation column names ZZANN-1): only the rows the marker uses are copied - DEFAULT (empty in ZZANN-1), MARKER, and one -PDSTEXT- row per piece of the model - not TEST1 / 2 / 3
+mz_ = am.parse_marker(am.read_storage_marker(os.path.join(HERE, 'annotation', 'ZZAN-M.GT_mark'))); az_ = mz_['annotation']
+if not az_['ok'] or [(r_['name'], [t_ for t_, v_ in r_['tokens']]) for r_ in az_['rows'][:2]] != [('DEFAULT', []), ('MARKER', ['MSQ', '/', 'AP', '/', 'WI', 'L', 'U', 'PS'])] or [r_['name'] for r_ in az_['rows'][2:]] != ['-PDSTEXT-'] * len(mz_['pieces']) or [r_['tokens'][0][1] for r_ in az_['rows'][2:]] != [p_['name'] for p_ in mz_['pieces']]: bad.append(f"ZZAN-M rows {[(r_['name'], len(r_['tokens'])) for r_ in az_['rows']]}")
+# every marker of the fixture folders: the copy in section 5 closes on the byte; the per-piece -PDSTEXT- rows carry the piece names (the LADIES-BLOUSE families)
+n_an = n_ok = n_txt = 0; txt_bad = []
+for fp_ in sorted(glob.glob(os.path.join(HERE, '**', '*.GT_mark'), recursive=True)):
+    try: mk_ = am.parse_marker(am.read_storage_marker(fp_))
+    except Exception: continue
+    a_ = mk_.get('annotation')
+    if not a_: continue
+    n_an += 1; n_ok += a_['ok']
+    if not a_['ok']: bad.append(f'{os.path.basename(fp_)}: annotation copy does not close ({a_["end"]})')
+    txt_ = [v_ for r_ in a_['rows'] if r_['name'] == '-PDSTEXT-' for t_, v_ in r_['tokens'] if t_ == 'CONST']
+    if txt_:
+        n_txt += 1
+        if not set(txt_) <= {p_['name'] for p_ in mk_['pieces']}: txt_bad.append(os.path.basename(fp_))
+if n_an < 40 or n_ok != n_an or n_txt < 30 or txt_bad: bad.append(f'{n_ok} of {n_an} markers close, {n_txt} with piece texts, texts not piece names on {txt_bad[:3]}')
+# a damaged token count is noticed (the copy no longer closes)
+db_ = bytearray(am.read_storage_marker(os.path.join(HERE, 'twoply', 'ZZQ-W.GT_mark'))); ma_ = am.parse_marker(bytes(db_)); pos_ = ma_['sections'][5][0] - 6 + 4
+struct.pack_into('<H', db_, pos_, ma_['annotation']['rows'][0]['flags'] and 1 or 5)
+if am.parse_marker(bytes(db_))['annotation']['ok']: bad.append('a damaged token count was not noticed')
+print(f"   {'ok ' if not bad else 'FAIL'} the Annotation editor's tables read back (30 token codes, constants, symbol flags); {n_ok} of {n_an} fixture markers hold a section 5 that closes on the byte, {n_txt} carry their pieces' texts; a damaged count is noticed  {'; '.join(bad[:3])}")
+if bad: fails.append('annotation copy: ' + '; '.join(bad[:5]))
+
 print('-- marker byte map (v4.4, see accumark_marker.marker_coverage)')
 # Every byte owned by a section a parser reads must be classified (identified /
 # raw / zero_pad / opaque) - only the envelope, the header scalars, sections 2-5,

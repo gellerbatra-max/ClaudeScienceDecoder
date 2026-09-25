@@ -350,12 +350,12 @@ def find_point_table(d, after, window=64):
     # (42A-OUWG read 24 of 27) or landed mid-record (17 of 162 pieces garbage).
     pid = i16(d, after)
     if (pid == -1 or 1 <= pid <= 4096) and COORD_LO < i32(d,after+2) < COORD_HI \
-       and COORD_LO < i32(d,after+6) < COORD_HI and u16(d,after+10) in (0,1,2,0x101):
+       and COORD_LO < i32(d,after+6) < COORD_HI and (u16(d,after+10) in (0,1,2,0x101) or u16(d,after+10) & 0xff == 0):      # v4.42: f1 = 0x0N00 = the FIRST point carries a corner notch
         return after
     for o in range(after, min(after+window, len(d)-14)):
         pid = i16(d,o)
         if pid in (1,-1) and COORD_LO < i32(d,o+2) < COORD_HI and COORD_LO < i32(d,o+6) < COORD_HI \
-           and u16(d,o+10) in (0,1,2,0x101):
+           and (u16(d,o+10) in (0,1,2,0x101) or u16(d,o+10) & 0xff == 0):
             return o
     raise ValueError('point table not found after %#x' % after)
 

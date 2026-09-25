@@ -2962,6 +2962,12 @@ for s_, p_ in zip(mc_['slots'], ecn_['pieces']):
     ys_ = [q_[1] for q_ in p_['points_in']]; xs_ = [q_[0] for q_ in p_['points_in']]
     ecz_[s_['piece']] = (len(p_['points_in']), round(max(xs_) - min(xs_), 3), round(max(ys_) - min(ys_), 3), p_['am_area'])
 if ecz_ != {'ZZCN2-A': (5, 11.811, 7.874, 93000), 'ZZCN2-B': (6, 11.811, 7.874, 93001), 'ZZCN2-C': (12, 11.811, 8.966, 101364)} or ecz_['ZZCN2-C'][3] != round(cz_res['ZZCN2-C'][1] * 1000): bad.append(f'ZZCN2 engine polygons {ecz_}')
+# the clean control (notchnum/ZZCN6, notch points on layer 4 only): all three pieces verify, the corner-notch piece reads [5, 5]
+d6_ = am.read_storage_marker(os.path.join(HERE, 'notchnum', 'ZZCN6.GT_mark')); m6_ = am.parse_marker(d6_); r6_ = {}
+for s_ in m6_['slots']:
+    if s_['piece'] in r6_: continue
+    ro_ = am.record_outline(d6_, s_['record']); r6_[s_['piece']] = (ro_['verified'], round(s_['area'], 3), [n_[1] for n_ in ro_['corner_notches']], [n_[1] for n_ in ro_['notches']])
+if r6_ != {'ZZCN6-A': (True, 93.0, [], []), 'ZZCN6-B': (True, 93.001, [], [5]), 'ZZCN6-C': (True, 93.0, [5, 5], [])}: bad.append(f'ZZCN6 clean control {r6_}')
 print(f"   {'ok ' if not bad else 'FAIL'} {n_cn} corner notches in the spec of a blouse marker (back, collar, sleeve: each a vertex of its outline, mirrored with it); piece == stream on {n_eq} of {n_rec} records; a patched type is read  {'; '.join(bad[:3])}")
 if bad: fails.append('corner notches: ' + '; '.join(bad[:5]))
 

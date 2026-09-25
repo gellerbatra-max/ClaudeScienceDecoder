@@ -11,7 +11,7 @@ order and its tables (`intomed.mra` is what the engine wrote back). Blocks of `K
 It is an INDEPENDENT ground truth for the job spec: `retrieval_orientation` (accumark_laylimits) reproduces its ANGLE / FLIP_FLAG for 3,460 instances of 73 jobs, and `engine_flags` its per-piece flags for every Piece Options row seen.
 Nothing here is needed to read a marker; it checks the reading against what AccuMark itself handed its nester.
 """
-import json, re, sys
+import json, math, re, sys
 
 __version__ = '1.1'
 _LINE = re.compile(r'^([A-Z_0-9]+)(?:\s+(.*))?$')
@@ -122,6 +122,20 @@ def engine_flags(options, overrides=None):
     if rot: f.update(NAP_GROUP=0, ROTATE_INCR=int(round(rot)))
     if (ov.get('Flip') or '').lower() == 'enable': f['FLIP_GROUP'] = 0
     return f
+
+
+def engine_tilt_from_table(cw, ccw):
+    """v4.31: the tilt limits the engine takes from a Lay Limits row: (CW, CCW) in 0.1 degree = (-round(10 cw), +round(10 ccw)) with cw / ccw the table's two values in INCHES (a length tilt) or DEGREES, each side on its own -
+    the engine reads the table itself, not the smaller value the marker keeps [V: live, 5 categories x 2 jobs (fabric widths 55.1 and 39.4 in, no difference): 20 / 15 cm -> -79 / +59, 0.5 / 0.2 cm -> -2 / +1, 5 / 10 degrees -> -50 / +100,
+    0 / 0.4 cm -> 0 / +2, 0.3 / 0 cm -> -1 / 0; and the older 0.1574 in -> -2 / +2]. A length is used as if its inch number were degrees."""
+    r = lambda v: int(math.floor(10 * (v or 0) + 0.5))
+    return (-r(cw), r(ccw))
+
+
+def engine_target_length(area, width, utilization_pct=0, target_length=0):
+    """v4.31: the engine's TARGET_LENGTH (same unit as `target_length`): total piece area / (width x utilization) when the order gives a Target Utilization, else the order's Target Length, else 0 [V: 80 jobs]."""
+    if utilization_pct: return area / (width * utilization_pct / 100.0)
+    return target_length or 0
 
 
 def engine_tilt_limits(overrides=None):

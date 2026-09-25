@@ -612,6 +612,9 @@ def parse_marker(d, size_vocab=None, binding='structural'):
     # v4.27: the engine's fabric weight and cost, two float32 at file offsets 596 / 600 (section 1 + 292 / +296): 0 / 0 on an unmade marker, the engine's 0.029493 / 0.914402 after AccuNest unless the job gave others
     # [V: the FABRIC_WEIGHT / FABRIC_COST of the engine's own output header on 49 of 49 jobs whose marker is the one the job wrote]
     mk['fabric_weight_cost'] = dict(weight=struct.unpack_from('<f', d, 596)[0], cost=struct.unpack_from('<f', d, 600)[0]) if len(d) > 604 else None
+    # v4.31: two doubles of section 1 are the order's nest targets: @404 = the Target Length in inches (order u32 @150 / 1e4), @438 = the Target Utilization in PERCENT x 10 (order u16 @158: 915 = 91.5 %); 0 when the order sets neither
+    # [V: 79 of 79 order / marker pairs; live: Target Length 630 cm -> 248.0314 in, Target Utilization 91.5 -> 915.0]. The engine's TARGET_LENGTH = total area / (width x utilization) when there is a utilization, else the target length (80 jobs)
+    mk['order_targets'] = dict(length_in=f64(d, 404), utilization_pct=f64(d, 438) / 10.0) if len(d) > 446 else None
     # v4.16: the SPREAD of the Lay Limits table the marker was made with, u16 at file offset 520 (section 1 + 216): 0 single ply, 1 face to face, 2 book fold, 3 tubular
     # [V: 56 of 56 markers that bundle their table, and four markers made from one order with one table of each spread]
     mk['spread'] = u16(d, 520) if len(d) > 522 else None
@@ -1487,6 +1490,7 @@ def marker_coverage(d, mk=None):
         if mk.get('engine_words'):
             for o in (568, 674): mark(o, o+2, 'identified')                                          # v4.20: the engine words
         if mk.get('spread') is not None: mark(520, 522, 'identified')                                # v4.16: the lay table's spread
+        if mk.get('order_targets'): mark(404, 412, 'identified'); mark(438, 446, 'identified')          # v4.31: the order's Target Length / Target Utilization
         if mk.get('fabric_weight_cost'): mark(596, 604, 'identified')                                # v4.27: the engine's fabric weight / cost
         if len(d) > 480: mark(472, 474, 'identified'); mark(476, 478, 'identified')                  # v4.20: the sums of the record prefix words 3 / 4 (attribute points)
     # -- section 2 carries the marker's own name; section 5 the -PDSTEXT- label table

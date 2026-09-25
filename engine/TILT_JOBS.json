@@ -1,0 +1,105 @@
+{
+ "what": "v4.31: the style-piece flags and tilt limits of the engine's input file (frommed.mra) of two AccuNest jobs made from a copy of order LADIES-BLOUSE-140-M with the Lay Limits table tilt/ZZLL-TLT (unequal clockwise / counter-clockwise tilts in cm and degrees) at fabric widths 140 cm (job 278) and 100 cm (job 281, with a Target Length of 630 cm); `ZZR-TL3` (Target Utilization 91.5 %) was processed only",
+ "jobs": {
+  "ZZR-TL1": {
+   "job": 278,
+   "MARKER_WIDTH": 551199,
+   "TARGET_LENGTH": 0,
+   "TILT_INCR": 0.5,
+   "ROTATE_INCR": 180,
+   "order_target_length_cm": null,
+   "style_pieces": [
+    {
+     "PIECE_NAME": "BACK",
+     "NAP_GROUP": 0,
+     "FLIP_GROUP": 0,
+     "CW_TILT_LIMIT": -2,
+     "CCW_TILT_LIMIT": 1,
+     "ROTATE_INCR": 90
+    },
+    {
+     "PIECE_NAME": "COLLAR",
+     "NAP_GROUP": 0,
+     "FLIP_GROUP": 0,
+     "CW_TILT_LIMIT": -50,
+     "CCW_TILT_LIMIT": 100,
+     "ROTATE_INCR": 45
+    },
+    {
+     "PIECE_NAME": "CUFF",
+     "NAP_GROUP": 0,
+     "FLIP_GROUP": 2,
+     "CW_TILT_LIMIT": 0,
+     "CCW_TILT_LIMIT": 2,
+     "ROTATE_INCR": 180
+    },
+    {
+     "PIECE_NAME": "FRONT",
+     "NAP_GROUP": 2,
+     "FLIP_GROUP": 0,
+     "CW_TILT_LIMIT": -79,
+     "CCW_TILT_LIMIT": 59,
+     "ROTATE_INCR": 0
+    },
+    {
+     "PIECE_NAME": "SLEEVE",
+     "NAP_GROUP": 0,
+     "FLIP_GROUP": 2,
+     "CW_TILT_LIMIT": -1,
+     "CCW_TILT_LIMIT": 0,
+     "ROTATE_INCR": 180
+    }
+   ]
+  },
+  "ZZR-TL2": {
+   "job": 281,
+   "MARKER_WIDTH": 393700,
+   "TARGET_LENGTH": 2480314,
+   "TILT_INCR": 0.5,
+   "ROTATE_INCR": 180,
+   "order_target_length_cm": 630,
+   "style_pieces": [
+    {
+     "PIECE_NAME": "BACK",
+     "NAP_GROUP": 0,
+     "FLIP_GROUP": 0,
+     "CW_TILT_LIMIT": -2,
+     "CCW_TILT_LIMIT": 1,
+     "ROTATE_INCR": 90
+    },
+    {
+     "PIECE_NAME": "COLLAR",
+     "NAP_GROUP": 0,
+     "FLIP_GROUP": 0,
+     "CW_TILT_LIMIT": -50,
+     "CCW_TILT_LIMIT": 100,
+     "ROTATE_INCR": 45
+    },
+    {
+     "PIECE_NAME": "CUFF",
+     "NAP_GROUP": 0,
+     "FLIP_GROUP": 2,
+     "CW_TILT_LIMIT": 0,
+     "CCW_TILT_LIMIT": 2,
+     "ROTATE_INCR": 180
+    },
+    {
+     "PIECE_NAME": "FRONT",
+     "NAP_GROUP": 2,
+     "FLIP_GROUP": 0,
+     "CW_TILT_LIMIT": -79,
+     "CCW_TILT_LIMIT": 59,
+     "ROTATE_INCR": 0
+    },
+    {
+     "PIECE_NAME": "SLEEVE",
+     "NAP_GROUP": 0,
+     "FLIP_GROUP": 2,
+     "CW_TILT_LIMIT": -1,
+     "CCW_TILT_LIMIT": 0,
+     "ROTATE_INCR": 180
+    }
+   ]
+  }
+ }
+}

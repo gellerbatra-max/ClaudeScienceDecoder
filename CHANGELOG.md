@@ -1,5 +1,11 @@
 # Changelog
 
+## v4.41 (2026-09-25) - trying to make a turned piece in V17 (plan item 10; the user asked to try again)
+
+`__version__` stays `'3.0'`. Documentation only; own PDS, scratch pieces `ZZV-R0 / R1 / T1 / T2`.
+
+* PDS normalizes a rotated piece on save (Save As with or without `Set Original Position`: original outline, horizontal grain), so a vertical-grain piece cannot be stored. `Rotate` with `Realign Grain / Grade Ref` gives a stored TALL piece with a horizontal grain (and a vertical cross line, T2): the marker's slot bit stays clear for both. The turned pieces of the corpus are AccuMark-9-era; no V17 route reproduces them (MARKER_FORMAT_SPEC.md section 36).
+
 ## v4.40 (2026-09-25) - the odd record was my DXF: a curve point at a vertex (corrects v4.35 / v4.36 / v4.39)
 
 `__version__` stays `'3.0'`. New fixture `notchnum/ZZCN6.GT_mark` (+ spec). Live rounds: the same control under a fully defined 25-row notch table (identical odd record: the table is irrelevant), then with the notch points on layer 4 only.

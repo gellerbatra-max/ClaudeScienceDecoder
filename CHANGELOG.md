@@ -1,5 +1,14 @@
 # Changelog
 
+## v4.33 (2026-09-25) - which pieces the engine turns: a bit in the slot (plan item 10)
+
+`__version__` stays `'3.0'`. New fixture `engine/FRAME_TURNS.json`; live evidence from five AccuNest jobs of my own (a legacy AccuMark 9 sample jacket set in three fabric rows, LADIES-BLOUSE collar sizes, the twoply blouse).
+
+* **The collar's frame is flagged in the slot** (MARKER_FORMAT_SPEC.md section 36): bit 0x0200 of the u16 at slot +60 is set on every slot of a piece the engine holds a quarter turn from its stream frame and on no other [V: 14 of 14 turned pieces, 119 of 119 others; on the 46 fixture markers only the 32 LADIES-BLOUSE collars set it]. It needs no placement, so an UNPLACED marker has its frames; it decides the 45-degree collar the home-box method (`frame_offsets`) could not (`frames_ambiguous` is empty there now).
+* **Decoder:** `slot['frame_turned']`, `slot['engine_word']`; `frame_from_slots` / `piece_frames`; `mk['frames']`, `mk['frames_ambiguous']`, new `mk['frames_box_disagree']`; the inventory's slot has `frame_turn_deg`; **the nest spec's shape has `engine_frame_turn_deg`** (its docstring says how to use it with the engine-frame angles). The byte map marks @60 identified.
+* **Only the size of the turn is stored, not the sign:** collar +90; the sleeve of the jacket set +90 on sizes 2 - 8 and -90 on 10 - 18. What decides the sign is open [?] (it matters only for a piece pinned to one direction). A float at slot +72 (+-(pi/2 - e)) rides along on some markers; not used.
+* Selftest: a new section (evidence rows, the 46 fixture markers, an unplaced marker's frames and shape, three bit mutations) and the frame check of the v4.26 section now also asserts the bit (27 of 27); the v4.22 section's `frames_ambiguous` expectations became "the boxes cannot say, the bit does". All three suites pass.
+
 ## v4.32 (2026-09-25) - live: the plaid Y offset; PDS rotation is not stored; a piece's category is stored in the piece
 
 `__version__` stays `'3.0'`. Live rounds of my own (Easy Order, Order Editor, Queue Submit, PDS, Model Editor, all my own processes). New fixtures `plaid/ZZPQ-M.GT_mark`, `plaid/ZZPQ-M-frommed.mra`, `plaid/ZZ-PLAID-Y2.GT_match`. Plan items 11 (rest), 10 (collar), 8.

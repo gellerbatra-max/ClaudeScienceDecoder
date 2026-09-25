@@ -51,6 +51,7 @@ Every claim carries a status tag in the specs: **[V]** proved (live experiment o
 | v4.30 | What does the Nest Markers dialog change in the engine's input? | Rotation N, Flip: Enable, tilt and piece-gap overrides give the flags (40 of 40 style pieces); fabric cost / weight units per yard / oz per sq yd | `engine/` (job settings, four override jobs) | branch `v4.30-overrides` |
 | v4.31 | What tilt does the engine take, and what are @404 / @438? (live) | The table's two sides x 10 (inches or degrees), width-independent; the order's Target Length (in) and Target Utilization (% x 10) | `engine/` (two jobs, TILT_JOBS.json) | branch `v4.31-live-rounds` |
 | v4.32 | Plaid Y offset; can the collar's frame rule be found live? | Y offset verified (live, 6 markers / 240 instances); PDS rotation is not stored, so a vertical-grain piece cannot be made: the grain hypothesis stays open | `plaid/` (ZZPQ-M, ZZ-PLAID-Y2) | branch `v4.32-plaid-notch-collar` |
+| v4.33 | What flags the collar's quarter turn in the engine? | bit 0x0200 of the slot word @+60 (14 of 14 turned pieces, 119 of 119 others; works unplaced; decides the 45-degree collar); the sign of the turn is not stored | `engine/FRAME_TURNS.json` | branch `v4.33-legacy-frames` |
 
 Unknown bytes per marker fell from 1,111-1,753 to about 1,031-1,280 (roughly 1.06%) over v4.13-v4.16.
 

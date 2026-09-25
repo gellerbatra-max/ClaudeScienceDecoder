@@ -1853,7 +1853,7 @@ for zp in [os.path.join(HERE, rel_) for rel_, _ in NEST_ZIPS] + [zsa]:
             for u_ in nb['numbers_used']: used[u_] += 1
             if _json.loads(_json.dumps(sp_)) != sp_: bad.append(f"{sp_['source']['marker']}: not JSON round-trippable")
             if nb['undefined_numbers'] and 'CLAUDE-D4' not in sp_['source']['marker']: bad.append(f"{sp_['source']['marker']}: undefined notch numbers {nb['undefined_numbers']}")
-if checked < 30 or set(used) - {1, 5}: bad.append(f'{checked} specs with a notch table; numbers used {dict(used)}')      # 5 = 2591A, read from its own copy since v4.14
+if checked < 30 or set(used) - {1, 2, 5}: bad.append(f'{checked} specs with a notch table; numbers used {dict(used)}')      # 5 = 2591A, read from its own copy since v4.14; 2 = a corner notch (v4.34)
 # real production: the 1825D notch (number 1) is a 0.50 cm slit; without the table the spec names it but reads nothing
 z18 = os.path.join(HERE, 'markers', '1825D-SS21-UNLAID', '1825D-BD 180 SS21.zip')
 s18 = next((sp_['notch_table'] for sp_ in ns.build_nest_spec(z18, notch_table=real_n['NEED-P-NOTCH']) if sp_['notch_table']['numbers_used']), {'parsed': False}); s18n = ns.build_nest_spec(z18)[0]['notch_table']
@@ -2899,6 +2899,51 @@ if m4_['marker']['frames']['LADIES-BLOUSE-COL'] != 0 or m4_['marker']['frames_am
 if m1_['marker']['frames'].get('LADIES-BLOUSE-COL') != 90 or m1_['marker']['frames_box_disagree']: bad.append(f"one collar slot without the bit: {m1_['marker']['frames']}")
 print(f"   {'ok ' if not bad else 'FAIL'} the bit = the engine turns the piece a quarter turn: 14 of 14 turned pieces (sleeve of a 9-size jacket set, +90 on sizes 2-8 and -90 on 10-18, and the collar, +90) set it, 119 of 119 others clear it; {n_mk} marker files, {n_col} collars, the box method agrees except on the 45-degree collar it cannot decide; an unplaced marker has its frames; 3 bit mutations behave  {'; '.join(bad[:3])}")
 if bad: fails.append('frame bit: ' + '; '.join(bad[:5]))
+
+print("-- notches ON a turn point (v4.34, MARKER_FORMAT_SPEC.md section 37): the stream keeps them, the spec listed none")
+# a turn point with an extra byte in the stream = a corner notch (the piece object flags it `is_corner_notch`, type in the high byte of f1); record_outline() dropped them, the nest spec had no notch on any corner
+CZ = os.path.join(HERE, 'markers-live', 'CLAUDE-UNP-D2-TWIN', 'CLAUDE-D2-E7B.zip'); bad = []
+n_rec = n_eq = 0; pcs_ = set()
+for cz_ in sorted(glob.glob(os.path.join(HERE, 'markers-live', '**', '*.zip'), recursive=True)):
+  try: rz_ = am.place_marker(cz_)
+  except Exception: continue
+  for mm_ in rz_['markers']:
+    mz_ = mm_['marker']; dz_ = mz_['object']['data']; seen_ = set()
+    for s_ in mz_['slots']:
+      if (s_['piece'], s_['size']) in seen_ or not s_.get('record'): continue
+      seen_.add((s_['piece'], s_['size'])); po_ = rz_['pieces'].get(s_['piece'])
+      ro_ = am.record_outline(dz_, s_['record'])
+      if not po_ or not ro_ or not ro_['verified']: continue
+      pc_ = Counter(p_['notch_type'] for p_ in po_['block']['perimeter'] if isinstance(p_, dict) and p_.get('is_corner_notch')); sc_ = Counter(n_[1] for n_ in ro_['corner_notches'])
+      n_rec += 1; n_eq += pc_ == sc_
+      if sc_: pcs_.add(s_['piece'])
+      if any(n_[0] in {m_[0] for m_ in ro_['notches']} for n_ in ro_['corner_notches']): bad.append(f"{s_['piece']} {s_['size']}: a notch is both")
+rz_ = am.place_marker(CZ); mz_ = rz_['markers'][0]['marker']; dz_ = mz_['object']['data']
+if n_rec < 100 or n_eq != n_rec or 'LADIES-BLOUSE-BK' not in pcs_: bad.append(f'{n_eq} of {n_rec} records: corner notch types piece == stream; pieces {sorted(pcs_)}')
+# the nest spec: a corner notch is a vertex of the shape's outline, listed apart from `notches`, mirrored with the shape, counted in the notch table's numbers
+sz_ = ns.build_nest_spec(CZ)[0]; n_cn = 0
+for sh_ in sz_['shapes']:
+    for n_ in sh_.get('corner_notches', []):
+        n_cn += 1
+        if min(math.hypot(n_['x'] - p_[0], n_['y'] - p_[1]) for p_ in sh_['outline']) > 1e-6 or n_['type'] != 1 or n_['numbers'] != [1]: bad.append(f"{sh_['piece']} {sh_['size']}: corner notch {n_}")
+    if sh_.get('outline_mirrored') and len(sh_.get('corner_notches_mirrored', [])) != len(sh_.get('corner_notches', [])): bad.append('mirrored corner notches')
+if n_cn < 3 or 1 not in sz_['notch_table']['numbers_used']: bad.append(f'{n_cn} corner notches in the spec')
+# mutation: the extra byte of a corner point changed to type 3 is read as type 3; cleared to a plain turn it is gone
+s0_ = next(s_ for s_ in mz_['slots'] if s_['piece'] == 'LADIES-BLOUSE-BK'); r0_ = s0_['record']; o0_ = r0_['offset'] + len(r0_['text']); st0_ = dz_[o0_:o0_ + r0_['stream_len']]
+dec0_ = am.decode_record_stream(st0_); grp_ = []; cur_ = []
+for sp_ in dec0_['spans']:
+    if sp_[2] in ('lead', 'header'): continue
+    cur_.append(sp_)
+    if sp_[2] == 'id': grp_.append(cur_); cur_ = []
+ci_ = am.record_outline(dz_, r0_)['corner_notches'][0][0]; ex_ = [sp_ for sp_ in grp_[ci_] if sp_[2] == 'extra'][0][0]
+b0_ = bytearray(dz_); b0_[o0_ + ex_] = (b0_[o0_ + ex_] & 0xf0) | 3
+if [n_[1] for n_ in am.record_outline(bytes(b0_), r0_)['corner_notches']] != [3]: bad.append('a patched corner notch type is not read')
+# a corner notch above 5 (seen on older-layout streams of a production style: 9; an edge notch would read 5): the spec passes the number through and warns when the table lacks it
+fk_ = {0: dict(notches=[], corner_notches=[dict(type=9, x=0.0, y=0.0), dict(type=1, x=0.0, y=0.0)])}
+nb_, nw_ = ns._notch_block(mz_, fk_, {}, None, 1.0)
+if fk_[0]['corner_notches'][0]['numbers'] != [9] or fk_[0]['corner_notches'][1]['numbers'] != [1] or nb_['numbers_used'] != [1, 9] or nb_['undefined_numbers'] != [9] or not any('9' in w_ for w_ in nw_): bad.append(f"corner type 9: {fk_[0]['corner_notches']} {nb_['numbers_used']} {nb_['undefined_numbers']}")
+print(f"   {'ok ' if not bad else 'FAIL'} {n_cn} corner notches in the spec of a blouse marker (back, collar, sleeve: each a vertex of its outline, mirrored with it); piece == stream on {n_eq} of {n_rec} records; a patched type is read  {'; '.join(bad[:3])}")
+if bad: fails.append('corner notches: ' + '; '.join(bad[:5]))
 
 print('-- marker byte map (v4.4, see accumark_marker.marker_coverage)')
 # Every byte owned by a section a parser reads must be classified (identified /

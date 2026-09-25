@@ -1,5 +1,13 @@
 # Changelog
 
+## v4.34 (2026-09-25) - notches ON a turn point were dropped from the stream read and the nest spec (plan item 8)
+
+`__version__` stays `'3.0'`. No new fixture (the blouse ZIPs of `markers-live/` carry a type-1 corner notch on the back, collar and sleeve); offline evidence over every marker and piece of the machine's storage areas, read-only.
+
+* **The gap:** a stream point that is a TURN point with an extra byte is a corner notch (MARKER_FORMAT_SPEC.md section 37); `record_outline()['notches']` kept only the plain-point ones, so a piece's corner notches never reached the nest spec (on the blouse: three per size). New `record_outline()['corner_notches']`, the inventory's `corner_notches`, the shape's `corner_notches` / `corner_notches_mirrored` (also in the DXF / SVG output and `notch_table.numbers_used`). [V: piece == stream on 201 of 201 records of the repo's ZIPs and on 86 records of the machine's markers; 18 records disagree because the piece decoder flags fewer corners (see section 37).]
+* **Numbers above 5 on a corner [? a hint]:** the streams of six records of one real style show corner type 9, never 5 (the pieces store 9; those streams do not verify, an older layout), so the edge-notch clamp `min(number, 5)` probably does not apply to corners; an edge notch of a real piece reads 13 on the piece and 5 in the marker. The nest spec passes a corner type above 5 through as its number. Not run: a live PDS corner notch with a number of 12 / 16 / 25 (would settle the nibble's limit).
+* Selftest: a new section (piece == stream on 201 records, the shapes' corner notches are outline vertices, mirrored with the shape, a patched type is read, a type-9 corner notch in the notch block); the corpus notch-number check now allows code 2 (a corner notch of a bundled piece).
+
 ## v4.33 (2026-09-25) - which pieces the engine turns: a bit in the slot (plan item 10)
 
 `__version__` stays `'3.0'`. New fixture `engine/FRAME_TURNS.json`; live evidence from five AccuNest jobs of my own (a legacy AccuMark 9 sample jacket set in three fabric rows, LADIES-BLOUSE collar sizes, the twoply blouse).

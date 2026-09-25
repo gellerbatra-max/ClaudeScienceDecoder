@@ -34,6 +34,7 @@ A **shape** has its own frame: the lower-left corner of its cut outline's boundi
 | key | meaning |
 |---|---|
 | `id`, `piece`, `model`, `size`, `cut`, `category`, `fabric_types` | identity |
+| `engine_frame_turn_deg` | v4.33: 90 when the AccuMark engine holds the piece a quarter turn from the frame of `outline` (the LADIES-BLOUSE collar; the slot word @+60 bit 0x0200, also on an unplaced marker), else 0. `retrieval_deg_by_slot` / `allowed_deg_by_slot` of the demand are in the ENGINE frame: turn the outline by this first. The sign is not stored (+90 counter-clockwise on the collar) - only a piece pinned to one direction cares |
 | `outline` | the **cut line**: a closed polygon, counter-clockwise, no repeated last point |
 | `seam_outline` | the stitch line, only when the marker holds one (a fold piece with seam allowance); it lies inside the cut line |
 | `area`, `declared_area`, `perimeter`, `width`, `height` | `area` is computed from `outline`; `declared_area` is the number AccuMark stored - they agree to 1% (checked) |
@@ -41,10 +42,11 @@ A **shape** has its own frame: the lower-left corner of its cut outline's boundi
 | `buffer` | only when the Lay Limits and the Block Buffer table are known: the rule this shape's row names - `rule`, `kind` (`buffer` / `block`), `static` and `dynamic` amounts per side (`left`, `top`, `right`, `bottom`, `segment`: `{value, unit}` in the spec units, or percent of the repeat) |
 | `matching` | v4.25, only with a Matching table: the rules this piece takes part in, in the engine's order - `rule`, `kind`, `role` (`first` / `second`), `partner` (a category or `MARKER`), `point` (the point number), `vertex` (its index in the outline as AccuMark stores it), `x`, `y` (that vertex in the shape's frame, NOT mirrored: a mirrored instance reflects it like the rest of the geometry), `type_x`, `type_y`, `offset` [x, y] |
 | `notches[]` | `x`, `y`, `type` = the notch CODE `min(number, 5)` (v4.15: 1-4 are the row of the Notch Parameter Table the marker names, 5 = row 5 or any higher one), `numbers` (the candidate rows) and `number` (when there is only one) - what a row looks like is in `notch_table.entries[number]`, the candidates per code in `notch_table.by_code` |
+| `corner_notches[]` | v4.34: the notches ON a turn point of the outline (each is a vertex of `outline`): `x`, `y`, `type`, `numbers`, `number` as `notches`, but a type above 5 (only a corner notch shows one: 9 seen on older-layout streams [?]) is taken as the piece's own number |
 | `grain` | `points` (2), `angle_deg` 0, `basis`: `stream` (read from a stream layout verified against piece objects) or `inferred` (the older 1825D / 5683D / 2591A / 418T vintage: a horizontal 2-point segment, 89 of 89 records - not a verified read) |
 | `rotation` | only when the Lay Limits table is known: the row of this shape's `category` (else DEFAULT): `row`, `matched` (`category` / `default`), `allowed_deg`, `flip_x_axis_allowed`, ... and `basis` |
 | `internal_lines[]`, `drills[]` | internal lines / cutouts and drill holes, `[]` when none (or when the layout is the older, undecoded one) |
-| `outline_mirrored`, `seam_outline_mirrored`, `notches_mirrored`, `grain_mirrored`, `internal_lines_mirrored`, `drills_mirrored` | present when some instances are mirrored: the same geometry reflected about the grain axis through the middle of the box, written out so a nester needs no mirror convention |
+| `outline_mirrored`, `seam_outline_mirrored`, `notches_mirrored`, `corner_notches_mirrored`, `grain_mirrored`, `internal_lines_mirrored`, `drills_mirrored` | present when some instances are mirrored: the same geometry reflected about the grain axis through the middle of the box, written out so a nester needs no mirror convention |
 | `self_intersecting` | `true` for a ruffle spiral (legitimate) |
 | `complete` | `false` when the marker gave no outline for the shape |
 

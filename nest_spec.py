@@ -7,7 +7,7 @@ One command from the ZIP AccuMark exports (marker-only is enough: no piece objec
 
     fabric      width (and the shortest length a 100%-efficient lay would need), fabric types, block buffer
     shapes      one per (piece, size, cut) the marker lists: the CUT outline, the seam (stitch) line when the marker holds one,
-                notches (position + type), the grain line, internal lines, drill holes, area, perimeter, bounding box
+                notches (position + type; `corner_notches` = the ones on a turn point, v4.34), the grain line, internal lines, drill holes, area, perimeter, bounding box
     demand      how many of each shape to lay, and how many of those mirrored - with the mirrored outline written out, so the
                 nester needs no mirror convention (`mirror_binding` 'kept' = the row has S, AccuMark lays each instance as its flip says; 'free' = it may lay them either way). Per slot (v4.17): `flip_by_slot` = the model's flip of that instance (`--`, X, Y, X,Y;
                 X and Y are mirror images, X,Y a half turn) and `preset_turn_deg_by_slot` = the model's own turn; `mirrored` is the engine's FLIP_FLAG and `retrieval_deg_by_slot` its
@@ -159,7 +159,7 @@ def _notch_block(mk, shapes, bundled, supplied, k):
         table = supplied.get(name) or (next(iter(supplied.values())) if len(supplied) == 1 else None); source = 'supplied' if table is not None else None
         if table is not None and name and table.get('name') != name: warns.append(f"the supplied notch table is '{table.get('name')}', the marker names '{name}'")
     if table is None and name and name in bundled: table = bundled[name]; source = 'bundled'
-    used = sorted({n['type'] for s_ in shapes.values() for n in s_.get('notches', [])})
+    used = sorted({n['type'] for s_ in shapes.values() for n in s_.get('notches', []) + s_.get('corner_notches', [])})
     snap = (mk.get('snapshots') or {}).get('notch')
     snap = None if snap is None or 'error' in snap else snap
     snap_note = None
@@ -183,10 +183,11 @@ def _notch_block(mk, shapes, bundled, supplied, k):
         geo = {(n['type_name'], n['perimeter_in'], n['inside_in'], n['depth_in']) for n in table['notches'] if n['number'] in nums}
         by_code[str(c)] = dict(numbers=nums, same_geometry=len(geo) <= 1)
     for s_ in shapes.values():
-        for n in s_.get('notches', []):
+        for n in s_.get('notches', []) + s_.get('corner_notches', []):
             bc = by_code.get(str(n['type']))
             if bc: n['numbers'] = bc['numbers']; n['number'] = bc['numbers'][0] if len(bc['numbers']) == 1 else None
-    undefined = [c for c in used if c in range(1, 6) and not by_code[str(c)]['numbers'] and not (legacy and c == 5)]
+            elif n['type'] > 5: n['numbers'] = [n['type']]; n['number'] = n['type']      # v4.34: only a corner notch can - it keeps the byte the piece stores (9 on the real DI pieces: piece 9 = stream 9), not min(number, 5)
+    undefined = [c for c in used if (c in range(1, 6) and not by_code[str(c)]['numbers'] and not (legacy and c == 5)) or (c > 5 and str(c) not in ent and not legacy)]
     if undefined: warns.append(f"notch code(s) {undefined} match no notch of the table '{table.get('name')}'")
     unclear = [c for c in used if str(c) in by_code and len(by_code[str(c)]['numbers']) > 1 and not by_code[str(c)]['same_geometry']]
     if unclear: warns.append(f"notch code(s) {unclear} stand for several different notches of '{table.get('name')}' (numbers {[by_code[str(c)]['numbers'] for c in unclear]}): a marker keeps only min(number, 5) - the piece objects hold the number")
@@ -328,6 +329,7 @@ def build_nest_spec(path, units='cm', marker=None, lay_limits=None, notch_table=
                     shp.update(outline=[list(p) for p in _ccw(o)], area=abs(_area(o)), width=w, height=h,
                                seam_outline=[list(p) for p in _ccw(sew_l)] if sew_l else None,
                                notches=[dict(x=(n['x'] - x0) * k, y=(n['y'] - y0) * k, type=n['type']) for n in e.get('notches', [])],
+                               corner_notches=[dict(x=(n['x'] - x0) * k, y=(n['y'] - y0) * k, type=n['type']) for n in e.get('corner_notches', [])],
                                grain=dict(points=[list(p) for p in gpts], angle_deg=0.0, basis=e.get('grain_basis')) if gpts else None,
                                internal_lines=[[list(p) for p in loc(l)] for l in e.get('internal_lines', [])],
                                drills=[list(p) for p in loc(e.get('drills', []))],
@@ -365,6 +367,7 @@ def build_nest_spec(path, units='cm', marker=None, lay_limits=None, notch_table=
                 shp['outline_mirrored'] = [list(p) for p in _ccw(M(shp['outline']))]
                 if shp.get('seam_outline'): shp['seam_outline_mirrored'] = [list(p) for p in _ccw(M(shp['seam_outline']))]
                 shp['notches_mirrored'] = [dict(n, y=y1 + y0 - n['y']) for n in shp['notches']]
+                shp['corner_notches_mirrored'] = [dict(n, y=y1 + y0 - n['y']) for n in shp['corner_notches']]
                 if shp.get('grain'): shp['grain_mirrored'] = dict(shp['grain'], points=[list(p) for p in M(shp['grain']['points'])])
                 shp['internal_lines_mirrored'] = [[list(p) for p in M(l)] for l in shp['internal_lines']]
                 shp['drills_mirrored'] = [list(p) for p in M(shp['drills'])]
@@ -518,7 +521,7 @@ def write_dxf(spec, path, gap=None):
         if s.get('grain'):
             gp = s['grain']['points'] if not mir else _mirror_y([tuple(p) for p in s['grain']['points']], 0, s['height'])
             g(0, 'LINE'); g(8, 'GRAIN'); g(10, f'{gp[0][0] + dx:.4f}'); g(20, f'{gp[0][1] + dy:.4f}'); g(11, f'{gp[1][0] + dx:.4f}'); g(21, f'{gp[1][1] + dy:.4f}')
-        for n in s.get('notches', []):
+        for n in s.get('notches', []) + s.get('corner_notches', []):
             y = n['y'] if not mir else s['height'] - n['y']
             g(0, 'POINT'); g(8, 'NOTCH'); g(10, f"{n['x'] + dx:.4f}"); g(20, f'{y + dy:.4f}')
         for p in s.get('drills', []):
@@ -558,7 +561,7 @@ def write_svg(spec, path):
         if s.get('grain'):
             gp = s['grain']['points'] if not mir else _mirror_y([tuple(p) for p in s['grain']['points']], 0, s['height'])
             parts.append(f'<polyline points="{P(gp)}" stroke="#2a7d2a" stroke-width="1" fill="none"/>')
-        for n in s.get('notches', []):
+        for n in s.get('notches', []) + s.get('corner_notches', []):
             y = n['y'] if not mir else s['height'] - n['y']; parts.append(f'<circle cx="{(n["x"] + dx) * sc + 10:.1f}" cy="{(H - (y + dy)) * sc + 30:.1f}" r="2.5" fill="#e67e22"/>')
         for p in s.get('drills', []):
             y = p[1] if not mir else s['height'] - p[1]; parts.append(f'<circle cx="{(p[0] + dx) * sc + 10:.1f}" cy="{(H - (y + dy)) * sc + 30:.1f}" r="3" fill="none" stroke="#000"/>')

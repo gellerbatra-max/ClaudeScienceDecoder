@@ -1138,6 +1138,7 @@ def record_outline(data, rec):
                 lines=[dict(kind=lb, points=[(x / 1e4, y / 1e4) for x, y, _ in c]) for lb, c in zip((d.get('labels') or [])[1:], d['contours'][1:]) if lb in ('grain', 'internal', 'cutout', 'drill', 'mirror')],
                 sew=next(([(x / 1e4, y / 1e4) for x, y, _ in (_unfold_contour(c) if unfolded else c)] for lb, c in zip((d.get('labels') or [])[1:], d['contours'][1:]) if lb == 'sew'), None),
                 notches=[(i, k[1], c0[i][0] / 1e4, c0[i][1] / 1e4) for i, k in enumerate(k0) if k[0] == 'notch'],
+                corner_notches=[(i, k[1], c0[i][0] / 1e4, c0[i][1] / 1e4) for i, k in enumerate(k0) if k[0] == 'turn' and k[1] is not None],      # v4.34: a notch ON a turn point
                 area=a, perimeter=pr, other=[[(x / 1e4, y / 1e4) for x, y, _ in c] for c in d['contours'][1:]], stop=d['stop'], header=d['header'])
     # every line above came from a stream whose layout was verified against a piece object (basis 'stream'). The 1825D / 5683D / 2591A / 418T vintage
     # lays its other lines out differently and is not decoded, but its grain line is recognisable: the second contour's first two points are a
@@ -2089,6 +2090,7 @@ def unplaced_inventory(mk, pieces=None, piece_errors=None, use_grading=True, geo
         if note.startswith(STREAM_NOTE) and s.get('record'):
             ro_ = record_outline(mk['object']['data'], s['record'])
             entry['notches'] = [dict(type=n_[1], x=n_[2], y=n_[3]) for n_ in ro_['notches']]
+            entry['corner_notches'] = [dict(type=n_[1], x=n_[2], y=n_[3]) for n_ in ro_['corner_notches']]
             # the piece's other lines from the stream: grain (direction of the fabric), internal lines, cutouts, drill holes (inches, piece frame)
             gl_ = next((l for l in ro_['lines'] if l['kind'] == 'grain'), None)
             entry['grain'] = gl_['points'] if gl_ else None

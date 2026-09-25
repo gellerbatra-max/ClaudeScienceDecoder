@@ -1,5 +1,14 @@
 # Changelog
 
+## v4.32 (2026-09-25) - live: the plaid Y offset; PDS rotation is not stored; a piece's category is stored in the piece
+
+`__version__` stays `'3.0'`. Live rounds of my own (Easy Order, Order Editor, Queue Submit, PDS, Model Editor, all my own processes). New fixtures `plaid/ZZPQ-M.GT_mark`, `plaid/ZZPQ-M-frommed.mra`, `plaid/ZZ-PLAID-Y2.GT_match`. Plan items 11 (rest), 10 (collar), 8.
+
+* **Plaid offset Y verified** (MARKER_FORMAT_SPEC.md section 31): a copy of the match table `ZZ-PLAID-U2` patched with Relative stripe (Y) offsets of 2 and 1.5 cm, an Easy Order, Process, AccuNest: section 9's `f64` at +18 = 0.7874 / 0.5906 in = the engine's `MATCHING_OFFSET` y 7874 / 5906 (both Y types relative). 6 plaid markers, 240 instances, 352 rule points equal the engine's now. The match table layout note of my skill was one byte off (the stripe type is 1 byte at P+9, the stripe offset int32 at P+10); corrected.
+* **The collar's frame (item 10) - what was tried:** the Model Editor's thumbnail of the LADIES-BLOUSE collar is tall with a vertical line (V17-made pieces are wide with a horizontal one): the engine frame is probably the GRAIN-aligned one and the stream the stored one. A vertical-grain piece cannot be made with V17 tools: the collar rotated 90 / 180 in PDS and saved came back with unrotated geometry, engine frame 0 - PDS does not store a rotation. Left as a hypothesis [?] in section 32.
+* **Facts on the way:** a piece's CATEGORY is stored in the piece object (meta name): editing it in the Model Editor rewrites the piece file; the Easy Order Fabrics grid of this machine has Annotation, Target Length and Utilization columns (`easyorder_job.py` column map updated in the skill, `layout` / `columns` keys).
+* **Open:** what turns the collar (needs legacy grain data); item 8 (corner-point notch numbers) was not run: only the piece side could differ, the marker keeps the code.
+
 ## v4.31 (2026-09-25) - live: the engine's tilt limits come from the table; the order's Target Length / Target Utilization
 
 `__version__` stays `'3.0'`. Two AccuNest jobs and three orders of my own (Order Editor, Lay Limits table `ZZLL-TLT`, Queue Submit; my own processes). New fixtures `engine/ZZR-TL2.GT_mark`, `engine/ZZR-TL3.GT_mark`, `engine/TILT_JOBS.json`. Plan item 12, live.

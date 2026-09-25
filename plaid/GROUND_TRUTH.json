@@ -53,5 +53,9 @@
    "ZZP2-M": "as ZZP1-M with a 4 cm offset, a fabric rule same / none and a stale BACK point 5",
    "ZZC20-STD": "two piece rules, ten bundles"
   }
+ },
+ "v4.32": {
+  "ZZPQ-M": "ZZ-PLAID-Y2 (a copy of ZZ-PLAID-U2 with Relative stripe offsets: rule 1 PFRONT 3 - PBACK 3 plaid Same, stripe Relative 2 cm; rule 2 PFRONT 5 - PSLEEVE 2 plaid Relative 3 cm, stripe Relative 1.5 cm); engine MATCHING_OFFSET (0, 7874) and (11811, 5906), MATCHING_TYPE_Y 0",
+  "table_layout": "stripe type = 1 byte at P+9, stripe offset int32 at P+10 (P = the plaid type u16 of the record)"
  }
 }
